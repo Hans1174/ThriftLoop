@@ -1,8 +1,10 @@
-import { API_URL } from './config';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { SlidersHorizontal, Check, Loader2, X, RotateCcw } from 'lucide-react';
+import { SlidersHorizontal, Check, Loader2, X, RotateCcw, Tag } from 'lucide-react';
 import { useCart } from './context/CartContext';
+
+// Safe environment fallback without external import dependency
+const API_URL = import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
 
 export default function Shop() {
   const cartContext = useCart ? useCart() : {};
@@ -13,7 +15,7 @@ export default function Shop() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Filter & Layout States (Closed by default)
+  // Filter & Layout States
   const [showFilters, setShowFilters] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || 'All');
   const [selectedCondition, setSelectedCondition] = useState('All');
@@ -21,6 +23,52 @@ export default function Shop() {
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
   const [sortBy, setSortBy] = useState('newest');
   const [addedId, setAddedId] = useState(null);
+
+  // Dynamic Aging Discount Calculation (Objectives 3 & 5)
+  const calculatePricing = (item) => {
+    const rawPrice = parseFloat(item.price || 0);
+    const originalPrice = parseFloat(item.original_price || rawPrice);
+
+    // If backend already marked down price compared to original_price
+    if (item.original_price && originalPrice > rawPrice) {
+      const discountPercent = Math.round(((originalPrice - rawPrice) / originalPrice) * 100);
+      return {
+        currentPrice: rawPrice,
+        originalPrice,
+        discountPercent,
+        isDiscounted: true,
+      };
+    }
+
+    // Dynamic aging calculation based on created_at timestamp
+    if (item.created_at) {
+      const daysInInventory = Math.floor(
+        (new Date() - new Date(item.created_at)) / (1000 * 60 * 60 * 24)
+      );
+
+      let discountRate = 0;
+      if (daysInInventory >= 30) discountRate = 0.25;
+      else if (daysInInventory >= 14) discountRate = 0.15;
+      else if (daysInInventory >= 7) discountRate = 0.10;
+
+      if (discountRate > 0) {
+        const discounted = rawPrice * (1 - discountRate);
+        return {
+          currentPrice: discounted,
+          originalPrice: rawPrice,
+          discountPercent: Math.round(discountRate * 100),
+          isDiscounted: true,
+        };
+      }
+    }
+
+    return {
+      currentPrice: rawPrice,
+      originalPrice: rawPrice,
+      discountPercent: 0,
+      isDiscounted: false,
+    };
+  };
 
   // Fetch live products from backend
   useEffect(() => {
@@ -41,7 +89,6 @@ export default function Shop() {
     const cat = searchParams.get('category');
     const search = searchParams.get('search');
 
-    // If search is present without a category param, reset category to 'All'
     if (search !== null) {
       setSearchQuery(search);
       setSelectedCategory(cat || 'All');
@@ -79,35 +126,35 @@ export default function Shop() {
     Boolean(searchQuery.trim()),
   ].filter(Boolean).length;
 
-  // Search and Filter computation
+  // Search, Filter, and Pricing Computation
   const filteredProducts = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
 
     return products
       .filter((item) => {
-        // Multi-field search match
         const matchSearch =
           !query ||
           (item.name && item.name.toLowerCase().includes(query)) ||
           (item.category_name && item.category_name.toLowerCase().includes(query)) ||
           (item.description && item.description.toLowerCase().includes(query));
 
-        // Category match
         const matchCat =
           selectedCategory === 'All' ||
           (item.category_name && item.category_name.toLowerCase() === selectedCategory.toLowerCase()) ||
           (item.name && item.name.toLowerCase().includes(selectedCategory.toLowerCase()));
 
-        // Condition & Size matches
         const matchCond = selectedCondition === 'All' || item.condition_grade === selectedCondition;
         const matchSize = selectedSize === 'All' || item.size === selectedSize;
 
         return matchSearch && matchCat && matchCond && matchSize;
       })
       .sort((a, b) => {
-        if (sortBy === 'price-low') return parseFloat(a.price) - parseFloat(b.price);
-        if (sortBy === 'price-high') return parseFloat(b.price) - parseFloat(a.price);
-        return b.product_id - a.product_id;
+        const priceA = calculatePricing(a).currentPrice;
+        const priceB = calculatePricing(b).currentPrice;
+
+        if (sortBy === 'price-low') return priceA - priceB;
+        if (sortBy === 'price-high') return priceB - priceA;
+        return (b.product_id || 0) - (a.product_id || 0);
       });
   }, [products, selectedCategory, selectedCondition, selectedSize, searchQuery, sortBy]);
 
@@ -121,7 +168,16 @@ export default function Shop() {
       return;
     }
 
-    addToCart(item);
+    const { currentPrice, originalPrice } = calculatePricing(item);
+
+    addToCart({
+      ...item,
+      id: item.product_id || item.id,
+      product_id: item.product_id || item.id,
+      price: currentPrice,
+      original_price: originalPrice,
+    });
+
     setAddedId(item.product_id);
     setTimeout(() => setAddedId(null), 1500);
   };
@@ -156,7 +212,6 @@ export default function Shop() {
 
           {/* Controls: Filter Toggle + Sort By */}
           <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
-            
             <button
               onClick={() => setShowFilters(!showFilters)}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border transition-all duration-200 active:scale-95 shadow-xs cursor-pointer ${
@@ -193,7 +248,6 @@ export default function Shop() {
                 <option value="price-high">Price: High to Low</option>
               </select>
             </div>
-
           </div>
         </div>
 
@@ -314,68 +368,89 @@ export default function Shop() {
                     : 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4'
                 }`}
               >
-                {filteredProducts.map((item) => (
-                  <div
-                    key={item.product_id}
-                    className="bg-white border border-[#A8C3A0]/30 rounded-2xl overflow-hidden shadow-xs flex flex-col justify-between group hover:shadow-xl hover:-translate-y-1.5 hover:border-[#2F6B4F]/50 transition-all duration-300"
-                  >
-                    <Link to={`/product/${item.product_id}`} className="block relative">
-                      <div className="h-64 bg-[#F6F1E8]/70 overflow-hidden flex items-center justify-center relative border-b border-[#A8C3A0]/10">
-                        <span className="absolute top-3 left-3 z-10 bg-[#23313A] text-[#F6F1E8] text-[10px] font-bold px-2 py-0.5 rounded shadow-xs">
-                          {item.condition_grade}
-                        </span>
-                        <span className="absolute top-3 right-3 z-10 bg-white/95 backdrop-blur-xs border border-[#A8C3A0]/30 text-[#23313A] text-[10px] font-bold px-2 py-0.5 rounded shadow-xs">
-                          Size {item.size}
-                        </span>
-                        {item.status === 'sold' && (
-                          <span className="absolute inset-0 bg-[#23313A]/70 flex items-center justify-center text-white text-xs font-bold uppercase tracking-wider z-20 backdrop-blur-[1px]">
-                            Sold Out
-                          </span>
-                        )}
-                        <img
-                          src={item.image_url}
-                          alt={item.name}
-                          className="w-full h-full object-cover group-hover:scale-108 transition-transform duration-700 ease-out"
-                        />
-                      </div>
-                      <div className="p-4 bg-white">
-                        <p className="text-[10px] font-bold text-[#A8C3A0] uppercase tracking-wider">
-                          {item.category_name || 'Vintage'}
-                        </p>
-                        <h3 className="font-serif font-bold text-sm text-[#23313A] line-clamp-1 group-hover:text-[#2F6B4F] transition-colors mt-0.5">
-                          {item.name}
-                        </h3>
-                        <p className="text-[#2F6B4F] font-bold text-base mt-1">
-                          ₱{parseFloat(item.price).toFixed(2)}
-                        </p>
-                      </div>
-                    </Link>
+                {filteredProducts.map((item) => {
+                  const { currentPrice, originalPrice, discountPercent, isDiscounted } = calculatePricing(item);
 
-                    <div className="px-4 pb-4 bg-white">
-                      <button
-                        onClick={(e) => handleAddToCart(e, item)}
-                        disabled={item.status === 'sold'}
-                        className={`w-full font-bold py-2.5 rounded-xl text-xs transition-all duration-200 active:scale-95 flex items-center justify-center gap-1.5 shadow-xs cursor-pointer ${
-                          item.status === 'sold'
-                            ? 'bg-[#F6F1E8] text-[#A8C3A0] cursor-not-allowed border border-[#A8C3A0]/20'
-                            : addedId === item.product_id || cart.some((c) => (c.product_id || c.id) === item.product_id)
-                            ? 'bg-[#2F6B4F] text-white scale-[1.01]'
-                            : 'bg-[#E67E5F] hover:bg-[#d67053] hover:shadow-md text-white'
-                        }`}
-                      >
-                        {item.status === 'sold' ? (
-                          'Sold Out'
-                        ) : addedId === item.product_id || cart.some((c) => (c.product_id || c.id) === item.product_id) ? (
-                          <span className="flex items-center gap-1.5 animate-in zoom-in-75 duration-200">
-                            <Check size={14} className="stroke-[3]" /> In Cart
+                  return (
+                    <div
+                      key={item.product_id}
+                      className="bg-white border border-[#A8C3A0]/30 rounded-2xl overflow-hidden shadow-xs flex flex-col justify-between group hover:shadow-xl hover:-translate-y-1.5 hover:border-[#2F6B4F]/50 transition-all duration-300"
+                    >
+                      <Link to={`/product/${item.product_id}`} className="block relative">
+                        <div className="h-64 bg-[#F6F1E8]/70 overflow-hidden flex items-center justify-center relative border-b border-[#A8C3A0]/10">
+                          <span className="absolute top-3 left-3 z-10 bg-[#23313A] text-[#F6F1E8] text-[10px] font-bold px-2 py-0.5 rounded shadow-xs">
+                            {item.condition_grade}
                           </span>
-                        ) : (
-                          'Add to Cart'
-                        )}
-                      </button>
+                          
+                          {/* Markdown Discount Badge */}
+                          {isDiscounted && (
+                            <span className="absolute bottom-3 left-3 z-10 bg-[#E67E5F] text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-xs flex items-center gap-1 uppercase tracking-wider">
+                              <Tag size={10} /> -{discountPercent}% OFF
+                            </span>
+                          )}
+
+                          <span className="absolute top-3 right-3 z-10 bg-white/95 backdrop-blur-xs border border-[#A8C3A0]/30 text-[#23313A] text-[10px] font-bold px-2 py-0.5 rounded shadow-xs">
+                            Size {item.size}
+                          </span>
+                          {item.status === 'sold' && (
+                            <span className="absolute inset-0 bg-[#23313A]/70 flex items-center justify-center text-white text-xs font-bold uppercase tracking-wider z-20 backdrop-blur-[1px]">
+                              Sold Out
+                            </span>
+                          )}
+                          <img
+                            src={item.image_url}
+                            alt={item.name}
+                            className="w-full h-full object-cover group-hover:scale-108 transition-transform duration-700 ease-out"
+                          />
+                        </div>
+                        <div className="p-4 bg-white">
+                          <p className="text-[10px] font-bold text-[#A8C3A0] uppercase tracking-wider">
+                            {item.category_name || 'Vintage'}
+                          </p>
+                          <h3 className="font-serif font-bold text-sm text-[#23313A] line-clamp-1 group-hover:text-[#2F6B4F] transition-colors mt-0.5">
+                            {item.name}
+                          </h3>
+
+                          {/* Dynamic Pricing Display */}
+                          <div className="flex items-center gap-2 mt-1">
+                            <p className="text-[#2F6B4F] font-bold text-base">
+                              ₱{currentPrice.toFixed(2)}
+                            </p>
+                            {isDiscounted && (
+                              <p className="text-xs text-[#23313A]/40 line-through font-semibold">
+                                ₱{originalPrice.toFixed(2)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </Link>
+
+                      <div className="px-4 pb-4 bg-white">
+                        <button
+                          onClick={(e) => handleAddToCart(e, item)}
+                          disabled={item.status === 'sold'}
+                          className={`w-full font-bold py-2.5 rounded-xl text-xs transition-all duration-200 active:scale-95 flex items-center justify-center gap-1.5 shadow-xs cursor-pointer ${
+                            item.status === 'sold'
+                              ? 'bg-[#F6F1E8] text-[#A8C3A0] cursor-not-allowed border border-[#A8C3A0]/20'
+                              : addedId === item.product_id || cart.some((c) => (c.product_id || c.id) === item.product_id)
+                              ? 'bg-[#2F6B4F] text-white scale-[1.01]'
+                              : 'bg-[#E67E5F] hover:bg-[#d67053] hover:shadow-md text-white'
+                          }`}
+                        >
+                          {item.status === 'sold' ? (
+                            'Sold Out'
+                          ) : addedId === item.product_id || cart.some((c) => (c.product_id || c.id) === item.product_id) ? (
+                            <span className="flex items-center gap-1.5 animate-in zoom-in-75 duration-200">
+                              <Check size={14} className="stroke-[3]" /> In Cart
+                            </span>
+                          ) : (
+                            'Add to Cart'
+                          )}
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
