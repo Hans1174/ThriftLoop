@@ -41,7 +41,7 @@ export default function Landing() {
     const fetchNewArrivals = async () => {
       setLoadingItems(true);
       try {
-        const res = await fetch('${API_URL}/api/products');
+        const res = await fetch(`${API_URL}/api/products');
         if (!res.ok) throw new Error('Failed to fetch catalog');
         const data = await res.json();
         

@@ -1,4 +1,3 @@
-import { API_URL } from './config';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { SlidersHorizontal, Check, Loader2, X, RotateCcw } from 'lucide-react';
@@ -24,7 +23,7 @@ export default function Shop() {
 
   // Fetch live products from backend
   useEffect(() => {
-    fetch('${API_URL}/api/products')
+    fetch(`${API_URL}/api/products`)
       .then((res) => res.json())
       .then((data) => {
         setProducts(Array.isArray(data) ? data : []);

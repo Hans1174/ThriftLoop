@@ -85,8 +85,8 @@ export default function AdminDashboard() {
       };
 
       const [resProd, resOrd] = await Promise.all([
-        fetch('${API_URL}/api/products'),
-        fetch('${API_URL}/api/admin/orders', { headers }).catch(() => null),
+        fetch(`${API_URL}/api/products'),
+        fetch(`${API_URL}/api/admin/orders', { headers }).catch(() => null),
       ]);
 
       if (!resProd.ok) throw new Error('Could not retrieve catalog inventory.');

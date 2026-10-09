@@ -58,7 +58,7 @@ export default function MyAccount() {
 
   // Fetch live orders if present in backend
   useEffect(() => {
-    fetch('${API_URL}/api/admin/orders')
+    fetch(`${API_URL}/api/admin/orders`)
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {
