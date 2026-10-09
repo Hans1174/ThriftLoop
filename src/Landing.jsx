@@ -23,11 +23,11 @@ export default function Landing() {
   const addToCart = cartContext.addToCart || (() => {});
 
   const categories = [
-    { name: 'Tops', slug: 'tops', img: 'res/blackpolo.jpg' },
-    { name: 'Bottoms', slug: 'bottoms', img: 'res/bottoms.jpg' },
-    { name: 'Dresses', slug: 'dresses', img: 'res/dresses.jpg' },
-    { name: 'Shoes', slug: 'shoes', img: 'res/shoes.jpg' },
-    { name: 'Accessories', slug: 'accessories', img: 'res/bag.jpg' },
+    { name: 'Tops', slug: 'tops', img: '/res/blackpolo.jpg' },
+    { name: 'Bottoms', slug: 'bottoms', img: '/res/bottoms.jpg' },
+    { name: 'Dresses', slug: 'dresses', img: '/res/dresses.jpg' },
+    { name: 'Shoes', slug: 'shoes', img: '/res/shoes.jpg' },
+    { name: 'Accessories', slug: 'accessories', img: '/res/bag.jpg' },
   ];
 
   // Helper: Calculate aging discount and dynamic markdown pricing (Objectives 3 & 5)
@@ -115,21 +115,21 @@ export default function Landing() {
   const heroSlides = [
     {
       id: 1,
-      image: 'res/bg1.jpg',
+      image: '/res/bg1.jpg',
       tag: 'Fresh Drops Daily',
       title: 'Every piece is one of a Kind.',
       subtitle: 'Curated vintage apparel authenticated and hand-picked across Japan & US archives.'
     },
     {
       id: 2,
-      image: 'res/bg2.jpg',
+      image: '/res/bg2.jpg',
       tag: 'New Arrivals',
       title: 'Sustainable Vintage Finds',
       subtitle: 'Give authentic 90s streetwear and classic archive silhouettes a second life.'
     },
     {
       id: 3,
-      image: 'res/bg3.jpg',
+      image: '/res/bg3.jpg',
       tag: 'Sustainable Style',
       title: 'Slow Fashion Revolution',
       subtitle: 'Zero landfills, circular economy, and pure vintage individuality.'

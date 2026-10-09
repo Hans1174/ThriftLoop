@@ -916,7 +916,7 @@ app.post('/api/chat', async (req, res) => {
       ? products.map((p) => `- ${p.name} (Size: ${p.size || 'OS'}, PTP: ${p.chest_width || 'N/A'}, Length: ${p.length || 'N/A'}, Grade: ${p.condition_grade || 'Grade A'}, Price: ₱${p.price})`).join('\n')
       : 'No items currently in stock.';
 
-    const modelName = process.env.GEMINI_MODEL || 'gemini-3.6';
+    const modelName = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 
     const response = await ai.models.generateContent({
       model: modelName,
