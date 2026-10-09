@@ -1,10 +1,11 @@
-import { API_URL } from './config';
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Package, Plus, Trash2, CheckCircle, RefreshCw, 
   ShoppingBag, DollarSign, Tag, AlertCircle, 
   X, Search, UploadCloud, Pencil, Truck, Check
 } from 'lucide-react';
+
+const API_URL = import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('inventory'); // 'inventory' | 'orders'
@@ -85,8 +86,8 @@ export default function AdminDashboard() {
       };
 
       const [resProd, resOrd] = await Promise.all([
-        fetch(`${API_URL}/api/products'),
-        fetch(`${API_URL}/api/admin/orders', { headers }).catch(() => null),
+        fetch(`${API_URL}/api/products`),
+        fetch(`${API_URL}/api/admin/orders`, { headers }).catch(() => null),
       ]);
 
       if (!resProd.ok) throw new Error('Could not retrieve catalog inventory.');
@@ -191,7 +192,7 @@ export default function AdminDashboard() {
       const isEdit = Boolean(editingItem);
       const url = isEdit
         ? `${API_URL}/api/products/${editingItem.product_id || editingItem.id}`
-        : '${API_URL}/api/products';
+        : `${API_URL}/api/products`;
       const method = isEdit ? 'PUT' : 'POST';
 
       const res = await fetch(url, {
@@ -340,8 +341,6 @@ export default function AdminDashboard() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white border border-[#A8C3A0]/30 rounded-3xl p-6 sm:p-8 shadow-xs">
           <div>
-            <div className="flex items-center gap-2">
-            </div>
             <h1 className="font-serif text-3xl font-bold text-[#23313A] mt-1">Admin Dashboard</h1>
             <p className="text-xs text-[#23313A]/60 font-medium">
               Manage one-of-a-kind vintage drops, edit item specs, and fulfill live orders.
@@ -668,13 +667,11 @@ export default function AdminDashboard() {
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto"
           onMouseDown={(e) => {
-            // Check if user genuinely started mousedown on the backdrop background
             if (e.target === e.currentTarget) {
               backdropMouseDownRef.current = true;
             }
           }}
           onMouseUp={(e) => {
-            // Only exit if mousedown AND mouseup happened on the outer backdrop
             if (backdropMouseDownRef.current && e.target === e.currentTarget) {
               setIsModalOpen(false);
             }
@@ -683,7 +680,7 @@ export default function AdminDashboard() {
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => e.preventDefault()}
         >
-          {/* Visual Dark Overlay (Clicks here do NOT immediately exit) */}
+          {/* Visual Dark Overlay */}
           <div className="fixed inset-0 bg-[#23313A]/60 backdrop-blur-xs pointer-events-none" />
 
           {/* Modal Dialog Card */}
@@ -796,9 +793,6 @@ export default function AdminDashboard() {
                         onDrop={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                            handleFileProcess(e.dataTransfer.files[0]);
-                          }
                         }}
                         onClick={() => fileInputRef.current?.click()}
                         className="w-full h-36 border-2 border-dashed border-[#A8C3A0]/60 hover:border-[#2F6B4F] bg-[#F6F1E8]/30 rounded-2xl flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors p-4 text-center group"

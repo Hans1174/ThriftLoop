@@ -1,8 +1,10 @@
-import { API_URL } from './config';
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChevronRight, ChevronLeft, Check, X, Megaphone, Sparkles, Loader2 } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Check, X, Megaphone, Sparkles, Loader2, Tag, Clock } from 'lucide-react';
 import { useCart } from './context/CartContext';
+
+// Safe environment fallback without external import dependency
+const API_URL = import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
 
 export default function Landing() {
   const navigate = useNavigate();
@@ -28,12 +30,59 @@ export default function Landing() {
     { name: 'Accessories', slug: 'accessories', img: 'res/bag.jpg' },
   ];
 
+  // Helper: Calculate aging discount and dynamic markdown pricing (Objectives 3 & 5)
+  const calculatePricing = (item) => {
+    const rawPrice = parseFloat(item.price || 0);
+    const originalPrice = parseFloat(item.original_price || rawPrice);
+
+    // If backend already marked down price compared to original_price
+    if (item.original_price && originalPrice > rawPrice) {
+      const discountPercent = Math.round(((originalPrice - rawPrice) / originalPrice) * 100);
+      return {
+        currentPrice: rawPrice,
+        originalPrice,
+        discountPercent,
+        isDiscounted: true,
+      };
+    }
+
+    // Dynamic front-end aging calculation if item has created_at timestamp
+    if (item.created_at) {
+      const daysInInventory = Math.floor(
+        (new Date() - new Date(item.created_at)) / (1000 * 60 * 60 * 24)
+      );
+
+      // Automated markdown tiers: >30 days = 25% off, >14 days = 15% off, >7 days = 10% off
+      let discountRate = 0;
+      if (daysInInventory >= 30) discountRate = 0.25;
+      else if (daysInInventory >= 14) discountRate = 0.15;
+      else if (daysInInventory >= 7) discountRate = 0.10;
+
+      if (discountRate > 0) {
+        const discounted = rawPrice * (1 - discountRate);
+        return {
+          currentPrice: discounted,
+          originalPrice: rawPrice,
+          discountPercent: Math.round(discountRate * 100),
+          isDiscounted: true,
+        };
+      }
+    }
+
+    return {
+      currentPrice: rawPrice,
+      originalPrice: rawPrice,
+      discountPercent: 0,
+      isDiscounted: false,
+    };
+  };
+
   // Fallback items if database is disconnected
   const fallbackFinds = [
-    { product_id: 1, name: 'Vintage Floral Midi Dress', brand: 'Laura Ashley', price: 450, size: 'M', condition_grade: 'Class A', image_url: 'https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=500' },
-    { product_id: 2, name: 'Classic Washed Denim Jacket', brand: "Levi's", price: 750, size: 'L', condition_grade: 'Brand New', image_url: 'https://images.unsplash.com/photo-1576995853123-5a10305d93c0?q=80&w=500' },
-    { product_id: 3, name: '90s Single-Stitch Band Tee', brand: 'Brockum', price: 350, size: 'XL', condition_grade: 'Class A', image_url: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=500' },
-    { product_id: 4, name: 'Relaxed Utility Cargo Pants', brand: 'Carhartt', price: 400, size: '32', condition_grade: 'Class B', image_url: 'https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?q=80&w=500' },
+    { product_id: 1, name: 'Vintage Floral Midi Dress', brand: 'Laura Ashley', price: 450, original_price: 550, size: 'M', condition_grade: 'Class A', image_url: 'https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=500' },
+    { product_id: 2, name: 'Classic Washed Denim Jacket', brand: "Levi's", price: 750, original_price: 750, size: 'L', condition_grade: 'Brand New', image_url: 'https://images.unsplash.com/photo-1576995853123-5a10305d93c0?q=80&w=500' },
+    { product_id: 3, name: '90s Single-Stitch Band Tee', brand: 'Brockum', price: 295, original_price: 350, size: 'XL', condition_grade: 'Class A', image_url: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=500' },
+    { product_id: 4, name: 'Relaxed Utility Cargo Pants', brand: 'Carhartt', price: 400, original_price: 400, size: '32', condition_grade: 'Class B', image_url: 'https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?q=80&w=500' },
   ];
 
   // Fetch Newly Added Items from Database
@@ -41,7 +90,7 @@ export default function Landing() {
     const fetchNewArrivals = async () => {
       setLoadingItems(true);
       try {
-        const res = await fetch(`${API_URL}/api/products');
+        const res = await fetch(`${API_URL}/api/products`);
         if (!res.ok) throw new Error('Failed to fetch catalog');
         const data = await res.json();
         
@@ -105,12 +154,15 @@ export default function Landing() {
       window.dispatchEvent(new Event('open-login-modal'));
       return;
     }
+
+    const { currentPrice } = calculatePricing(product);
     
     addToCart({
       id: product.product_id || product.id,
       product_id: product.product_id || product.id,
       name: product.name,
-      price: product.price,
+      price: currentPrice,
+      original_price: product.original_price || product.price,
       size: product.size,
       condition_grade: product.condition_grade,
       image_url: product.image_url || product.img
@@ -129,7 +181,7 @@ export default function Landing() {
         <div className="bg-[#2F6B4F] text-white text-[11px] py-2 px-6 flex justify-between items-center font-bold tracking-widest uppercase transition-all">
           <div className="flex items-center gap-2">
             <Megaphone size={14} className="text-white/80" />
-            <span>Flash Drop: 20% off all archive pieces. CODE: VINTAGE20</span>
+            <span>Flash Drop: Automatic aging discounts applied on unsold archive pieces</span>
           </div>
           <div className="flex items-center gap-4">
             <span className="hidden sm:inline text-[#F6F1E8]/90">Nationwide Express Delivery</span>
@@ -236,7 +288,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* 4. New Arrivals (Live Database Feed) */}
+      {/* 4. New Arrivals (Live Database Feed with Aging Markdown Pricing) */}
       <section className="max-w-7xl mx-auto px-6 py-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-8">
           <div>
@@ -278,6 +330,7 @@ export default function Landing() {
             {newArrivals.map((item) => {
               const id = item.product_id || item.id;
               const isAdded = addedId === id;
+              const { currentPrice, originalPrice, discountPercent, isDiscounted } = calculatePricing(item);
 
               return (
                 <div
@@ -291,6 +344,13 @@ export default function Landing() {
                       <span className="absolute top-3 left-3 z-10 bg-[#23313A] text-white text-[10px] font-bold px-2.5 py-1 rounded-full shadow-xs uppercase tracking-wider">
                         {item.brand || 'Vintage'}
                       </span>
+
+                      {/* Aging Markdown Badge (Objective 3 & 5) */}
+                      {isDiscounted && (
+                        <span className="absolute bottom-3 left-3 z-10 bg-[#E67E5F] text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-xs flex items-center gap-1 uppercase tracking-wider">
+                          <Tag size={10} /> -{discountPercent}% OFF
+                        </span>
+                      )}
 
                       {/* Size Badge */}
                       <span className="absolute top-3 right-3 z-10 bg-[#2F6B4F] text-white text-[10px] font-bold px-2 py-1 rounded shadow-xs">
@@ -320,10 +380,16 @@ export default function Landing() {
                         {item.name}
                       </h3>
 
+                      {/* Strikethrough Markdown Price Display */}
                       <div className="flex items-center gap-2 mt-2">
                         <span className="text-[#2F6B4F] font-bold text-base">
-                          ₱{parseFloat(item.price || 0).toFixed(2)}
+                          ₱{currentPrice.toFixed(2)}
                         </span>
+                        {isDiscounted && (
+                          <span className="text-xs text-[#23313A]/40 line-through font-semibold">
+                            ₱{originalPrice.toFixed(2)}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </Link>
