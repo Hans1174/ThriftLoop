@@ -1,3 +1,4 @@
+import { API_URL } from './config';
 import React, { useEffect, useState, useRef } from 'react';
 import { useSearchParams, useLocation, Link, useNavigate } from 'react-router-dom';
 import { 
@@ -55,7 +56,7 @@ export default function Confirmation() {
       try {
         // 1. Verify payment session with backend
         const verifyRes = await fetch(
-          `http://localhost:5000/api/checkout/verify/${sessionId}?order_id=${orderIdFromQuery}`
+          `${API_URL}/api/checkout/verify/${sessionId}?order_id=${orderIdFromQuery}`
         );
         const verifyData = await verifyRes.json();
 
@@ -64,7 +65,7 @@ export default function Confirmation() {
         }
 
         // 2. Fetch order record
-        const orderRes = await fetch(`http://localhost:5000/api/track/${orderIdFromQuery}`);
+        const orderRes = await fetch(`${API_URL}/api/track/${orderIdFromQuery}`);
         if (!orderRes.ok) throw new Error('Could not retrieve order details.');
         const orderData = await orderRes.json();
 

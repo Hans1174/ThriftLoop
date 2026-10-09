@@ -1,3 +1,4 @@
+import { API_URL } from './config';
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
@@ -48,7 +49,7 @@ export default function Navbar({ onOpenLogin }) {
 
   // Pre-fetch live inventory
   useEffect(() => {
-    fetch('http://localhost:5000/api/products')
+    fetch(`${API_URL}/api/products`)
       .then((res) => res.json())
       .then((data) => {
         const list = Array.isArray(data) ? data : (data.products || data.data || []);

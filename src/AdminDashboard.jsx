@@ -1,3 +1,4 @@
+import { API_URL } from './config';
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Package, Plus, Trash2, CheckCircle, RefreshCw, 
@@ -84,8 +85,8 @@ export default function AdminDashboard() {
       };
 
       const [resProd, resOrd] = await Promise.all([
-        fetch('http://localhost:5000/api/products'),
-        fetch('http://localhost:5000/api/admin/orders', { headers }).catch(() => null),
+        fetch('${API_URL}/api/products'),
+        fetch('${API_URL}/api/admin/orders', { headers }).catch(() => null),
       ]);
 
       if (!resProd.ok) throw new Error('Could not retrieve catalog inventory.');
@@ -189,8 +190,8 @@ export default function AdminDashboard() {
       const token = localStorage.getItem('thriftloop_token');
       const isEdit = Boolean(editingItem);
       const url = isEdit
-        ? `http://localhost:5000/api/products/${editingItem.product_id || editingItem.id}`
-        : 'http://localhost:5000/api/products';
+        ? `${API_URL}/api/products/${editingItem.product_id || editingItem.id}`
+        : '${API_URL}/api/products';
       const method = isEdit ? 'PUT' : 'POST';
 
       const res = await fetch(url, {
@@ -228,7 +229,7 @@ export default function AdminDashboard() {
     const nextStatus = item.status === 'sold' ? 'available' : 'sold';
     try {
       const token = localStorage.getItem('thriftloop_token');
-      const res = await fetch(`http://localhost:5000/api/products/${item.product_id || item.id}/status`, {
+      const res = await fetch(`${API_URL}/api/products/${item.product_id || item.id}/status`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -255,7 +256,7 @@ export default function AdminDashboard() {
     if (!window.confirm('Are you sure you want to permanently remove this archive piece?')) return;
     try {
       const token = localStorage.getItem('thriftloop_token');
-      const res = await fetch(`http://localhost:5000/api/products/${id}`, {
+      const res = await fetch(`${API_URL}/api/products/${id}`, {
         method: 'DELETE',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -271,7 +272,7 @@ export default function AdminDashboard() {
   const handleUpdateOrderStatus = async (orderId, newStatus) => {
     try {
       const token = localStorage.getItem('thriftloop_token');
-      const res = await fetch(`http://localhost:5000/api/admin/orders/${orderId}`, {
+      const res = await fetch(`${API_URL}/api/admin/orders/${orderId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

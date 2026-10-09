@@ -1,3 +1,4 @@
+import { API_URL } from './config';
 import React, { useState, useRef, useEffect } from 'react';
 import { Bot, X, Send, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -106,7 +107,7 @@ export default function Chatbot() {
     setLoading(true);
 
     try {
-      const res = await fetch('http://localhost:5000/api/chat', {
+      const res = await fetch(`${API_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: userMessage }),

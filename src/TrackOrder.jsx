@@ -1,3 +1,4 @@
+import { API_URL } from './config';
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { 
@@ -34,7 +35,7 @@ export default function TrackOrder() {
 
     try {
       // Calls public tracking endpoint in server.js
-      const res = await fetch(`http://localhost:5000/api/track/${orderId}`);
+      const res = await fetch(`${API_URL}/api/track/${orderId}`);
       const data = await res.json();
 
       if (!res.ok) {

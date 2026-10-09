@@ -1,3 +1,4 @@
+import { API_URL } from './config';
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ChevronRight, ChevronLeft, Check, X, Megaphone, Sparkles, Loader2 } from 'lucide-react';
@@ -40,7 +41,7 @@ export default function Landing() {
     const fetchNewArrivals = async () => {
       setLoadingItems(true);
       try {
-        const res = await fetch('http://localhost:5000/api/products');
+        const res = await fetch('${API_URL}/api/products');
         if (!res.ok) throw new Error('Failed to fetch catalog');
         const data = await res.json();
         

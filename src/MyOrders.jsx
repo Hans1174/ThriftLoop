@@ -1,3 +1,4 @@
+import { API_URL } from './config';
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Package, Truck, CheckCircle2, MapPin } from 'lucide-react';
@@ -68,7 +69,7 @@ export default function MyOrders() {
     }
 
     // Pull real orders from MariaDB
-    fetch(`http://localhost:5000/api/orders/user/${user?.id || user?.user_id}`, {
+    fetch(`${API_URL}/api/orders/user/${user?.id || user?.user_id}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then((res) => res.json())
