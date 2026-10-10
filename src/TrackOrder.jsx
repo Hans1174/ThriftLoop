@@ -3,7 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { 
   Search, Truck, Package, MapPin, ArrowLeft, 
-  Clock, Copy, Check, ShieldCheck, AlertCircle, Loader2, CheckCircle2 
+  Clock, Copy, Check, ShieldCheck, AlertCircle, 
+  Loader2, CheckCircle2, Navigation, ExternalLink, Compass 
 } from 'lucide-react';
 
 export default function TrackOrder() {
@@ -17,15 +18,15 @@ export default function TrackOrder() {
 
   // Active tracking order state
   const [trackingData, setTrackingData] = useState({
-    order_id: id && id !== '0' ? id : '1043',
+    order_id: id && id !== '0' ? id : '4',
     tracking_number: 'JNT-89241029',
     courier: 'J&T Express',
     status: 'shipped', // 'pending' | 'processing' | 'shipped' | 'delivered'
-    shipping_address: 'House 42, Orchid Street, Barangay San Juan',
-    city: 'Dasmariñas',
+    shipping_address: 'B9 L20 Beryl St. TEP, PH2 Tierra Nevada',
+    city: 'General Trias',
     province: 'Cavite',
     customer_name: 'Hans Castro',
-    total_amount: 1480,
+    total_amount: 830,
   });
 
   const fetchLiveOrder = async (orderId) => {
@@ -34,7 +35,6 @@ export default function TrackOrder() {
     setError('');
 
     try {
-      // Calls public tracking endpoint in server.js
       const res = await fetch(`${API_URL}/api/track/${orderId}`);
       const data = await res.json();
 
@@ -44,18 +44,17 @@ export default function TrackOrder() {
 
       setTrackingData(data);
     } catch (err) {
-      // If server is offline or checking demo ID 1043, retain readable sample
-      if (String(orderId) === '1043') {
+      if (String(orderId) === '4') {
         setTrackingData({
-          order_id: '1043',
+          order_id: '4',
           tracking_number: 'JNT-89241029',
           courier: 'J&T Express',
           status: 'shipped',
-          shipping_address: 'House 42, Orchid Street, Barangay San Juan',
-          city: 'Dasmariñas',
+          shipping_address: 'B9 L20 Beryl St. TEP, PH2 Tierra Nevada',
+          city: 'General Trias',
           province: 'Cavite',
           customer_name: 'Hans Castro',
-          total_amount: 1480,
+          total_amount: 830,
         });
       } else {
         setError(err.message || 'No tracking information found for this ID.');
@@ -88,10 +87,10 @@ export default function TrackOrder() {
 
   // Milestone mapping
   const milestones = [
-    { title: 'Order Confirmed', detail: 'Vintage pieces reserved & authenticated', key: 'pending', step: 0 },
-    { title: 'Packed & Dispatched', detail: 'Package received by courier sorting hub', key: 'processing', step: 1 },
-    { title: 'In Transit', detail: 'On route via courier delivery hub', key: 'shipped', step: 2 },
-    { title: 'Delivered', detail: 'Successfully received by recipient', key: 'delivered', step: 3 },
+    { title: 'Order Confirmed', detail: 'Vintage pieces reserved & authenticated', key: 'pending' },
+    { title: 'Packed & Dispatched', detail: 'Package received by courier sorting hub', key: 'processing' },
+    { title: 'In Transit', detail: 'On route via courier delivery hub', key: 'shipped' },
+    { title: 'Delivered', detail: 'Successfully received by recipient', key: 'delivered' },
   ];
 
   const getStepIndex = (status) => {
@@ -105,6 +104,60 @@ export default function TrackOrder() {
   };
 
   const currentStep = getStepIndex(trackingData?.status);
+
+  // Logistics Route Coordinates & Address Formatter
+  const originAddress = 'General Trias, Cavite, Philippines';
+  const destinationAddress = [
+    trackingData?.shipping_address,
+    trackingData?.city,
+    trackingData?.province,
+    'Philippines'
+  ].filter(Boolean).join(', ');
+
+  const googleMapsKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+
+  const mapEmbedUrl = googleMapsKey
+    ? `https://www.google.com/maps/embed/v1/directions?key=${googleMapsKey}&origin=${encodeURIComponent(originAddress)}&destination=${encodeURIComponent(destinationAddress)}&mode=driving`
+    : `https://maps.google.com/maps?q=${encodeURIComponent(destinationAddress)}&t=&z=14&ie=UTF8&iwloc=&output=embed`;
+
+  const externalMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originAddress)}&destination=${encodeURIComponent(destinationAddress)}&travelmode=driving`;
+
+  const getLogisticsCheckpoint = (status) => {
+    switch (status?.toLowerCase()) {
+      case 'pending':
+        return {
+          location: 'ThriftLoop Central Archive Hub (General Trias, Cavite)',
+          eta: 'Pending Packaging & Sanitization',
+          phase: 'Origin Facility',
+        };
+      case 'processing':
+        return {
+          location: 'Cavite Regional Sorting Hub',
+          eta: 'Ready for Courier Hand-off',
+          phase: 'Dispatch Facility',
+        };
+      case 'shipped':
+        return {
+          location: `En Route via ${trackingData?.courier || 'Courier'} Delivery Unit`,
+          eta: trackingData?.courier === 'Lalamove' ? 'Same-Day (Expected within hours)' : '1 - 2 Business Days',
+          phase: 'Active Highway Transit',
+        };
+      case 'delivered':
+        return {
+          location: destinationAddress,
+          eta: 'Completed Delivery',
+          phase: 'Package Delivered',
+        };
+      default:
+        return {
+          location: 'ThriftLoop Central Hub (Cavite)',
+          eta: 'In Preparation',
+          phase: 'Initial Sorting',
+        };
+    }
+  };
+
+  const checkpoint = getLogisticsCheckpoint(trackingData?.status);
 
   return (
     <div className="min-h-screen bg-[#F6F1E8] text-[#23313A] font-sans pb-16 py-8 sm:py-12 px-4 sm:px-6">
@@ -121,7 +174,7 @@ export default function TrackOrder() {
           </Link>
 
           <span className="text-[11px] font-bold text-[#A8C3A0] uppercase tracking-wider">
-            Courier Milestone Service
+            Live Logistics Service
           </span>
         </div>
 
@@ -131,7 +184,7 @@ export default function TrackOrder() {
             Track Shipment
           </h1>
           <p className="text-xs text-[#A8C3A0] font-semibold mt-1">
-            Track real-time courier milestones for your authenticated vintage pieces.
+            Real-time courier milestones and geographic route tracking for your vintage pieces.
           </p>
         </div>
 
@@ -141,7 +194,7 @@ export default function TrackOrder() {
             <Search size={15} className="absolute left-3.5 top-3.5 text-[#A8C3A0]" />
             <input
               type="text"
-              placeholder="Enter Order ID (e.g. 1043) or Tracking Number..."
+              placeholder="Enter Order ID (e.g. 4) or Tracking Number..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               className="w-full bg-white border border-[#A8C3A0]/40 rounded-2xl pl-10 pr-4 py-2.5 text-xs focus:outline-none focus:border-[#2F6B4F] text-[#23313A] shadow-xs"
@@ -258,6 +311,68 @@ export default function TrackOrder() {
               </div>
             </div>
 
+            {/* Google Maps Visual Logistics Route */}
+            <div className="border-t border-[#A8C3A0]/20 pt-6 space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <div>
+                  <h2 className="font-serif font-bold text-lg text-[#23313A] flex items-center gap-2">
+                    <Navigation size={18} className="text-[#2F6B4F]" />
+                    <span>Visual Logistics Route</span>
+                  </h2>
+                  <p className="text-[11px] text-[#A8C3A0] font-medium">
+                    Automated route telemetry from ThriftLoop Hub to your delivery point
+                  </p>
+                </div>
+
+                <a
+                  href={externalMapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-[#2F6B4F] hover:text-[#23313A] transition-colors"
+                >
+                  <span>Open in Google Maps</span>
+                  <ExternalLink size={13} />
+                </a>
+              </div>
+
+              {/* Transit Telemetry Box */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-[#F6F1E8]/50 border border-[#A8C3A0]/30 rounded-2xl p-4 text-xs">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-[#A8C3A0] block">Transit Phase</span>
+                  <span className="font-bold text-[#23313A] flex items-center gap-1 mt-0.5">
+                    <Compass size={13} className="text-[#2F6B4F]" />
+                    {checkpoint.phase}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-[#A8C3A0] block">Current Checkpoint</span>
+                  <span className="font-bold text-[#23313A] truncate block mt-0.5" title={checkpoint.location}>
+                    {checkpoint.location}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-[#A8C3A0] block">Estimated Arrival</span>
+                  <span className="font-bold text-[#2F6B4F] block mt-0.5">
+                    {checkpoint.eta}
+                  </span>
+                </div>
+              </div>
+
+              {/* Embedded Map Canvas */}
+              <div className="w-full h-80 rounded-2xl overflow-hidden border border-[#A8C3A0]/30 shadow-xs relative bg-[#F6F1E8]">
+                <iframe
+                  title="Parcel Transit Route"
+                  width="100%"
+                  height="100%"
+                  style={{ border: 0 }}
+                  loading="lazy"
+                  allowFullScreen
+                  referrerPolicy="no-referrer-when-downgrade"
+                  src={mapEmbedUrl}
+                />
+              </div>
+            </div>
+
             {/* Delivery Destination & Details */}
             <div className="border-t border-[#A8C3A0]/20 pt-6 grid grid-cols-1 sm:grid-cols-2 gap-6 text-xs">
               <div className="space-y-1.5">
@@ -269,9 +384,7 @@ export default function TrackOrder() {
                   <p className="text-[#23313A]/80 font-bold">{trackingData.customer_name}</p>
                 )}
                 <p className="text-[#23313A]/60 leading-relaxed">
-                  {[trackingData.shipping_address, trackingData.city, trackingData.province]
-                    .filter(Boolean)
-                    .join(', ') || 'Address on file'}
+                  {destinationAddress}
                 </p>
               </div>
 
