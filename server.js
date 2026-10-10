@@ -314,7 +314,7 @@ app.post('/api/auth/login', async (req, res) => {
     const { data: user, error } = await supabase
       .from('users')
       .select('*')
-      .eq('email', email.trim())
+      .ilike('email', email.trim())
       .maybeSingle();
 
     if (error || !user || !(await bcrypt.compare(password, user.password_hash))) {
@@ -337,7 +337,7 @@ app.post('/api/auth/register', async (req, res) => {
     const { data: existing } = await supabase
       .from('users')
       .select('user_id')
-      .eq('email', email.trim())
+      .ilike('email', email.trim())
       .maybeSingle();
 
     if (existing) return res.status(400).json({ error: 'An account with this email already exists.' });
@@ -370,6 +370,99 @@ app.post('/api/auth/register', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: 'Registration failed.' });
+  }
+});
+
+// --- FORGOT & RESET PASSWORD FLOW ---
+
+app.post('/api/auth/forgot-password', async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Please provide your registered email address.' });
+
+  try {
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('user_id, email, full_name')
+      .ilike('email', email.trim())
+      .maybeSingle();
+
+    if (error || !user) {
+      return res.status(404).json({ error: 'No registered account found with this email address.' });
+    }
+
+    const resetToken = jwt.sign(
+      { user_id: user.user_id, email: user.email, purpose: 'pwd_reset' },
+      JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    const resetLink = `${FRONTEND_URL}/reset-password?token=${resetToken}`;
+
+    const emailHtml = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #A8C3A0; border-radius: 20px; overflow: hidden;">
+        <div style="background-color: #2F6B4F; padding: 28px 24px; text-align: center;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">Password Recovery</h1>
+          <p style="color: #A8C3A0; margin: 6px 0 0 0; font-size: 13px;">ThriftLoop Account Security</p>
+        </div>
+        <div style="padding: 28px 24px; color: #23313A;">
+          <p style="font-size: 14px; margin-top: 0;">Hi <strong>${user.full_name || 'Customer'}</strong>,</p>
+          <p style="font-size: 13px; line-height: 1.6;">A password recovery request was initiated for your registered ThriftLoop account (<strong>${user.email}</strong>). Click the link below to set a new password:</p>
+          
+          <div style="text-align: center; margin: 28px 0;">
+            <a href="${resetLink}" style="display: inline-block; background-color: #2F6B4F; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 14px 28px; border-radius: 12px;">Reset Password</a>
+          </div>
+
+          <p style="font-size: 12px; color: #7A8B7B; line-height: 1.4;">This link expires in 1 hour. If you did not request this, you can safely ignore this email.</p>
+        </div>
+      </div>
+    `;
+
+    await mailTransporter.sendMail({
+      from: `"ThriftLoop Security" <${process.env.EMAIL_USER}>`,
+      to: user.email,
+      subject: 'Reset Your ThriftLoop Password',
+      html: emailHtml,
+    });
+
+    res.json({ message: `A secure recovery link has been dispatched to ${user.email}.` });
+  } catch (err) {
+    console.error('❌ Forgot password error:', err);
+    res.status(500).json({ error: 'Failed to process password recovery request.' });
+  }
+});
+
+app.post('/api/auth/reset-password', async (req, res) => {
+  const { token, newPassword } = req.body;
+  if (!token || !newPassword) {
+    return res.status(400).json({ error: 'Reset token and new password are required.' });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (decoded.purpose !== 'pwd_reset') {
+      return res.status(400).json({ error: 'Invalid password reset token.' });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    const { error: updateErr } = await supabase
+      .from('users')
+      .update({ password_hash: hashedPassword })
+      .eq('user_id', decoded.user_id);
+
+    if (updateErr) throw updateErr;
+
+    res.json({ message: 'Password updated successfully. You can now log in.' });
+  } catch (err) {
+    console.error('❌ Reset password verification error:', err.message);
+    if (err.name === 'TokenExpiredError') {
+      return res.status(400).json({ error: 'This recovery link has expired. Please request a new one.' });
+    }
+    res.status(400).json({ error: 'Invalid or expired recovery link.' });
   }
 });
 
@@ -594,12 +687,12 @@ app.post('/api/checkout/paymongo', async (req, res) => {
       const { data: user } = await supabase
         .from('users')
         .select('user_id, email, full_name')
-        .eq('email', registeredEmail)
+        .ilike('email', registeredEmail)
         .maybeSingle();
 
       if (user) {
         validUserId = user.user_id;
-        registeredEmail = user.email; // Guaranteed canonical registered email
+        registeredEmail = user.email;
       }
     }
 
@@ -754,7 +847,6 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
         .eq('order_id', order_id)
         .catch(() => null);
 
-      // Automated Email Notification sent to registered account email
       if (updatedOrder) {
         sendEmailNotification({
           userId: updatedOrder.user_id,
@@ -817,7 +909,6 @@ app.post('/api/orders', async (req, res) => {
     const total_amount = Math.max(0, subtotal - Number(discount_amount)) + shippingFee;
     const tracking_number = `${courier === 'Lalamove' ? 'LLM-' : 'JNT-'}${Math.floor(10000000 + Math.random() * 90000000)}`;
 
-    // Resolve user's official registered email[cite: 10]
     let validUserId = user_id || null;
     let registeredEmail = email.trim();
 
@@ -835,7 +926,7 @@ app.post('/api/orders', async (req, res) => {
       const { data: userByEmail } = await supabase
         .from('users')
         .select('user_id, email, full_name')
-        .eq('email', registeredEmail)
+        .ilike('email', registeredEmail)
         .maybeSingle();
 
       if (userByEmail) {
@@ -895,7 +986,7 @@ app.post('/api/orders', async (req, res) => {
     // 4. Mark products as sold
     await supabase.from('products').update({ status: 'sold' }).in('product_id', productIds);
 
-    // 5. Automated Order Confirmation dispatched to registered email[cite: 10]
+    // 5. Automated Order Confirmation email
     sendEmailNotification({
       userId: validUserId,
       to: registeredEmail,
@@ -940,7 +1031,7 @@ app.get('/api/orders/user/:email', async (req, res) => {
     const { data: orders, error } = await supabase
       .from('orders')
       .select('order_id, status, courier, tracking_number, total_amount, created_at')
-      .eq('email', req.params.email.trim())
+      .ilike('email', req.params.email.trim())
       .order('order_id', { ascending: false })
       .limit(10);
 
@@ -971,7 +1062,6 @@ app.post('/api/orders/:id/cancel', async (req, res) => {
       await supabase.from('products').update({ status: 'active' }).in('product_id', pIds);
     }
 
-    // Send cancellation alert to registered email[cite: 10]
     sendEmailNotification({
       userId: order.user_id,
       to: order.users?.email || order.email,
@@ -1034,7 +1124,7 @@ app.get('/api/admin/orders', async (req, res) => {
   }
 });
 
-// Update Order & Shipping Status: Automatically pulls registered email[cite: 10]
+// Update Order & Shipping Status
 app.patch('/api/admin/orders/:id', async (req, res) => {
   const { status, tracking_number } = req.body;
   try {
@@ -1058,7 +1148,6 @@ app.patch('/api/admin/orders/:id', async (req, res) => {
       }
     }
 
-    // Dispatches directly to registered account email[cite: 10]
     if (order && status) {
       sendEmailNotification({
         userId: order.user_id,
@@ -1144,7 +1233,7 @@ app.post('/api/chat', async (req, res) => {
     } else if (user_id) {
       ordersQuery = ordersQuery.eq('user_id', user_id).order('order_id', { ascending: false }).limit(3);
     } else if (email) {
-      ordersQuery = ordersQuery.eq('email', email.trim()).order('order_id', { ascending: false }).limit(3);
+      ordersQuery = ordersQuery.ilike('email', email.trim()).order('order_id', { ascending: false }).limit(3);
     }
 
     const { data: userOrders } = await ordersQuery;
@@ -1181,7 +1270,6 @@ GUIDELINES:
 
     const reply = response.text || 'I could not retrieve styling or tracking details right now.';
 
-    // Email transcript strictly to the registered account[cite: 10]
     if (send_email && (user_id || email)) {
       sendEmailNotification({
         userId: user_id,
