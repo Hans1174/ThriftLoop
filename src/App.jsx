@@ -17,9 +17,9 @@ import MyAccount from './MyAccount';
 import Register from './Register';
 import AdminDashboard from './AdminDashboard';
 import AdminRoute from './AdminRoute';
-import Chatbot from './Chatbot';
 import MyOrders from './MyOrders';
 import Login from './Login';
+import ChatWidget from './components/ChatWidget';
 
 const GOOGLE_CLIENT_ID = '1089526724617-1e8fas2jq3noffeigk0kh5v7gfsids1f.apps.googleusercontent.com';
 
@@ -84,8 +84,8 @@ export default function App() {
             {/* Global Persistent Footer */}
             <Footer />
 
-            {/* Global AI Stylist */}
-            <Chatbot />
+            {/* Dual AI Styling & Logistics Assistant with Realtime Notifications */}
+            <ChatWidget />
 
             {/* Global Interactive Login Modal */}
             <Login
