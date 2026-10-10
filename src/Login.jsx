@@ -78,6 +78,11 @@ export default function Login({ isOpen, onClose, onLoginSuccess }) {
     navigate('/register');
   };
 
+  const handleGoToForgotPassword = () => {
+    onClose();
+    navigate('/forgot-password');
+  };
+
   return (
     <div 
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#23313A]/60 backdrop-blur-xs animate-in fade-in duration-200"
@@ -170,6 +175,17 @@ export default function Login({ isOpen, onClose, onLoginSuccess }) {
                 tabIndex={-1}
               >
                 {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            </div>
+            
+            {/* Forgot Password Link */}
+            <div className="flex justify-end pt-1.5">
+              <button
+                type="button"
+                onClick={handleGoToForgotPassword}
+                className="text-[11px] font-semibold text-[#2F6B4F] hover:text-[#23313A] transition-colors cursor-pointer"
+              >
+                Forgot password?
               </button>
             </div>
           </div>

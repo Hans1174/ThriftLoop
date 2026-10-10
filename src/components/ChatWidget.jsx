@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   MessageSquare, X, Send, Bot, User, Bell, 
-  Package, Sparkles, Loader2, Truck, CheckCircle2 
+  Package, Loader2 
 } from 'lucide-react';
 import { requestNotificationPermission, showBrowserNotification } from '../utils/notification';
 
@@ -25,7 +25,6 @@ export default function ChatWidget() {
   const messagesEndRef = useRef(null);
   const previousOrderStatusesRef = useRef({});
 
-  // Current authenticated user
   const currentUser = (() => {
     try {
       return JSON.parse(localStorage.getItem('thriftloop_user')) || {};
@@ -34,12 +33,10 @@ export default function ChatWidget() {
     }
   })();
 
-  // Auto-scroll chat window
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isOpen]);
 
-  // Request browser notification permissions
   const handleEnableNotifications = async () => {
     const granted = await requestNotificationPermission();
     setNotifGranted(granted);
@@ -50,7 +47,7 @@ export default function ChatWidget() {
     }
   };
 
-  // Background Order Logistics Poller
+  // Background order watcher
   useEffect(() => {
     if (!currentUser.email) return;
 
@@ -63,7 +60,6 @@ export default function ChatWidget() {
         orders.forEach((ord) => {
           const prevStatus = previousOrderStatusesRef.current[ord.order_id];
 
-          // Trigger alert on status transitions
           if (prevStatus && prevStatus !== ord.status) {
             const statusUpper = ord.status.toUpperCase();
             showBrowserNotification(`ThriftLoop Order #${ord.order_id} Update`, {
@@ -72,7 +68,6 @@ export default function ChatWidget() {
               tag: `order-update-${ord.order_id}`,
             });
 
-            // Append notice to chat history
             setMessages((prev) => [
               ...prev,
               {
@@ -91,7 +86,7 @@ export default function ChatWidget() {
     };
 
     pollOrderUpdates();
-    const interval = setInterval(pollOrderUpdates, 30000); // Poll every 30 seconds
+    const interval = setInterval(pollOrderUpdates, 30000);
     return () => clearInterval(interval);
   }, [currentUser.email]);
 
@@ -127,7 +122,6 @@ export default function ChatWidget() {
         { id: Date.now() + 1, sender: 'bot', text: botReply },
       ]);
 
-      // If user is working in another tab or minimized, notify them
       if (document.hidden) {
         showBrowserNotification('ThriftLoop Concierge', {
           body: botReply.length > 90 ? `${botReply.slice(0, 90)}...` : botReply,
@@ -144,15 +138,18 @@ export default function ChatWidget() {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 font-sans">
-      {/* Floating Widget Trigger */}
+    <div 
+      className="fixed bottom-6 right-6 font-sans" 
+      style={{ zIndex: 99999 }}
+    >
+      {/* Floating Trigger Button */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="relative bg-[#2F6B4F] hover:bg-[#23313A] text-white p-4 rounded-full shadow-xl transition-all duration-300 hover:scale-105 active:scale-95 flex items-center justify-center cursor-pointer group"
+          className="relative bg-[#2F6B4F] hover:bg-[#23313A] text-white p-4 rounded-full shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 flex items-center justify-center cursor-pointer"
           title="Open AI Concierge & Order Assistant"
         >
-          <MessageSquare size={22} />
+          <MessageSquare size={24} />
           <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-[#E67E5F] rounded-full border-2 border-white animate-pulse"></span>
         </button>
       )}
@@ -161,7 +158,6 @@ export default function ChatWidget() {
       {isOpen && (
         <div className="bg-white border border-[#A8C3A0]/40 rounded-3xl shadow-2xl w-[92vw] sm:w-[380px] h-[530px] flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-5 duration-300">
           
-          {/* Header Bar */}
           <div className="bg-[#2F6B4F] text-white p-4 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
@@ -171,7 +167,7 @@ export default function ChatWidget() {
                 <h3 className="font-serif font-bold text-sm leading-none">ThriftLoop Concierge</h3>
                 <span className="text-[10px] text-[#A8C3A0] font-semibold flex items-center gap-1 mt-0.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                  Gemini 3.6 • Styling & Live Tracking
+                  Gemini 3.6 • Styling & Orders
                 </span>
               </div>
             </div>
@@ -195,7 +191,6 @@ export default function ChatWidget() {
             </div>
           </div>
 
-          {/* In-Widget Notification Opt-In Banner */}
           {!notifGranted && (
             <div className="bg-[#F6F1E8] border-b border-[#A8C3A0]/30 px-3.5 py-2 flex items-center justify-between text-[11px]">
               <span className="text-[#23313A]/80 font-medium">Receive real-time parcel notifications?</span>
@@ -208,7 +203,6 @@ export default function ChatWidget() {
             </div>
           )}
 
-          {/* Conversation Stream */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#F6F1E8]/25 text-xs">
             {messages.map((m) => (
               <div
@@ -246,7 +240,6 @@ export default function ChatWidget() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Suggestion Chips */}
           <div className="px-3 py-1.5 bg-white border-t border-[#A8C3A0]/20 flex gap-1.5 overflow-x-auto text-[10px]">
             <button
               onClick={() => setInput('What is the status of my order?')}
@@ -268,7 +261,6 @@ export default function ChatWidget() {
             </button>
           </div>
 
-          {/* Message Input Form */}
           <form onSubmit={handleSendMessage} className="p-3 bg-white border-t border-[#A8C3A0]/20 flex gap-2 items-center">
             <input
               type="text"

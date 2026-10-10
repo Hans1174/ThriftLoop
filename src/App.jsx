@@ -20,6 +20,7 @@ import AdminRoute from './AdminRoute';
 import MyOrders from './MyOrders';
 import Login from './Login';
 import ChatWidget from './components/ChatWidget';
+import ResetPassword from './ResetPassword';
 
 const GOOGLE_CLIENT_ID = '1089526724617-1e8fas2jq3noffeigk0kh5v7gfsids1f.apps.googleusercontent.com';
 
@@ -56,6 +57,10 @@ export default function App() {
                 <Route path="/track/:id" element={<TrackOrder />} />
                 <Route path="/account" element={<MyAccount />} />
                 <Route path="/register" element={<Register />} />
+
+                {/* Password Recovery Routes */}
+                <Route path="/forgot-password" element={<ResetPassword />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
 
                 {/* Redirect any legacy /login visits to home and open the modal */}
                 <Route
