@@ -52,7 +52,123 @@ const mailTransporter = nodemailer.createTransport({
   },
 });
 
-// 3. Voucher Rules
+// ==========================================
+// CENTRALIZED EMAIL NOTIFICATION ENGINE
+// ==========================================
+export const sendEmailNotification = async ({ to, subject, type, data }) => {
+  if (!to || !process.env.EMAIL_USER) {
+    console.warn('⚠️ Email notification skipped: Missing recipient or EMAIL_USER credentials.');
+    return { success: false, error: 'Email configuration missing.' };
+  }
+
+  let htmlContent = '';
+
+  if (type === 'order_confirmation') {
+    const { orderId, customerName, courier, trackingNumber, paymentMethod, totalAmount } = data;
+    htmlContent = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #A8C3A0; border-radius: 20px; overflow: hidden;">
+        <div style="background-color: #2F6B4F; padding: 28px 24px; text-align: center;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Order Confirmed: #${orderId}</h1>
+          <p style="color: #A8C3A0; margin: 6px 0 0 0; font-size: 13px;">ThriftLoop Curated Vintage Archive</p>
+        </div>
+        <div style="padding: 28px 24px; color: #23313A;">
+          <p style="font-size: 15px; margin-top: 0;">Hi <strong>${customerName || 'Customer'}</strong>,</p>
+          <p style="font-size: 14px; line-height: 1.5;">Your 1-of-1 archive garments are secured and are being prepared for dispatch via <strong>${courier || 'J&T Express'}</strong>.</p>
+          
+          <div style="background-color: #F6F1E8; border-radius: 14px; padding: 18px; margin: 20px 0;">
+            <p style="margin: 0 0 8px 0; font-size: 13px;"><strong>Tracking Code:</strong> <span style="font-family: monospace; font-weight: 700;">${trackingNumber}</span></p>
+            <p style="margin: 0 0 8px 0; font-size: 13px;"><strong>Payment Method:</strong> ${paymentMethod || 'COD'}</p>
+            <p style="margin: 0; font-size: 16px; font-weight: 700; color: #2F6B4F;">Total Amount: ₱${Number(totalAmount).toFixed(2)}</p>
+          </div>
+
+          <div style="text-align: center; margin: 28px 0;">
+            <a href="${FRONTEND_URL}/track/${orderId}" style="display: inline-block; background-color: #2F6B4F; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 14px 28px; border-radius: 12px;">Track Your Parcel</a>
+          </div>
+        </div>
+      </div>
+    `;
+  } else if (type === 'order_status') {
+    const { orderId, customerName, status, courier, trackingNumber } = data;
+    const statusFormatted = (status || '').toUpperCase();
+    htmlContent = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #A8C3A0; border-radius: 20px; overflow: hidden;">
+        <div style="background-color: #2F6B4F; padding: 28px 24px; text-align: center;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Order Update: #${orderId}</h1>
+          <p style="color: #A8C3A0; margin: 6px 0 0 0; font-size: 13px;">ThriftLoop Logistics Dispatch</p>
+        </div>
+        <div style="padding: 28px 24px; color: #23313A;">
+          <p style="font-size: 15px; margin-top: 0;">Hi <strong>${customerName || 'Customer'}</strong>,</p>
+          <p style="font-size: 14px; line-height: 1.5;">Your ThriftLoop order <strong>#${orderId}</strong> has been updated to <strong style="color: #2F6B4F;">${statusFormatted}</strong>.</p>
+          
+          <div style="background-color: #F6F1E8; border-radius: 14px; padding: 18px; margin: 20px 0;">
+            <p style="margin: 0 0 8px 0; font-size: 13px;"><strong>Courier:</strong> ${courier || 'J&T Express'}</p>
+            <p style="margin: 0 0 8px 0; font-size: 13px;"><strong>Tracking Code:</strong> <span style="font-family: monospace; font-weight: 700;">${trackingNumber || 'Pending'}</span></p>
+            <p style="margin: 0; font-size: 13px;"><strong>Current Status:</strong> <span style="color: #2F6B4F; font-weight: 700;">${statusFormatted}</span></p>
+          </div>
+
+          <div style="text-align: center; margin: 28px 0;">
+            <a href="${FRONTEND_URL}/track/${orderId}" style="display: inline-block; background-color: #2F6B4F; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 14px 28px; border-radius: 12px;">View Tracking Details</a>
+          </div>
+        </div>
+      </div>
+    `;
+  } else if (type === 'chat_update') {
+    const { customerName, query, reply } = data;
+    htmlContent = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #A8C3A0; border-radius: 20px; overflow: hidden;">
+        <div style="background-color: #2F6B4F; padding: 24px; text-align: center;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">ThriftLoop Concierge Update</h1>
+          <p style="color: #A8C3A0; margin: 4px 0 0 0; font-size: 12px;">Styling & Logistics Consultation</p>
+        </div>
+        <div style="padding: 24px; color: #23313A;">
+          <p style="font-size: 14px; margin-top: 0;">Hi <strong>${customerName || 'Customer'}</strong>,</p>
+          <p style="font-size: 13px; color: #7A8B7B;">Here is the copy of your inquiry with Loopie:</p>
+          
+          <div style="background-color: #F6F1E8; border-radius: 14px; padding: 16px; margin: 16px 0;">
+            <p style="margin: 0 0 6px 0; font-size: 11px; font-weight: 700; color: #7A8B7B; text-transform: uppercase;">Your Question</p>
+            <p style="margin: 0 0 14px 0; font-size: 13px; font-style: italic;">"${query}"</p>
+            <p style="margin: 0 0 6px 0; font-size: 11px; font-weight: 700; color: #2F6B4F; text-transform: uppercase;">Concierge Advice</p>
+            <p style="margin: 0; font-size: 13px; white-space: pre-wrap; line-height: 1.5;">${reply}</p>
+          </div>
+
+          <div style="text-align: center; margin: 24px 0;">
+            <a href="${FRONTEND_URL}/shop" style="display: inline-block; background-color: #23313A; color: #ffffff; text-decoration: none; font-size: 12px; font-weight: 700; padding: 12px 24px; border-radius: 10px;">Return to ThriftLoop Boutique</a>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  try {
+    const info = await mailTransporter.sendMail({
+      from: `"ThriftLoop" <${process.env.EMAIL_USER}>`,
+      to,
+      subject: subject || 'ThriftLoop Update',
+      html: htmlContent,
+    });
+    return { success: true, messageId: info.messageId };
+  } catch (err) {
+    console.error('❌ Notification Engine error:', err.message);
+    return { success: false, error: err.message };
+  }
+};
+
+// 3. Notification API Route
+app.post('/api/notifications/email', async (req, res) => {
+  const { to, subject, type, data } = req.body;
+  if (!to || !type) {
+    return res.status(400).json({ error: 'Recipient email and notification type are required.' });
+  }
+
+  const result = await sendEmailNotification({ to, subject, type, data });
+  if (result.success) {
+    res.json({ message: 'Notification email dispatched successfully.' });
+  } else {
+    res.status(500).json({ error: result.error || 'Failed to dispatch email notification.' });
+  }
+});
+
+// 4. Voucher Rules
 const ACTIVE_VOUCHERS = {
   VINTAGE20: { code: 'VINTAGE20', type: 'percent', value: 20, minSpend: 0, description: 'Flash Drop: 20% off all archive pieces' },
   LOOP100: { code: 'LOOP100', type: 'fixed', value: 100, minSpend: 600, description: '₱100 off on orders ₱600 and above' },
@@ -596,17 +712,36 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
     }
 
     if (isPaid && order_id) {
-      await supabase
+      const { data: updatedOrder } = await supabase
         .from('orders')
         .update({ status: 'processing' })
         .eq('order_id', order_id)
-        .eq('status', 'pending');
+        .eq('status', 'pending')
+        .select('*')
+        .maybeSingle();
 
       await supabase
         .from('payments')
         .update({ status: 'paid' })
         .eq('order_id', order_id)
         .catch(() => null);
+
+      // Automated Email Notification via Notification Engine
+      if (updatedOrder) {
+        sendEmailNotification({
+          to: updatedOrder.email,
+          subject: `ThriftLoop Order Confirmed: #${updatedOrder.order_id}`,
+          type: 'order_confirmation',
+          data: {
+            orderId: updatedOrder.order_id,
+            customerName: updatedOrder.customer_name,
+            courier: updatedOrder.courier,
+            trackingNumber: updatedOrder.tracking_number,
+            paymentMethod: 'PayMongo (Paid)',
+            totalAmount: updatedOrder.total_amount,
+          },
+        });
+      }
     }
 
     res.json({ paid: isPaid, status: isPaid ? 'paid' : 'unpaid' });
@@ -702,7 +837,7 @@ app.post('/api/orders', async (req, res) => {
     const { error: itemsErr } = await supabase.from('order_items').insert(orderItemsPayload);
     if (itemsErr) console.warn('⚠️ Order items insert notice:', itemsErr.message);
 
-    // 3. Create Payment Record (Objective 4 - non-blocking safe insert)
+    // 3. Create Payment Record (Objective 4)
     const { error: payErr } = await supabase.from('payments').insert([{
       order_id: orderId,
       user_id: validUserId,
@@ -716,27 +851,20 @@ app.post('/api/orders', async (req, res) => {
     // 4. Mark products as sold
     await supabase.from('products').update({ status: 'sold' }).in('product_id', productIds);
 
-    // 5. Automated Order Confirmation Email Alert (Objective 2)
-    const emailHtml = `
-      <div style="font-family: sans-serif; color: #23313A; max-width: 600px; margin: 0 auto; border: 1px solid #A8C3A0; border-radius: 16px; padding: 24px;">
-        <h2 style="color: #2F6B4F; margin-top: 0;">Order Confirmed: #${orderId}</h2>
-        <p>Hi ${customer_name},</p>
-        <p>Your ThriftLoop order has been secured and is being prepared for dispatch via <strong>${courier}</strong>.</p>
-        <div style="background-color: #F6F1E8; padding: 16px; border-radius: 12px; margin: 20px 0;">
-          <p style="margin: 0 0 8px 0;"><strong>Tracking Number:</strong> ${tracking_number}</p>
-          <p style="margin: 0 0 8px 0;"><strong>Payment Method:</strong> ${payment_method || 'COD'}</p>
-          <p style="margin: 0; font-size: 18px; font-weight: bold; color: #2F6B4F;">Total Amount: ₱${total_amount.toFixed(2)}</p>
-        </div>
-        <a href="${FRONTEND_URL}/track/${orderId}" style="display: inline-block; background-color: #2F6B4F; color: white; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 12px;">Track Your Delivery</a>
-      </div>
-    `;
-
-    mailTransporter.sendMail({
-      from: `"ThriftLoop" <${process.env.EMAIL_USER}>`,
+    // 5. Automated Order Confirmation Email via Notification Engine
+    sendEmailNotification({
       to: email,
       subject: `ThriftLoop Order #${orderId} Confirmed`,
-      html: emailHtml,
-    }).catch((err) => console.error('Email failed to send:', err));
+      type: 'order_confirmation',
+      data: {
+        orderId,
+        customerName: customer_name,
+        courier: courier || 'J&T Express',
+        trackingNumber: tracking_number,
+        paymentMethod: payment_method || 'Cash on Delivery (COD)',
+        totalAmount: total_amount,
+      },
+    });
 
     res.status(201).json({ message: 'Order created successfully', orderId, tracking_number, total_amount });
   } catch (err) {
@@ -764,7 +892,6 @@ app.get('/api/track/:id', async (req, res) => {
   }
 });
 
-// User orders lookup (used for live status polling and browser notifications)
 app.get('/api/orders/user/:email', async (req, res) => {
   try {
     const { data: orders, error } = await supabase
@@ -800,6 +927,20 @@ app.post('/api/orders/:id/cancel', async (req, res) => {
     if (pIds.length > 0) {
       await supabase.from('products').update({ status: 'active' }).in('product_id', pIds);
     }
+
+    // Send cancellation notice email
+    sendEmailNotification({
+      to: order.email,
+      subject: `ThriftLoop Order #${orderId} Cancelled`,
+      type: 'order_status',
+      data: {
+        orderId,
+        customerName: order.customer_name,
+        status: 'cancelled',
+        courier: order.courier,
+        trackingNumber: order.tracking_number,
+      },
+    });
 
     res.json({ message: `Order #${orderId} cancelled and inventory restored.` });
   } catch (err) {
@@ -873,25 +1014,20 @@ app.patch('/api/admin/orders/:id', async (req, res) => {
       }
     }
 
-    if (order && (status === 'shipped' || status === 'delivered')) {
-      const statusText = status === 'shipped' ? 'has been dispatched and is on the way' : 'has been delivered';
-
-      mailTransporter.sendMail({
-        from: `"ThriftLoop" <${process.env.EMAIL_USER}>`,
+    // Automated Email Notification on any status change
+    if (order && status) {
+      sendEmailNotification({
         to: order.email,
-        subject: `ThriftLoop Order Update: #${req.params.id} ${status.charAt(0).toUpperCase() + status.slice(1)}`,
-        html: `
-          <div style="font-family: sans-serif; color: #23313A; max-width: 600px; margin: 0 auto; border: 1px solid #A8C3A0; border-radius: 16px; padding: 24px;">
-            <h2 style="color: #2F6B4F; margin-top: 0;">Order Update: #${req.params.id}</h2>
-            <p>Hi ${order.customer_name}, your ThriftLoop order <strong>${statusText}</strong>.</p>
-            <div style="background-color: #F6F1E8; padding: 16px; border-radius: 12px; margin: 20px 0;">
-              <p style="margin: 0 0 8px 0;"><strong>Courier:</strong> ${order.courier}</p>
-              <p style="margin: 0;"><strong>Tracking Number:</strong> ${order.tracking_number}</p>
-            </div>
-            <a href="${FRONTEND_URL}/track/${req.params.id}" style="display: inline-block; background-color: #2F6B4F; color: white; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 12px;">Track Delivery</a>
-          </div>
-        `,
-      }).catch((err) => console.error('Status email failed:', err));
+        subject: `ThriftLoop Order Update: #${req.params.id} ${status.toUpperCase()}`,
+        type: 'order_status',
+        data: {
+          orderId: req.params.id,
+          customerName: order.customer_name,
+          status,
+          courier: order.courier,
+          trackingNumber: order.tracking_number,
+        },
+      });
     }
 
     res.json({ message: 'Order status updated successfully' });
@@ -931,7 +1067,7 @@ app.delete('/api/admin/orders/:id', async (req, res) => {
 // --- GEMINI STYLIST & LOGISTICS AI CONCIERGE (gemini-3.6) ---
 
 app.post('/api/chat', async (req, res) => {
-  const { message, user_id, email, current_order_id } = req.body;
+  const { message, user_id, email, customer_name, current_order_id, send_email = false } = req.body;
   if (!message) return res.status(400).json({ error: 'Message is required' });
 
   const apiKey = process.env.GEMINI_API_KEY;
@@ -998,7 +1134,23 @@ GUIDELINES:
       },
     });
 
-    res.json({ reply: response.text || 'I could not retrieve styling or tracking details right now.' });
+    const reply = response.text || 'I could not retrieve styling or tracking details right now.';
+
+    // Email transcript if explicitly requested
+    if (send_email && email) {
+      sendEmailNotification({
+        to: email,
+        subject: 'ThriftLoop Concierge: Styling & Order Consultation',
+        type: 'chat_update',
+        data: {
+          customerName: customer_name || 'Customer',
+          query: message,
+          reply,
+        },
+      });
+    }
+
+    res.json({ reply });
   } catch (err) {
     res.json({ reply: `Concierge notice: ${err.message || 'Unable to consult records.'}` });
   }
