@@ -3,9 +3,13 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
   ArrowLeft, ArrowRight, ShieldCheck, Truck, 
-  MapPin, CreditCard, Sparkles, Loader2, AlertCircle 
+  MapPin, CreditCard, Sparkles, Loader2, AlertCircle, 
+  Tag, X, Check 
 } from 'lucide-react';
 import { useCart } from './context/CartContext';
+
+// Safe environment fallback
+const BACKEND_URL = API_URL || import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
 
 export default function Checkout() {
   const navigate = useNavigate();
@@ -15,6 +19,12 @@ export default function Checkout() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Voucher State
+  const [voucherInput, setVoucherInput] = useState('');
+  const [appliedVoucher, setAppliedVoucher] = useState(null);
+  const [voucherLoading, setVoucherLoading] = useState(false);
+  const [voucherError, setVoucherError] = useState('');
 
   // 1. Load authenticated user & pre-filled address
   const [currentUser] = useState(() => {
@@ -46,7 +56,7 @@ export default function Checkout() {
     payment_method: 'paymongo', // 'paymongo' | 'cod'
   });
 
-  // 2. Pricing & Dynamic Shipping Calculation
+  // 2. Pricing, Voucher & Dynamic Shipping Calculation
   const subtotal = cartItems.reduce(
     (sum, item) => sum + Number(item.price || 0) * (item.quantity || 1), 
     0
@@ -54,10 +64,46 @@ export default function Checkout() {
 
   const baseShipping = formData.courier === 'Lalamove' ? 200 : 80;
   const shippingFee = (formData.courier === 'J&T Express' && subtotal >= 1500) ? 0 : baseShipping;
-  const grandTotal = subtotal + shippingFee;
+  const discountAmount = appliedVoucher ? parseFloat(appliedVoucher.discountAmount || 0) : 0;
+  const grandTotal = Math.max(0, subtotal - discountAmount) + shippingFee;
 
   const handleChange = (e) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+
+  // Voucher Validation Handler
+  const handleApplyVoucher = async (e) => {
+    if (e) e.preventDefault();
+    if (!voucherInput.trim()) return;
+
+    setVoucherLoading(true);
+    setVoucherError('');
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/vouchers/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: voucherInput.trim(),
+          subtotal: subtotal,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Invalid or expired voucher code.');
+
+      setAppliedVoucher(data);
+      setVoucherInput('');
+    } catch (err) {
+      setVoucherError(err.message || 'Failed to apply voucher.');
+    } finally {
+      setVoucherLoading(false);
+    }
+  };
+
+  const handleRemoveVoucher = () => {
+    setAppliedVoucher(null);
+    setVoucherError('');
   };
 
   const handleSubmit = async (e) => {
@@ -65,7 +111,14 @@ export default function Checkout() {
     setError('');
 
     // Check required fields manually so browser doesn't silently block
-    if (!formData.customer_name?.trim() || !formData.email?.trim() || !formData.shipping_address?.trim() || !formData.city?.trim() || !formData.province?.trim() || !formData.postal_code?.trim()) {
+    if (
+      !formData.customer_name?.trim() || 
+      !formData.email?.trim() || 
+      !formData.shipping_address?.trim() || 
+      !formData.city?.trim() || 
+      !formData.province?.trim() || 
+      !formData.postal_code?.trim()
+    ) {
       setError('Please fill in all recipient contact and address details.');
       return;
     }
@@ -81,7 +134,7 @@ export default function Checkout() {
     try {
       if (formData.payment_method === 'paymongo') {
         // --- Flow A: PayMongo Hosted Checkout ---
-        const res = await fetch(`${API_URL}/api/checkout/paymongo`, {
+        const res = await fetch(`${BACKEND_URL}/api/checkout/paymongo`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -99,6 +152,8 @@ export default function Checkout() {
             },
             courier: formData.courier,
             referenceNumber,
+            voucherCode: appliedVoucher ? appliedVoucher.code : null,
+            discountAmount,
           }),
         });
 
@@ -112,7 +167,7 @@ export default function Checkout() {
         }
       } else {
         // --- Flow B: Cash on Delivery (COD) ---
-        const res = await fetch(`${API_URL}/api/orders`, {
+        const res = await fetch(`${BACKEND_URL}/api/orders`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -120,6 +175,8 @@ export default function Checkout() {
             user_id: currentUser.user_id || null,
             total_amount: grandTotal,
             shipping_fee: shippingFee,
+            discount_amount: discountAmount,
+            voucher_code: appliedVoucher ? appliedVoucher.code : null,
             reference_number: referenceNumber,
             cart_items: cartItems,
           }),
@@ -138,6 +195,8 @@ export default function Checkout() {
             date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
             items: cartItems,
             courier: formData.courier,
+            voucherCode: appliedVoucher?.code || null,
+            discountAmount,
           },
         });
       }
@@ -452,22 +511,99 @@ export default function Checkout() {
                 ))}
               </div>
 
+              {/* Promo / Voucher Code Section */}
+              <div className="border-t border-[#A8C3A0]/20 pt-4 mb-4">
+                <label className="block text-[10px] font-bold text-[#23313A] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <Tag size={12} className="text-[#2F6B4F]" />
+                  <span>Promo / Voucher Code</span>
+                </label>
+                
+                {appliedVoucher ? (
+                  <div className="flex items-center justify-between bg-[#2F6B4F]/10 border border-[#2F6B4F]/30 rounded-xl px-3.5 py-2.5 text-xs animate-in fade-in">
+                    <div className="flex items-center gap-2">
+                      <Check size={14} className="text-[#2F6B4F]" />
+                      <div>
+                        <span className="font-bold text-[#2F6B4F]">{appliedVoucher.code}</span>
+                        <span className="text-[11px] text-[#2F6B4F]/80 ml-1.5 font-semibold">
+                          (-₱{parseFloat(appliedVoucher.discountAmount).toFixed(2)})
+                        </span>
+                      </div>
+                    </div>
+                    <button 
+                      type="button" 
+                      onClick={handleRemoveVoucher}
+                      className="text-[#E67E5F] hover:text-[#23313A] p-1 rounded-md transition-colors cursor-pointer"
+                      title="Remove voucher"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="e.g. VINTAGE20, LOOP100"
+                        value={voucherInput}
+                        onChange={(e) => {
+                          setVoucherInput(e.target.value.toUpperCase());
+                          if (voucherError) setVoucherError('');
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleApplyVoucher(e);
+                          }
+                        }}
+                        className="flex-1 bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3 py-2 text-xs uppercase font-bold focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleApplyVoucher}
+                        disabled={voucherLoading || !voucherInput.trim()}
+                        className="bg-[#2F6B4F] hover:bg-[#23313A] text-white px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50 shrink-0"
+                      >
+                        {voucherLoading ? <Loader2 size={13} className="animate-spin" /> : 'Apply'}
+                      </button>
+                    </div>
+                    {voucherError && (
+                      <p className="text-[11px] text-[#E67E5F] font-semibold animate-in fade-in">
+                        {voucherError}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Price Calculation Breakdown */}
               <div className="space-y-2.5 text-xs border-t border-[#A8C3A0]/20 pt-4 text-[#23313A]/70">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
                   <span className="font-bold text-[#23313A]">₱{subtotal.toFixed(2)}</span>
                 </div>
+
+                {appliedVoucher && (
+                  <div className="flex justify-between text-[#2F6B4F] font-semibold animate-in fade-in">
+                    <span className="flex items-center gap-1">
+                      <Tag size={12} /> Voucher ({appliedVoucher.code})
+                    </span>
+                    <span>-₱{discountAmount.toFixed(2)}</span>
+                  </div>
+                )}
+
                 <div className="flex justify-between">
                   <span>Shipping ({formData.courier})</span>
                   <span className="font-bold text-[#23313A]">
                     {shippingFee === 0 ? 'FREE' : `₱${shippingFee.toFixed(2)}`}
                   </span>
                 </div>
+
                 {shippingFee === 0 && (
                   <p className="text-[10px] text-[#2F6B4F] font-semibold flex items-center gap-1">
                     <Sparkles size={11} /> Qualified for Free Express Shipping over ₱1,500
                   </p>
                 )}
+
                 <div className="border-t border-[#A8C3A0]/30 pt-3 flex justify-between text-base font-bold text-[#23313A]">
                   <span>Total Due</span>
                   <span className="text-[#2F6B4F]">₱{grandTotal.toFixed(2)}</span>
@@ -477,7 +613,6 @@ export default function Checkout() {
               {/* Submit Button */}
               <button
                 type="submit"
-                onClick={handleSubmit}
                 disabled={loading}
                 className="w-full bg-[#2F6B4F] hover:bg-[#23313A] disabled:opacity-50 text-white font-bold py-3.5 rounded-xl transition-all shadow-xs flex items-center justify-center gap-2 mt-6 cursor-pointer active:scale-95 text-xs"
               >
