@@ -36,7 +36,7 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
 
 console.log('✅ Connected to Supabase Cloud PostgreSQL');
 
-// Root status route to prevent "Cannot GET /"
+// Root status route
 app.get('/', (req, res) => {
   res.send('🌿 ThriftLoop Backend API is running on Supabase!');
 });
@@ -78,11 +78,10 @@ export const runAgingMarkdownUpdate = async () => {
       const createdAt = new Date(p.created_at || now);
       const daysUnsold = Math.floor((now - createdAt) / (1000 * 60 * 60 * 24));
 
-      // Retain or initialize baseline original price
       const baselinePrice = parseFloat(p.original_price || p.price);
       let discountRate = 0;
 
-      // Tiered markdown rules: >30 days (25%), >14 days (15%), >7 days (10%)
+      // Tiered markdown schedule: 30+ days (25%), 14+ days (15%), 7+ days (10%)
       if (daysUnsold >= 30) discountRate = 0.25;
       else if (daysUnsold >= 14) discountRate = 0.15;
       else if (daysUnsold >= 7) discountRate = 0.10;
@@ -91,7 +90,6 @@ export const runAgingMarkdownUpdate = async () => {
         ? Math.round((baselinePrice * (1 - discountRate)) * 100) / 100
         : baselinePrice;
 
-      // Update only if price changed or original_price was missing
       if (Math.abs(parseFloat(p.price) - targetPrice) > 0.01 || !p.original_price) {
         await supabase
           .from('products')
@@ -114,7 +112,7 @@ export const runAgingMarkdownUpdate = async () => {
   }
 };
 
-// Run automated pricing every 6 hours and 10 seconds after server launch
+// Schedule automated pricing every 6 hours and 10 seconds post-boot
 setInterval(runAgingMarkdownUpdate, 6 * 60 * 60 * 1000);
 setTimeout(runAgingMarkdownUpdate, 10000);
 
@@ -310,14 +308,16 @@ app.post('/api/products', async (req, res) => {
       if (cat) finalCatId = cat.category_id;
     }
 
+    const numericPrice = parseFloat(price);
+
     const { data: product, error } = await supabase
       .from('products')
       .insert([{
         category_id: finalCatId,
         name,
         brand: brand || '',
-        price: parseFloat(price),
-        original_price: parseFloat(price),
+        price: numericPrice,
+        original_price: numericPrice,
         size: size || 'M',
         chest_width: chest_width || 'N/A',
         length: length || 'N/A',
@@ -478,26 +478,34 @@ app.post('/api/checkout/paymongo', async (req, res) => {
       .select()
       .single();
 
-    if (orderErr) throw orderErr;
-    const orderId = newOrder.order_id;
+    if (orderErr) {
+      console.error('❌ Supabase Order Insertion Error:', orderErr);
+      throw orderErr;
+    }
+
+    const orderId = newOrder?.order_id || newOrder?.id;
 
     // 2. Create Order Items
     const orderItemsPayload = productList.map((item) => ({
       order_id: orderId,
       product_id: item.product_id || item.id,
       price_at_purchase: item.price,
+      quantity: 1,
     }));
-    await supabase.from('order_items').insert(orderItemsPayload);
+    
+    const { error: itemsErr } = await supabase.from('order_items').insert(orderItemsPayload);
+    if (itemsErr) console.warn('⚠️ Order items insertion notice:', itemsErr.message);
 
     // 3. Create Payment Record (Objective 4)
-    await supabase.from('payments').insert([{
+    const { error: payErr } = await supabase.from('payments').insert([{
       order_id: orderId,
       user_id: validUserId,
       payment_method: 'PayMongo',
       amount: totalAmount,
       status: 'pending',
       transaction_reference: referenceNumber || `PM-${orderId}`,
-    }]).catch((e) => console.warn('Payment record notice:', e.message));
+    }]);
+    if (payErr) console.warn('⚠️ Payment record notice (non-fatal):', payErr.message);
 
     // 4. Set Garments to Sold
     await supabase.from('products').update({ status: 'sold' }).in('product_id', productIds);
@@ -564,7 +572,7 @@ app.post('/api/checkout/paymongo', async (req, res) => {
 
     res.json({ checkout_url: data.data.attributes.checkout_url });
   } catch (err) {
-    console.error('❌ Supabase PayMongo Checkout Error:', err.message);
+    console.error('❌ Supabase PayMongo Checkout Error:', err.message || err);
     res.status(500).json({ error: err.message || 'Payment provider error.' });
   }
 });
@@ -676,26 +684,34 @@ app.post('/api/orders', async (req, res) => {
       .select()
       .single();
 
-    if (orderErr) throw orderErr;
-    const orderId = newOrder.order_id;
+    if (orderErr) {
+      console.error('❌ Supabase Order Insertion Error:', orderErr);
+      throw orderErr;
+    }
+
+    const orderId = newOrder?.order_id || newOrder?.id;
 
     // 2. Create Order Items
     const orderItemsPayload = productList.map((item) => ({
       order_id: orderId,
       product_id: item.product_id || item.id,
       price_at_purchase: item.price,
+      quantity: 1,
     }));
-    await supabase.from('order_items').insert(orderItemsPayload);
 
-    // 3. Create Payment Record (Objective 4)
-    await supabase.from('payments').insert([{
+    const { error: itemsErr } = await supabase.from('order_items').insert(orderItemsPayload);
+    if (itemsErr) console.warn('⚠️ Order items insert notice:', itemsErr.message);
+
+    // 3. Create Payment Record (Objective 4 - non-blocking safe insert)
+    const { error: payErr } = await supabase.from('payments').insert([{
       order_id: orderId,
       user_id: validUserId,
       payment_method: 'Cash on Delivery (COD)',
       amount: total_amount,
       status: 'pending',
       transaction_reference: `COD-${orderId}`,
-    }]).catch((e) => console.warn('Payment record notice:', e.message));
+    }]);
+    if (payErr) console.warn('⚠️ Payments record notice (non-fatal):', payErr.message);
 
     // 4. Mark products as sold
     await supabase.from('products').update({ status: 'sold' }).in('product_id', productIds);
@@ -724,7 +740,10 @@ app.post('/api/orders', async (req, res) => {
 
     res.status(201).json({ message: 'Order created successfully', orderId, tracking_number, total_amount });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to process checkout order.' });
+    console.error('❌ COD Checkout Error:', err);
+    res.status(500).json({ 
+      error: err.message || err.details || (typeof err === 'string' ? err : 'Failed to process checkout order.') 
+    });
   }
 });
 
@@ -830,7 +849,6 @@ app.patch('/api/admin/orders/:id', async (req, res) => {
 
     if (error) throw error;
 
-    // If order was cancelled by admin, restore inventory pieces
     if (status === 'cancelled') {
       const pIds = (order.order_items || []).map((oi) => oi.product_id);
       if (pIds.length > 0) {
@@ -838,7 +856,6 @@ app.patch('/api/admin/orders/:id', async (req, res) => {
       }
     }
 
-    // Automated Shipment Alert Email (Objective 2)
     if (order && (status === 'shipped' || status === 'delivered')) {
       const statusText = status === 'shipped' ? 'has been dispatched and is on the way' : 'has been delivered';
 
@@ -916,7 +933,7 @@ app.post('/api/chat', async (req, res) => {
       ? products.map((p) => `- ${p.name} (Size: ${p.size || 'OS'}, PTP: ${p.chest_width || 'N/A'}, Length: ${p.length || 'N/A'}, Grade: ${p.condition_grade || 'Grade A'}, Price: ₱${p.price})`).join('\n')
       : 'No items currently in stock.';
 
-    const modelName = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+    const modelName = process.env.GEMINI_MODEL || 'gemini-3.6';
 
     const response = await ai.models.generateContent({
       model: modelName,
