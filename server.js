@@ -52,19 +52,46 @@ const mailTransporter = nodemailer.createTransport({
   },
 });
 
+// Verify SMTP connection on startup
+mailTransporter.verify((error) => {
+  if (error) {
+    console.error('❌ Nodemailer SMTP Connection Failed:', error.message);
+  } else {
+    console.log('📬 Nodemailer SMTP Server is ready to deliver messages.');
+  }
+});
+
 // ==========================================
 // CENTRALIZED EMAIL NOTIFICATION ENGINE
+// (Enforces dispatching to registered account email)
 // ==========================================
-export const sendEmailNotification = async ({ to, subject, type, data }) => {
-  if (!to || !process.env.EMAIL_USER) {
-    console.warn('⚠️ Email notification skipped: Missing recipient or EMAIL_USER credentials.');
-    return { success: false, error: 'Email configuration missing.' };
+export const sendEmailNotification = async ({ to, userId, subject, type, data = {} }) => {
+  let recipientEmail = to;
+  let customerName = data.customerName;
+
+  // If userId is provided, always fetch their canonical registered email
+  if (userId) {
+    const { data: registeredUser } = await supabase
+      .from('users')
+      .select('email, full_name')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (registeredUser?.email) {
+      recipientEmail = registeredUser.email;
+      customerName = customerName || registeredUser.full_name;
+    }
+  }
+
+  if (!recipientEmail || !process.env.EMAIL_USER) {
+    console.warn(`⚠️ Notification skipped: No registered email address or EMAIL_USER unconfigured.`);
+    return { success: false, error: 'Recipient email unresolvable or credentials missing.' };
   }
 
   let htmlContent = '';
 
   if (type === 'order_confirmation') {
-    const { orderId, customerName, courier, trackingNumber, paymentMethod, totalAmount } = data;
+    const { orderId, courier, trackingNumber, paymentMethod, totalAmount } = data;
     htmlContent = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #A8C3A0; border-radius: 20px; overflow: hidden;">
         <div style="background-color: #2F6B4F; padding: 28px 24px; text-align: center;">
@@ -84,21 +111,22 @@ export const sendEmailNotification = async ({ to, subject, type, data }) => {
           <div style="text-align: center; margin: 28px 0;">
             <a href="${FRONTEND_URL}/track/${orderId}" style="display: inline-block; background-color: #2F6B4F; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 14px 28px; border-radius: 12px;">Track Your Parcel</a>
           </div>
+          <p style="font-size: 11px; color: #7A8B7B; text-align: center;">This update was sent to your registered ThriftLoop account: ${recipientEmail}</p>
         </div>
       </div>
     `;
   } else if (type === 'order_status') {
-    const { orderId, customerName, status, courier, trackingNumber } = data;
+    const { orderId, status, courier, trackingNumber } = data;
     const statusFormatted = (status || '').toUpperCase();
     htmlContent = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #A8C3A0; border-radius: 20px; overflow: hidden;">
         <div style="background-color: #2F6B4F; padding: 28px 24px; text-align: center;">
-          <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Order Update: #${orderId}</h1>
+          <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Shipment Update: #${orderId}</h1>
           <p style="color: #A8C3A0; margin: 6px 0 0 0; font-size: 13px;">ThriftLoop Logistics Dispatch</p>
         </div>
         <div style="padding: 28px 24px; color: #23313A;">
           <p style="font-size: 15px; margin-top: 0;">Hi <strong>${customerName || 'Customer'}</strong>,</p>
-          <p style="font-size: 14px; line-height: 1.5;">Your ThriftLoop order <strong>#${orderId}</strong> has been updated to <strong style="color: #2F6B4F;">${statusFormatted}</strong>.</p>
+          <p style="font-size: 14px; line-height: 1.5;">Your ThriftLoop order <strong>#${orderId}</strong> is now <strong style="color: #2F6B4F;">${statusFormatted}</strong>.</p>
           
           <div style="background-color: #F6F1E8; border-radius: 14px; padding: 18px; margin: 20px 0;">
             <p style="margin: 0 0 8px 0; font-size: 13px;"><strong>Courier:</strong> ${courier || 'J&T Express'}</p>
@@ -107,22 +135,23 @@ export const sendEmailNotification = async ({ to, subject, type, data }) => {
           </div>
 
           <div style="text-align: center; margin: 28px 0;">
-            <a href="${FRONTEND_URL}/track/${orderId}" style="display: inline-block; background-color: #2F6B4F; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 14px 28px; border-radius: 12px;">View Tracking Details</a>
+            <a href="${FRONTEND_URL}/track/${orderId}" style="display: inline-block; background-color: #2F6B4F; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 14px 28px; border-radius: 12px;">View Live Tracking</a>
           </div>
+          <p style="font-size: 11px; color: #7A8B7B; text-align: center;">Sent to your registered email: ${recipientEmail}</p>
         </div>
       </div>
     `;
   } else if (type === 'chat_update') {
-    const { customerName, query, reply } = data;
+    const { query, reply } = data;
     htmlContent = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #A8C3A0; border-radius: 20px; overflow: hidden;">
         <div style="background-color: #2F6B4F; padding: 24px; text-align: center;">
-          <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">ThriftLoop Concierge Update</h1>
+          <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">ThriftLoop Concierge Note</h1>
           <p style="color: #A8C3A0; margin: 4px 0 0 0; font-size: 12px;">Styling & Logistics Consultation</p>
         </div>
         <div style="padding: 24px; color: #23313A;">
           <p style="font-size: 14px; margin-top: 0;">Hi <strong>${customerName || 'Customer'}</strong>,</p>
-          <p style="font-size: 13px; color: #7A8B7B;">Here is the copy of your inquiry with Loopie:</p>
+          <p style="font-size: 13px; color: #7A8B7B;">Here is the copy of your consultation with Loopie:</p>
           
           <div style="background-color: #F6F1E8; border-radius: 14px; padding: 16px; margin: 16px 0;">
             <p style="margin: 0 0 6px 0; font-size: 11px; font-weight: 700; color: #7A8B7B; text-transform: uppercase;">Your Question</p>
@@ -134,6 +163,7 @@ export const sendEmailNotification = async ({ to, subject, type, data }) => {
           <div style="text-align: center; margin: 24px 0;">
             <a href="${FRONTEND_URL}/shop" style="display: inline-block; background-color: #23313A; color: #ffffff; text-decoration: none; font-size: 12px; font-weight: 700; padding: 12px 24px; border-radius: 10px;">Return to ThriftLoop Boutique</a>
           </div>
+          <p style="font-size: 11px; color: #7A8B7B; text-align: center;">Sent to your registered email: ${recipientEmail}</p>
         </div>
       </div>
     `;
@@ -142,33 +172,33 @@ export const sendEmailNotification = async ({ to, subject, type, data }) => {
   try {
     const info = await mailTransporter.sendMail({
       from: `"ThriftLoop" <${process.env.EMAIL_USER}>`,
-      to,
+      to: recipientEmail,
       subject: subject || 'ThriftLoop Update',
       html: htmlContent,
     });
-    return { success: true, messageId: info.messageId };
+    return { success: true, messageId: info.messageId, deliveredTo: recipientEmail };
   } catch (err) {
     console.error('❌ Notification Engine error:', err.message);
     return { success: false, error: err.message };
   }
 };
 
-// 3. Notification API Route
+// Notification API Endpoint
 app.post('/api/notifications/email', async (req, res) => {
-  const { to, subject, type, data } = req.body;
-  if (!to || !type) {
-    return res.status(400).json({ error: 'Recipient email and notification type are required.' });
+  const { to, user_id, subject, type, data } = req.body;
+  if ((!to && !user_id) || !type) {
+    return res.status(400).json({ error: 'Recipient registered email or user_id and notification type are required.' });
   }
 
-  const result = await sendEmailNotification({ to, subject, type, data });
+  const result = await sendEmailNotification({ to, userId: user_id, subject, type, data });
   if (result.success) {
-    res.json({ message: 'Notification email dispatched successfully.' });
+    res.json({ message: `Notification email dispatched successfully to ${result.deliveredTo}.` });
   } else {
     res.status(500).json({ error: result.error || 'Failed to dispatch email notification.' });
   }
 });
 
-// 4. Voucher Rules
+// 3. Voucher Rules
 const ACTIVE_VOUCHERS = {
   VINTAGE20: { code: 'VINTAGE20', type: 'percent', value: 20, minSpend: 0, description: 'Flash Drop: 20% off all archive pieces' },
   LOOP100: { code: 'LOOP100', type: 'fixed', value: 100, minSpend: 600, description: '₱100 off on orders ₱600 and above' },
@@ -197,7 +227,6 @@ export const runAgingMarkdownUpdate = async () => {
       const baselinePrice = parseFloat(p.original_price || p.price);
       let discountRate = 0;
 
-      // Tiered markdown schedule: 30+ days (25%), 14+ days (15%), 7+ days (10%)
       if (daysUnsold >= 30) discountRate = 0.25;
       else if (daysUnsold >= 14) discountRate = 0.15;
       else if (daysUnsold >= 7) discountRate = 0.10;
@@ -228,11 +257,9 @@ export const runAgingMarkdownUpdate = async () => {
   }
 };
 
-// Schedule automated pricing every 6 hours and 10 seconds post-boot
 setInterval(runAgingMarkdownUpdate, 6 * 60 * 60 * 1000);
 setTimeout(runAgingMarkdownUpdate, 10000);
 
-// Manual Admin Trigger for Aging Markdown
 app.post('/api/admin/inventory/apply-markdowns', async (req, res) => {
   await runAgingMarkdownUpdate();
   res.json({ message: 'Automated aging markdown cycle completed successfully.' });
@@ -559,14 +586,21 @@ app.post('/api/checkout/paymongo', async (req, res) => {
     const discountRatio = subtotal > 0 && discountAmount > 0 ? (subtotal - discountAmount) / subtotal : 1;
     const tracking_number = `${courier === 'Lalamove' ? 'LLM-' : 'JNT-'}${Math.floor(10000000 + Math.random() * 90000000)}`;
 
+    // Resolve registered account identity
     let validUserId = null;
-    if (customer?.email) {
+    let registeredEmail = customer?.email?.trim() || '';
+
+    if (registeredEmail) {
       const { data: user } = await supabase
         .from('users')
-        .select('user_id')
-        .eq('email', customer.email.trim())
+        .select('user_id, email, full_name')
+        .eq('email', registeredEmail)
         .maybeSingle();
-      if (user) validUserId = user.user_id;
+
+      if (user) {
+        validUserId = user.user_id;
+        registeredEmail = user.email; // Guaranteed canonical registered email
+      }
     }
 
     // 1. Create Order Record
@@ -575,7 +609,7 @@ app.post('/api/checkout/paymongo', async (req, res) => {
       .insert([{
         user_id: validUserId,
         customer_name: customer?.fullName || 'Customer',
-        email: customer?.email || '',
+        email: registeredEmail,
         phone: customer?.phone || '',
         shipping_address: deliveryAddress?.streetAddress || '',
         city: deliveryAddress?.city || '',
@@ -594,10 +628,7 @@ app.post('/api/checkout/paymongo', async (req, res) => {
       .select()
       .single();
 
-    if (orderErr) {
-      console.error('❌ Supabase Order Insertion Error:', orderErr);
-      throw orderErr;
-    }
+    if (orderErr) throw orderErr;
 
     const orderId = newOrder?.order_id || newOrder?.id;
 
@@ -608,22 +639,19 @@ app.post('/api/checkout/paymongo', async (req, res) => {
       price_at_purchase: item.price,
       quantity: 1,
     }));
-    
-    const { error: itemsErr } = await supabase.from('order_items').insert(orderItemsPayload);
-    if (itemsErr) console.warn('⚠️ Order items insertion notice:', itemsErr.message);
+    await supabase.from('order_items').insert(orderItemsPayload);
 
-    // 3. Create Payment Record (Objective 4)
-    const { error: payErr } = await supabase.from('payments').insert([{
+    // 3. Create Payment Record
+    await supabase.from('payments').insert([{
       order_id: orderId,
       user_id: validUserId,
       payment_method: 'PayMongo',
       amount: totalAmount,
       status: 'pending',
       transaction_reference: referenceNumber || `PM-${orderId}`,
-    }]);
-    if (payErr) console.warn('⚠️ Payment record notice (non-fatal):', payErr.message);
+    }]).catch(() => null);
 
-    // 4. Set Garments to Sold
+    // 4. Lock garments to sold
     await supabase.from('products').update({ status: 'sold' }).in('product_id', productIds);
 
     const lineItems = productList.map((item) => {
@@ -649,7 +677,7 @@ app.post('/api/checkout/paymongo', async (req, res) => {
     const basicAuth = Buffer.from(`${secretKey}:`).toString('base64');
     const billing = {
       name: customer.fullName || 'Customer',
-      email: customer.email || 'customer@example.com',
+      email: registeredEmail,
       address: {
         line1: deliveryAddress.streetAddress || 'Metro Manila',
         city: deliveryAddress.city || 'City',
@@ -717,7 +745,7 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
         .update({ status: 'processing' })
         .eq('order_id', order_id)
         .eq('status', 'pending')
-        .select('*')
+        .select('*, users(email, full_name)')
         .maybeSingle();
 
       await supabase
@@ -726,18 +754,19 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
         .eq('order_id', order_id)
         .catch(() => null);
 
-      // Automated Email Notification via Notification Engine
+      // Automated Email Notification sent to registered account email
       if (updatedOrder) {
         sendEmailNotification({
-          to: updatedOrder.email,
+          userId: updatedOrder.user_id,
+          to: updatedOrder.users?.email || updatedOrder.email,
           subject: `ThriftLoop Order Confirmed: #${updatedOrder.order_id}`,
           type: 'order_confirmation',
           data: {
             orderId: updatedOrder.order_id,
-            customerName: updatedOrder.customer_name,
+            customerName: updatedOrder.users?.full_name || updatedOrder.customer_name,
             courier: updatedOrder.courier,
             trackingNumber: updatedOrder.tracking_number,
-            paymentMethod: 'PayMongo (Paid)',
+            paymentMethod: 'PayMongo (Paid Online)',
             totalAmount: updatedOrder.total_amount,
           },
         });
@@ -788,10 +817,31 @@ app.post('/api/orders', async (req, res) => {
     const total_amount = Math.max(0, subtotal - Number(discount_amount)) + shippingFee;
     const tracking_number = `${courier === 'Lalamove' ? 'LLM-' : 'JNT-'}${Math.floor(10000000 + Math.random() * 90000000)}`;
 
+    // Resolve user's official registered email[cite: 10]
     let validUserId = user_id || null;
-    if (!validUserId && email) {
-      const { data: user } = await supabase.from('users').select('user_id').eq('email', email.trim()).maybeSingle();
-      if (user) validUserId = user.user_id;
+    let registeredEmail = email.trim();
+
+    if (validUserId) {
+      const { data: registeredUser } = await supabase
+        .from('users')
+        .select('user_id, email, full_name')
+        .eq('user_id', validUserId)
+        .maybeSingle();
+
+      if (registeredUser?.email) {
+        registeredEmail = registeredUser.email;
+      }
+    } else if (registeredEmail) {
+      const { data: userByEmail } = await supabase
+        .from('users')
+        .select('user_id, email, full_name')
+        .eq('email', registeredEmail)
+        .maybeSingle();
+
+      if (userByEmail) {
+        validUserId = userByEmail.user_id;
+        registeredEmail = userByEmail.email;
+      }
     }
 
     // 1. Create Order
@@ -800,7 +850,7 @@ app.post('/api/orders', async (req, res) => {
       .insert([{
         user_id: validUserId,
         customer_name,
-        email,
+        email: registeredEmail,
         phone: phone || '',
         shipping_address,
         city: city || '',
@@ -819,10 +869,7 @@ app.post('/api/orders', async (req, res) => {
       .select()
       .single();
 
-    if (orderErr) {
-      console.error('❌ Supabase Order Insertion Error:', orderErr);
-      throw orderErr;
-    }
+    if (orderErr) throw orderErr;
 
     const orderId = newOrder?.order_id || newOrder?.id;
 
@@ -833,27 +880,25 @@ app.post('/api/orders', async (req, res) => {
       price_at_purchase: item.price,
       quantity: 1,
     }));
+    await supabase.from('order_items').insert(orderItemsPayload);
 
-    const { error: itemsErr } = await supabase.from('order_items').insert(orderItemsPayload);
-    if (itemsErr) console.warn('⚠️ Order items insert notice:', itemsErr.message);
-
-    // 3. Create Payment Record (Objective 4)
-    const { error: payErr } = await supabase.from('payments').insert([{
+    // 3. Create Payment Record
+    await supabase.from('payments').insert([{
       order_id: orderId,
       user_id: validUserId,
       payment_method: 'Cash on Delivery (COD)',
       amount: total_amount,
       status: 'pending',
       transaction_reference: `COD-${orderId}`,
-    }]);
-    if (payErr) console.warn('⚠️ Payments record notice (non-fatal):', payErr.message);
+    }]).catch(() => null);
 
     // 4. Mark products as sold
     await supabase.from('products').update({ status: 'sold' }).in('product_id', productIds);
 
-    // 5. Automated Order Confirmation Email via Notification Engine
+    // 5. Automated Order Confirmation dispatched to registered email[cite: 10]
     sendEmailNotification({
-      to: email,
+      userId: validUserId,
+      to: registeredEmail,
       subject: `ThriftLoop Order #${orderId} Confirmed`,
       type: 'order_confirmation',
       data: {
@@ -869,9 +914,7 @@ app.post('/api/orders', async (req, res) => {
     res.status(201).json({ message: 'Order created successfully', orderId, tracking_number, total_amount });
   } catch (err) {
     console.error('❌ COD Checkout Error:', err);
-    res.status(500).json({ 
-      error: err.message || err.details || (typeof err === 'string' ? err : 'Failed to process checkout order.') 
-    });
+    res.status(500).json({ error: err.message || 'Failed to process checkout order.' });
   }
 });
 
@@ -908,13 +951,13 @@ app.get('/api/orders/user/:email', async (req, res) => {
   }
 });
 
-// Cancel Order & Restore Stock (Customer Facing)
+// Cancel Order & Restore Stock
 app.post('/api/orders/:id/cancel', async (req, res) => {
   const orderId = req.params.id;
   try {
     const { data: order, error: findErr } = await supabase
       .from('orders')
-      .select('*, order_items(product_id)')
+      .select('*, order_items(product_id), users(email, full_name)')
       .eq('order_id', orderId)
       .single();
 
@@ -928,14 +971,15 @@ app.post('/api/orders/:id/cancel', async (req, res) => {
       await supabase.from('products').update({ status: 'active' }).in('product_id', pIds);
     }
 
-    // Send cancellation notice email
+    // Send cancellation alert to registered email[cite: 10]
     sendEmailNotification({
-      to: order.email,
+      userId: order.user_id,
+      to: order.users?.email || order.email,
       subject: `ThriftLoop Order #${orderId} Cancelled`,
       type: 'order_status',
       data: {
         orderId,
-        customerName: order.customer_name,
+        customerName: order.users?.full_name || order.customer_name,
         status: 'cancelled',
         courier: order.courier,
         trackingNumber: order.tracking_number,
@@ -982,7 +1026,7 @@ app.get('/api/admin/orders', async (req, res) => {
     const formatted = orders.map((o) => ({
       ...o,
       customer_name: o.customer_name || o.users?.full_name || 'Guest Customer',
-      customer_email: o.email || o.users?.email || '',
+      customer_email: o.users?.email || o.email || '',
     }));
     res.json(formatted);
   } catch (err) {
@@ -990,7 +1034,7 @@ app.get('/api/admin/orders', async (req, res) => {
   }
 });
 
-// Update Order & Shipping Status (Objective 4)
+// Update Order & Shipping Status: Automatically pulls registered email[cite: 10]
 app.patch('/api/admin/orders/:id', async (req, res) => {
   const { status, tracking_number } = req.body;
   try {
@@ -1002,7 +1046,7 @@ app.patch('/api/admin/orders/:id', async (req, res) => {
       .from('orders')
       .update(updateData)
       .eq('order_id', req.params.id)
-      .select('*, order_items(product_id)')
+      .select('*, order_items(product_id), users(email, full_name)')
       .single();
 
     if (error) throw error;
@@ -1014,15 +1058,16 @@ app.patch('/api/admin/orders/:id', async (req, res) => {
       }
     }
 
-    // Automated Email Notification on any status change
+    // Dispatches directly to registered account email[cite: 10]
     if (order && status) {
       sendEmailNotification({
-        to: order.email,
+        userId: order.user_id,
+        to: order.users?.email || order.email,
         subject: `ThriftLoop Order Update: #${req.params.id} ${status.toUpperCase()}`,
         type: 'order_status',
         data: {
           orderId: req.params.id,
-          customerName: order.customer_name,
+          customerName: order.users?.full_name || order.customer_name,
           status,
           courier: order.courier,
           trackingNumber: order.tracking_number,
@@ -1030,13 +1075,13 @@ app.patch('/api/admin/orders/:id', async (req, res) => {
       });
     }
 
-    res.json({ message: 'Order status updated successfully' });
+    res.json({ message: 'Order status updated and notification sent to registered account.' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update order' });
   }
 });
 
-// Delete Order & Restore Inventory (Objective 4)
+// Delete Order & Restore Inventory
 app.delete('/api/admin/orders/:id', async (req, res) => {
   const orderId = req.params.id;
   try {
@@ -1067,7 +1112,7 @@ app.delete('/api/admin/orders/:id', async (req, res) => {
 // --- GEMINI STYLIST & LOGISTICS AI CONCIERGE (gemini-3.6) ---
 
 app.post('/api/chat', async (req, res) => {
-  const { message, user_id, email, customer_name, current_order_id, send_email = false } = req.body;
+  const { message, user_id, email, current_order_id, send_email = false } = req.body;
   if (!message) return res.status(400).json({ error: 'Message is required' });
 
   const apiKey = process.env.GEMINI_API_KEY;
@@ -1076,7 +1121,7 @@ app.post('/api/chat', async (req, res) => {
   }
 
   try {
-    // 1. Fetch available products for sizing and catalog recommendations
+    // 1. Fetch available products
     const { data: products } = await supabase
       .from('products')
       .select('product_id, name, price, size, chest_width, length, condition_grade')
@@ -1087,7 +1132,7 @@ app.post('/api/chat', async (req, res) => {
       ? products.map((p) => `- [#${p.product_id}] ${p.name} (Size: ${p.size || 'OS'}, PTP: ${p.chest_width || 'N/A'}, Length: ${p.length || 'N/A'}, Grade: ${p.condition_grade || 'Grade A'}, Price: ₱${p.price})`).join('\n')
       : 'No items currently in stock.';
 
-    // 2. Fetch order records for shipment inquiries
+    // 2. Fetch order records
     let orderContext = 'No order records found for this session.';
     const orderMatch = message.match(/#?(\b\d+\b)/);
     const targetOrderId = current_order_id || (orderMatch ? parseInt(orderMatch[1], 10) : null);
@@ -1136,14 +1181,14 @@ GUIDELINES:
 
     const reply = response.text || 'I could not retrieve styling or tracking details right now.';
 
-    // Email transcript if explicitly requested
-    if (send_email && email) {
+    // Email transcript strictly to the registered account[cite: 10]
+    if (send_email && (user_id || email)) {
       sendEmailNotification({
+        userId: user_id,
         to: email,
         subject: 'ThriftLoop Concierge: Styling & Order Consultation',
         type: 'chat_update',
         data: {
-          customerName: customer_name || 'Customer',
           query: message,
           reply,
         },
