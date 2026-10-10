@@ -63,13 +63,11 @@ mailTransporter.verify((error) => {
 
 // ==========================================
 // CENTRALIZED EMAIL NOTIFICATION ENGINE
-// (Enforces dispatching to registered account email)
 // ==========================================
 export const sendEmailNotification = async ({ to, userId, subject, type, data = {} }) => {
   let recipientEmail = to;
   let customerName = data.customerName;
 
-  // If userId is provided, always fetch their canonical registered email
   if (userId) {
     const { data: registeredUser } = await supabase
       .from('users')
@@ -141,29 +139,26 @@ export const sendEmailNotification = async ({ to, userId, subject, type, data = 
         </div>
       </div>
     `;
-  } else if (type === 'chat_update') {
-    const { query, reply } = data;
+  } else if (type === 'direct_message') {
+    const { senderName, messageText, productName, conversationId } = data;
     htmlContent = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #A8C3A0; border-radius: 20px; overflow: hidden;">
         <div style="background-color: #2F6B4F; padding: 24px; text-align: center;">
-          <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">ThriftLoop Concierge Note</h1>
-          <p style="color: #A8C3A0; margin: 4px 0 0 0; font-size: 12px;">Styling & Logistics Consultation</p>
+          <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">New Customer Message</h1>
+          <p style="color: #A8C3A0; margin: 4px 0 0 0; font-size: 12px;">ThriftLoop Direct Inquiry</p>
         </div>
         <div style="padding: 24px; color: #23313A;">
-          <p style="font-size: 14px; margin-top: 0;">Hi <strong>${customerName || 'Customer'}</strong>,</p>
-          <p style="font-size: 13px; color: #7A8B7B;">Here is the copy of your consultation with Loopie:</p>
+          <p style="font-size: 14px; margin-top: 0;">Hi <strong>${customerName || 'Seller'}</strong>,</p>
+          <p style="font-size: 13px; line-height: 1.5;">You received a message from <strong>${senderName || 'A customer'}</strong>${productName ? ` regarding <em>${productName}</em>` : ''}:</p>
           
           <div style="background-color: #F6F1E8; border-radius: 14px; padding: 16px; margin: 16px 0;">
-            <p style="margin: 0 0 6px 0; font-size: 11px; font-weight: 700; color: #7A8B7B; text-transform: uppercase;">Your Question</p>
-            <p style="margin: 0 0 14px 0; font-size: 13px; font-style: italic;">"${query}"</p>
-            <p style="margin: 0 0 6px 0; font-size: 11px; font-weight: 700; color: #2F6B4F; text-transform: uppercase;">Concierge Advice</p>
-            <p style="margin: 0; font-size: 13px; white-space: pre-wrap; line-height: 1.5;">${reply}</p>
+            <p style="margin: 0; font-size: 13px; font-style: italic;">"${messageText}"</p>
           </div>
 
           <div style="text-align: center; margin: 24px 0;">
-            <a href="${FRONTEND_URL}/shop" style="display: inline-block; background-color: #23313A; color: #ffffff; text-decoration: none; font-size: 12px; font-weight: 700; padding: 12px 24px; border-radius: 10px;">Return to ThriftLoop Boutique</a>
+            <a href="${FRONTEND_URL}/admin" style="display: inline-block; background-color: #2F6B4F; color: #ffffff; text-decoration: none; font-size: 12px; font-weight: 700; padding: 12px 24px; border-radius: 10px;">Reply in Dashboard</a>
           </div>
-          <p style="font-size: 11px; color: #7A8B7B; text-align: center;">Sent to your registered email: ${recipientEmail}</p>
+          <p style="font-size: 11px; color: #7A8B7B; text-align: center;">Notification sent to ${recipientEmail}</p>
         </div>
       </div>
     `;
@@ -173,7 +168,7 @@ export const sendEmailNotification = async ({ to, userId, subject, type, data = 
     const info = await mailTransporter.sendMail({
       from: `"ThriftLoop" <${process.env.EMAIL_USER}>`,
       to: recipientEmail,
-      subject: subject || 'ThriftLoop Update',
+      subject: subject || 'ThriftLoop Notification',
       html: htmlContent,
     });
     return { success: true, messageId: info.messageId, deliveredTo: recipientEmail };
@@ -183,7 +178,6 @@ export const sendEmailNotification = async ({ to, userId, subject, type, data = 
   }
 };
 
-// Notification API Endpoint
 app.post('/api/notifications/email', async (req, res) => {
   const { to, user_id, subject, type, data } = req.body;
   if ((!to && !user_id) || !type) {
@@ -206,7 +200,7 @@ const ACTIVE_VOUCHERS = {
 };
 
 // ==========================================
-// OBJECTIVES 3 & 5: AUTOMATED AGING PRICING
+// AUTOMATED AGING PRICING
 // ==========================================
 export const runAgingMarkdownUpdate = async () => {
   try {
@@ -636,7 +630,166 @@ app.patch('/api/products/:id/status', async (req, res) => {
 });
 
 // ==========================================
-// OBJECTIVES 2 & 4: AUTOMATED CHECKOUT CRUD
+// BUYER-TO-SELLER DIRECT MESSAGING ROUTES
+// ==========================================
+
+// 1. Get or Create a Direct Thread between Buyer and Seller (Admin)
+app.post('/api/messages/conversations', async (req, res) => {
+  const { buyer_id, seller_id, product_id } = req.body;
+  if (!buyer_id) return res.status(400).json({ error: 'Buyer ID is required.' });
+
+  try {
+    let targetSellerId = seller_id;
+    if (!targetSellerId) {
+      const { data: adminUser } = await supabase
+        .from('users')
+        .select('user_id')
+        .eq('role', 'admin')
+        .limit(1)
+        .maybeSingle();
+      targetSellerId = adminUser?.user_id || 1;
+    }
+
+    let query = supabase
+      .from('conversations')
+      .select('*, products(name, price, image_url)')
+      .eq('buyer_id', buyer_id)
+      .eq('seller_id', targetSellerId);
+
+    if (product_id) {
+      query = query.eq('product_id', product_id);
+    }
+
+    const { data: existing } = await query.maybeSingle();
+    if (existing) {
+      return res.json(existing);
+    }
+
+    const { data: newConvo, error: createErr } = await supabase
+      .from('conversations')
+      .insert([{
+        buyer_id,
+        seller_id: targetSellerId,
+        product_id: product_id || null,
+        last_message: 'Inquiry started',
+        last_message_at: new Date().toISOString(),
+      }])
+      .select('*, products(name, price, image_url)')
+      .single();
+
+    if (createErr) throw createErr;
+    res.status(201).json(newConvo);
+  } catch (err) {
+    console.error('❌ Conversation creation failed:', err.message);
+    res.status(500).json({ error: 'Could not initialize messaging thread.' });
+  }
+});
+
+// 2. Fetch User's Conversations (Inbox for Buyer or Seller)
+app.get('/api/messages/conversations/user/:userId', async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    const { data: convos, error } = await supabase
+      .from('conversations')
+      .select(`
+        conversation_id,
+        buyer_id,
+        seller_id,
+        product_id,
+        last_message,
+        last_message_at,
+        buyer:users!buyer_id(user_id, full_name, email),
+        seller:users!seller_id(user_id, full_name, email),
+        products(product_id, name, price, image_url)
+      `)
+      .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
+      .order('last_message_at', { ascending: false });
+
+    if (error) throw error;
+    res.json(convos || []);
+  } catch (err) {
+    console.error('❌ Failed to fetch user conversations:', err.message);
+    res.status(500).json({ error: 'Could not load conversation list.' });
+  }
+});
+
+// 3. Fetch Message History for a Specific Thread
+app.get('/api/messages/:conversationId', async (req, res) => {
+  try {
+    const { data: messages, error } = await supabase
+      .from('messages')
+      .select('*, sender:users(user_id, full_name, role)')
+      .eq('conversation_id', req.params.conversationId)
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+    res.json(messages || []);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to retrieve messages.' });
+  }
+});
+
+// 4. Send Message (Direct Communication with Email Notification)
+app.post('/api/messages', async (req, res) => {
+  const { conversation_id, sender_id, receiver_id, message_text } = req.body;
+  if (!conversation_id || !sender_id || !message_text?.trim()) {
+    return res.status(400).json({ error: 'Missing required message parameters.' });
+  }
+
+  try {
+    const { data: newMsg, error: msgErr } = await supabase
+      .from('messages')
+      .insert([{
+        conversation_id,
+        sender_id,
+        receiver_id: receiver_id || null,
+        message_text: message_text.trim(),
+      }])
+      .select('*, sender:users(user_id, full_name, role)')
+      .single();
+
+    if (msgErr) throw msgErr;
+
+    // Update conversation metadata
+    await supabase
+      .from('conversations')
+      .update({
+        last_message: message_text.trim(),
+        last_message_at: new Date().toISOString(),
+      })
+      .eq('conversation_id', conversation_id);
+
+    // Alert the receiver via registered email if they are not active
+    if (receiver_id) {
+      const { data: convo } = await supabase
+        .from('conversations')
+        .select('products(name)')
+        .eq('conversation_id', conversation_id)
+        .maybeSingle();
+
+      sendEmailNotification({
+        userId: receiver_id,
+        subject: `New Message from ${newMsg.sender?.full_name || 'Customer'} on ThriftLoop`,
+        type: 'direct_message',
+        data: {
+          senderName: newMsg.sender?.full_name || 'Customer',
+          messageText: message_text.trim(),
+          productName: convo?.products?.name || '',
+          conversationId,
+        },
+      });
+    }
+
+    res.status(201).json(newMsg);
+  } catch (err) {
+    console.error('❌ Failed to post message:', err.message);
+    res.status(500).json({ error: 'Message failed to send.' });
+  }
+});
+
+// ==========================================
+// CHECKOUT & ORDERS CRUD
 // ==========================================
 
 // --- PAYMONGO CHECKOUT ---
@@ -679,7 +832,6 @@ app.post('/api/checkout/paymongo', async (req, res) => {
     const discountRatio = subtotal > 0 && discountAmount > 0 ? (subtotal - discountAmount) / subtotal : 1;
     const tracking_number = `${courier === 'Lalamove' ? 'LLM-' : 'JNT-'}${Math.floor(10000000 + Math.random() * 90000000)}`;
 
-    // Resolve registered account identity
     let validUserId = null;
     let registeredEmail = customer?.email?.trim() || '';
 
@@ -696,7 +848,6 @@ app.post('/api/checkout/paymongo', async (req, res) => {
       }
     }
 
-    // 1. Create Order Record
     const { data: newOrder, error: orderErr } = await supabase
       .from('orders')
       .insert([{
@@ -725,7 +876,6 @@ app.post('/api/checkout/paymongo', async (req, res) => {
 
     const orderId = newOrder?.order_id || newOrder?.id;
 
-    // 2. Create Order Items
     const orderItemsPayload = productList.map((item) => ({
       order_id: orderId,
       product_id: item.product_id || item.id,
@@ -734,7 +884,6 @@ app.post('/api/checkout/paymongo', async (req, res) => {
     }));
     await supabase.from('order_items').insert(orderItemsPayload);
 
-    // 3. Create Payment Record
     await supabase.from('payments').insert([{
       order_id: orderId,
       user_id: validUserId,
@@ -744,7 +893,6 @@ app.post('/api/checkout/paymongo', async (req, res) => {
       transaction_reference: referenceNumber || `PM-${orderId}`,
     }]).catch(() => null);
 
-    // 4. Lock garments to sold
     await supabase.from('products').update({ status: 'sold' }).in('product_id', productIds);
 
     const lineItems = productList.map((item) => {
@@ -935,7 +1083,6 @@ app.post('/api/orders', async (req, res) => {
       }
     }
 
-    // 1. Create Order
     const { data: newOrder, error: orderErr } = await supabase
       .from('orders')
       .insert([{
@@ -964,7 +1111,6 @@ app.post('/api/orders', async (req, res) => {
 
     const orderId = newOrder?.order_id || newOrder?.id;
 
-    // 2. Create Order Items
     const orderItemsPayload = productList.map((item) => ({
       order_id: orderId,
       product_id: item.product_id || item.id,
@@ -973,7 +1119,6 @@ app.post('/api/orders', async (req, res) => {
     }));
     await supabase.from('order_items').insert(orderItemsPayload);
 
-    // 3. Create Payment Record
     await supabase.from('payments').insert([{
       order_id: orderId,
       user_id: validUserId,
@@ -983,10 +1128,8 @@ app.post('/api/orders', async (req, res) => {
       transaction_reference: `COD-${orderId}`,
     }]).catch(() => null);
 
-    // 4. Mark products as sold
     await supabase.from('products').update({ status: 'sold' }).in('product_id', productIds);
 
-    // 5. Automated Order Confirmation email
     sendEmailNotification({
       userId: validUserId,
       to: registeredEmail,
@@ -1124,7 +1267,6 @@ app.get('/api/admin/orders', async (req, res) => {
   }
 });
 
-// Update Order & Shipping Status
 app.patch('/api/admin/orders/:id', async (req, res) => {
   const { status, tracking_number } = req.body;
   try {
@@ -1170,7 +1312,6 @@ app.patch('/api/admin/orders/:id', async (req, res) => {
   }
 });
 
-// Delete Order & Restore Inventory
 app.delete('/api/admin/orders/:id', async (req, res) => {
   const orderId = req.params.id;
   try {
@@ -1198,10 +1339,10 @@ app.delete('/api/admin/orders/:id', async (req, res) => {
   }
 });
 
-// --- GEMINI STYLIST & LOGISTICS AI CONCIERGE (gemini-3.6) ---
+// --- AI STYLIST & LOGISTICS CONCIERGE (gemini-3.6) ---
 
 app.post('/api/chat', async (req, res) => {
-  const { message, user_id, email, current_order_id, send_email = false } = req.body;
+  const { message, user_id, email, current_order_id } = req.body;
   if (!message) return res.status(400).json({ error: 'Message is required' });
 
   const apiKey = process.env.GEMINI_API_KEY;
@@ -1210,7 +1351,6 @@ app.post('/api/chat', async (req, res) => {
   }
 
   try {
-    // 1. Fetch available products
     const { data: products } = await supabase
       .from('products')
       .select('product_id, name, price, size, chest_width, length, condition_grade')
@@ -1221,7 +1361,6 @@ app.post('/api/chat', async (req, res) => {
       ? products.map((p) => `- [#${p.product_id}] ${p.name} (Size: ${p.size || 'OS'}, PTP: ${p.chest_width || 'N/A'}, Length: ${p.length || 'N/A'}, Grade: ${p.condition_grade || 'Grade A'}, Price: ₱${p.price})`).join('\n')
       : 'No items currently in stock.';
 
-    // 2. Fetch order records
     let orderContext = 'No order records found for this session.';
     const orderMatch = message.match(/#?(\b\d+\b)/);
     const targetOrderId = current_order_id || (orderMatch ? parseInt(orderMatch[1], 10) : null);
@@ -1268,22 +1407,7 @@ GUIDELINES:
       },
     });
 
-    const reply = response.text || 'I could not retrieve styling or tracking details right now.';
-
-    if (send_email && (user_id || email)) {
-      sendEmailNotification({
-        userId: user_id,
-        to: email,
-        subject: 'ThriftLoop Concierge: Styling & Order Consultation',
-        type: 'chat_update',
-        data: {
-          query: message,
-          reply,
-        },
-      });
-    }
-
-    res.json({ reply });
+    res.json({ reply: response.text || 'I could not retrieve styling or tracking details right now.' });
   } catch (err) {
     res.json({ reply: `Concierge notice: ${err.message || 'Unable to consult records.'}` });
   }
