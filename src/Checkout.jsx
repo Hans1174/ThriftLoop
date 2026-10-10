@@ -4,7 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { 
   ArrowLeft, ArrowRight, ShieldCheck, Truck, 
   MapPin, CreditCard, Sparkles, Loader2, AlertCircle, 
-  Tag, X, Check 
+  Tag, X, Check, Info 
 } from 'lucide-react';
 import { useCart } from './context/CartContext';
 
@@ -19,6 +19,7 @@ export default function Checkout() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [infoMessage, setInfoMessage] = useState('');
 
   // Voucher State
   const [voucherInput, setVoucherInput] = useState('');
@@ -43,6 +44,30 @@ export default function Checkout() {
       navigate('/cart');
     }
   }, [navigate]);
+
+  // Automated Inventory Release on Cancelled Sessions
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const isCancelled = params.get('cancelled');
+    const cancelledOrderId = params.get('order_id');
+
+    if (isCancelled && cancelledOrderId) {
+      setInfoMessage('Previous checkout was cancelled. Unlocking your pieces...');
+      
+      fetch(`${BACKEND_URL}/api/orders/${cancelledOrderId}/cancel`, {
+        method: 'POST',
+      })
+        .then((res) => res.json())
+        .then(() => {
+          setInfoMessage('Payment cancelled. Your items have been released back to your bag and you may proceed.');
+          // Remove cancelled query parameters from URL cleanly
+          window.history.replaceState({}, document.title, window.location.pathname);
+        })
+        .catch((err) => {
+          console.error('Failed to auto-release stock:', err);
+        });
+    }
+  }, []);
 
   const [formData, setFormData] = useState({
     customer_name: currentUser.full_name || '',
@@ -109,6 +134,7 @@ export default function Checkout() {
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
     setError('');
+    setInfoMessage('');
 
     // Check required fields manually so browser doesn't silently block
     if (
@@ -247,6 +273,13 @@ export default function Checkout() {
           </div>
         </div>
 
+        {infoMessage && (
+          <div className="bg-[#2F6B4F]/10 border border-[#2F6B4F]/30 text-[#2F6B4F] text-xs p-4 rounded-2xl flex items-center gap-2 mb-6 font-bold animate-in fade-in">
+            <Info size={16} className="shrink-0" />
+            <span>{infoMessage}</span>
+          </div>
+        )}
+
         {error && (
           <div className="bg-[#E67E5F]/10 border border-[#E67E5F]/30 text-[#E67E5F] text-xs p-4 rounded-2xl flex items-center gap-2 mb-6 font-bold animate-in fade-in">
             <AlertCircle size={16} className="shrink-0" />
@@ -254,7 +287,7 @@ export default function Checkout() {
           </div>
         )}
 
-        {/* Form with noValidate to guarantee button clicks always run */}
+        {/* Form */}
         <form noValidate onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
           {/* Left Column: Form Fields */}
