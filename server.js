@@ -659,7 +659,7 @@ app.post('/api/orders', async (req, res) => {
       if (user) validUserId = user.user_id;
     }
 
-    // 1. Create Order (Using shipping_fee: shippingFee)
+    // 1. Create Order
     const { data: newOrder, error: orderErr } = await supabase
       .from('orders')
       .insert([{
@@ -702,7 +702,7 @@ app.post('/api/orders', async (req, res) => {
     const { error: itemsErr } = await supabase.from('order_items').insert(orderItemsPayload);
     if (itemsErr) console.warn('⚠️ Order items insert notice:', itemsErr.message);
 
-    // 3. Create Payment Record (Objective 4)
+    // 3. Create Payment Record (Objective 4 - non-blocking safe insert)
     const { error: payErr } = await supabase.from('payments').insert([{
       order_id: orderId,
       user_id: validUserId,
@@ -747,7 +747,7 @@ app.post('/api/orders', async (req, res) => {
   }
 });
 
-// --- TRACKING & ADMIN MANAGEMENT ---
+// --- TRACKING & USER ORDERS ---
 
 app.get('/api/track/:id', async (req, res) => {
   try {
@@ -761,6 +761,23 @@ app.get('/api/track/:id', async (req, res) => {
     res.json(order);
   } catch (err) {
     res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// User orders lookup (used for live status polling and browser notifications)
+app.get('/api/orders/user/:email', async (req, res) => {
+  try {
+    const { data: orders, error } = await supabase
+      .from('orders')
+      .select('order_id, status, courier, tracking_number, total_amount, created_at')
+      .eq('email', req.params.email.trim())
+      .order('order_id', { ascending: false })
+      .limit(10);
+
+    if (error) throw error;
+    res.json(orders || []);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch user orders.' });
   }
 });
 
@@ -789,6 +806,8 @@ app.post('/api/orders/:id/cancel', async (req, res) => {
     res.status(500).json({ error: 'Failed to cancel order' });
   }
 });
+
+// --- ADMIN MANAGEMENT ---
 
 app.get('/api/admin/stats', async (req, res) => {
   try {
@@ -909,27 +928,51 @@ app.delete('/api/admin/orders/:id', async (req, res) => {
   }
 });
 
-// --- GEMINI STYLIST AI CHATBOT ROUTE (gemini-3.6) ---
+// --- GEMINI STYLIST & LOGISTICS AI CONCIERGE (gemini-3.6) ---
 
 app.post('/api/chat', async (req, res) => {
-  const { message } = req.body;
+  const { message, user_id, email, current_order_id } = req.body;
   if (!message) return res.status(400).json({ error: 'Message is required' });
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey.includes('YourGeminiKey')) {
-    return res.json({ reply: '⚠️ AI Stylist Notice: GEMINI_API_KEY is not configured in your .env file.' });
+    return res.json({ reply: '⚠️ AI Concierge Notice: GEMINI_API_KEY is not configured in your .env file.' });
   }
 
   try {
+    // 1. Fetch available products for sizing and catalog recommendations
     const { data: products } = await supabase
       .from('products')
-      .select('name, price, size, chest_width, length, condition_grade')
+      .select('product_id, name, price, size, chest_width, length, condition_grade')
       .eq('status', 'active')
       .limit(25);
 
     const catalogSummary = (products && products.length > 0)
-      ? products.map((p) => `- ${p.name} (Size: ${p.size || 'OS'}, PTP: ${p.chest_width || 'N/A'}, Length: ${p.length || 'N/A'}, Grade: ${p.condition_grade || 'Grade A'}, Price: ₱${p.price})`).join('\n')
+      ? products.map((p) => `- [#${p.product_id}] ${p.name} (Size: ${p.size || 'OS'}, PTP: ${p.chest_width || 'N/A'}, Length: ${p.length || 'N/A'}, Grade: ${p.condition_grade || 'Grade A'}, Price: ₱${p.price})`).join('\n')
       : 'No items currently in stock.';
+
+    // 2. Fetch order records for shipment inquiries
+    let orderContext = 'No order records found for this session.';
+    const orderMatch = message.match(/#?(\b\d+\b)/);
+    const targetOrderId = current_order_id || (orderMatch ? parseInt(orderMatch[1], 10) : null);
+
+    let ordersQuery = supabase.from('orders').select('*');
+
+    if (targetOrderId) {
+      ordersQuery = ordersQuery.eq('order_id', targetOrderId);
+    } else if (user_id) {
+      ordersQuery = ordersQuery.eq('user_id', user_id).order('order_id', { ascending: false }).limit(3);
+    } else if (email) {
+      ordersQuery = ordersQuery.eq('email', email.trim()).order('order_id', { ascending: false }).limit(3);
+    }
+
+    const { data: userOrders } = await ordersQuery;
+
+    if (userOrders && userOrders.length > 0) {
+      orderContext = userOrders.map((o) => 
+        `- Order #${o.order_id}: Status = ${o.status.toUpperCase()}, Courier = ${o.courier}, Tracking Number = ${o.tracking_number || 'Assigning'}, Total = ₱${o.total_amount}, Destination = ${o.city || 'Metro'}, Placed on = ${new Date(o.created_at).toLocaleDateString()}`
+      ).join('\n');
+    }
 
     const modelName = process.env.GEMINI_MODEL || 'gemini-3.6';
 
@@ -937,20 +980,27 @@ app.post('/api/chat', async (req, res) => {
       model: modelName,
       contents: message,
       config: {
-        systemInstruction: `You are the AI vintage stylist and sizing advisor for 'ThriftLoop', an online curated vintage boutique in the Philippines.
-- Couriers: J&T Express (Standard nationwide delivery) and Lalamove (Same-day Metro delivery).
-- Conditions: Brand New (deadstock/unworn), Grade A (excellent), Grade B (gently used).
-- Currency: Always quote prices in Philippine Pesos (₱).
-- Provide practical outfit pairings, flat-lay measurement guidance, and vintage advice.
+        systemInstruction: `You are 'Loopie', the AI stylist and order logistics concierge for 'ThriftLoop'—an online curated vintage boutique in the Philippines.
 
-CURRENT INVENTORY:
-${catalogSummary}`,
+YOUR CORE RESPONSIBILITIES:
+1. VINTAGE CATALOG & SIZING: Answer customer questions regarding specific archive pieces, sizing, chest width (pit-to-pit / PTP flat-lay in inches), lengths, condition grading (Deadstock, Grade A, Grade B), outfit pairings, and sustainable clothing care.
+2. SHIPMENT & LOGISTICS UPDATES: If the customer asks about order status, tracking, or delivery timing (e.g., "Where is my order #4?"), refer directly to BUYER ORDER RECORDS below. Explain whether the package is pending, processing, shipped, or delivered, report their tracking number, and specify courier turnaround (J&T Express 2-4 days standard, Lalamove same-day metro).
+
+CURRENT ACTIVE INVENTORY:
+${catalogSummary}
+
+BUYER ORDER RECORDS:
+${orderContext}
+
+GUIDELINES:
+- Always quote prices in Philippine Pesos (₱).
+- Keep answers warm, concise, and helpful.`,
       },
     });
 
-    res.json({ reply: response.text || 'I could not formulate styling suggestions right now.' });
+    res.json({ reply: response.text || 'I could not retrieve styling or tracking details right now.' });
   } catch (err) {
-    res.json({ reply: `Stylist service note: ${err.message || 'Unable to consult styling records.'}` });
+    res.json({ reply: `Concierge notice: ${err.message || 'Unable to consult records.'}` });
   }
 });
 
