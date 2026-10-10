@@ -2,17 +2,22 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Package, Plus, Trash2, CheckCircle, RefreshCw, 
   ShoppingBag, DollarSign, Tag, AlertCircle, 
-  X, Search, UploadCloud, Pencil, Truck, Check
+  X, Search, UploadCloud, Pencil, Truck, Check, MessageSquare
 } from 'lucide-react';
+import AdminInbox from './components/AdminInbox';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
 
 export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState('inventory'); // 'inventory' | 'orders'
+  const [activeTab, setActiveTab] = useState('inventory'); // 'inventory' | 'orders' | 'messages'
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState(null);
+
+  // Authenticated Admin User
+  const storedUser = localStorage.getItem('thriftloop_user');
+  const currentUser = storedUser ? JSON.parse(storedUser) : null;
 
   // Inventory Filters
   const [searchFilter, setSearchFilter] = useState('');
@@ -123,11 +128,13 @@ export default function AdminDashboard() {
         let { width, height } = img;
         const maxDim = 1000;
 
-        if (width > maxDim || height > maxDim) {
-          if (width > height) {
+        if (width > height) {
+          if (width > maxDim) {
             height = Math.round((height * maxDim) / width);
             width = maxDim;
-          } else {
+          }
+        } else {
+          if (height > maxDim) {
             width = Math.round((width * maxDim) / height);
             height = maxDim;
           }
@@ -343,7 +350,7 @@ export default function AdminDashboard() {
           <div>
             <h1 className="font-serif text-3xl font-bold text-[#23313A] mt-1">Admin Dashboard</h1>
             <p className="text-xs text-[#23313A]/60 font-medium">
-              Manage one-of-a-kind vintage drops, edit item specs, and fulfill live orders.
+              Manage one-of-a-kind vintage drops, fulfill customer orders, and answer buyer inquiries.
             </p>
           </div>
 
@@ -408,7 +415,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* View Switcher Tabs */}
-        <div className="flex items-center gap-3 border-b border-[#A8C3A0]/30 pb-3">
+        <div className="flex flex-wrap items-center gap-3 border-b border-[#A8C3A0]/30 pb-3">
           <button
             type="button"
             onClick={() => setActiveTab('inventory')}
@@ -430,6 +437,18 @@ export default function AdminDashboard() {
             }`}
           >
             Customer Orders ({orders.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('messages')}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'messages'
+                ? 'bg-[#2F6B4F] text-white shadow-xs'
+                : 'bg-white text-[#23313A] hover:bg-[#F6F1E8]'
+            }`}
+          >
+            <MessageSquare size={14} />
+            <span>Messages / Inbox</span>
           </button>
         </div>
 
@@ -658,6 +677,11 @@ export default function AdminDashboard() {
               </div>
             )}
           </div>
+        )}
+
+        {/* Tab 3: Direct Messages / Seller Inbox */}
+        {activeTab === 'messages' && (
+          <AdminInbox currentUser={currentUser} />
         )}
 
       </div>
