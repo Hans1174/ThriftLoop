@@ -659,7 +659,7 @@ app.post('/api/orders', async (req, res) => {
       if (user) validUserId = user.user_id;
     }
 
-    // 1. Create Order
+    // 1. Create Order (Using shipping_fee: shippingFee)
     const { data: newOrder, error: orderErr } = await supabase
       .from('orders')
       .insert([{
@@ -674,7 +674,7 @@ app.post('/api/orders', async (req, res) => {
         courier: courier || 'J&T Express',
         payment_method: payment_method || 'Cash on Delivery (COD)',
         subtotal,
-        shipping_fee,
+        shipping_fee: shippingFee,
         discount_amount,
         voucher_code: voucher_code || null,
         total_amount,
@@ -702,7 +702,7 @@ app.post('/api/orders', async (req, res) => {
     const { error: itemsErr } = await supabase.from('order_items').insert(orderItemsPayload);
     if (itemsErr) console.warn('⚠️ Order items insert notice:', itemsErr.message);
 
-    // 3. Create Payment Record (Objective 4 - non-blocking safe insert)
+    // 3. Create Payment Record (Objective 4)
     const { error: payErr } = await supabase.from('payments').insert([{
       order_id: orderId,
       user_id: validUserId,
@@ -777,10 +777,8 @@ app.post('/api/orders/:id/cancel', async (req, res) => {
     if (findErr || !order) return res.status(404).json({ error: 'Order not found' });
     if (order.status !== 'pending') return res.status(400).json({ error: 'Only pending orders can be cancelled.' });
 
-    // 1. Update Order Status
     await supabase.from('orders').update({ status: 'cancelled' }).eq('order_id', orderId);
 
-    // 2. Restore Products to 'active' inventory
     const pIds = (order.order_items || []).map((oi) => oi.product_id);
     if (pIds.length > 0) {
       await supabase.from('products').update({ status: 'active' }).in('product_id', pIds);
