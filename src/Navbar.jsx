@@ -3,7 +3,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Search, ShoppingBag, User, LogOut, Shield, 
-  Package, ChevronDown, Settings, X, ArrowRight 
+  Package, ChevronDown, Settings, X, ArrowRight,
+  MessageSquare, Menu
 } from 'lucide-react';
 import { useCart } from './context/CartContext';
 
@@ -40,6 +41,7 @@ export default function Navbar({ onOpenLogin }) {
 
   const cartCount = currentUser ? rawCartCount : 0;
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -66,7 +68,6 @@ export default function Navbar({ onOpenLogin }) {
   const runSearch = (inputVal, dataset = allProducts) => {
     const q = inputVal.trim().toLowerCase();
 
-    // Trigger on the very first letter (length >= 1)
     if (!q) {
       setSearchResults([]);
       setIsSearchOpen(false);
@@ -79,7 +80,6 @@ export default function Navbar({ onOpenLogin }) {
         const cat = String(item.category_name || item.category || '').toLowerCase();
         const size = String(item.size || '').toLowerCase();
 
-        // Exact or prefix matches get higher score
         let score = 0;
         if (size === q) score += 5;
         if (name.startsWith(q)) score += 4;
@@ -97,20 +97,18 @@ export default function Navbar({ onOpenLogin }) {
     setIsSearchOpen(true);
   };
 
-  // Immediate execution on keystroke
   const handleInputChange = (e) => {
     const val = e.target.value;
     setSearchQuery(val);
     runSearch(val, allProducts);
   };
 
-  // Keep search state in sync on path transitions
   useEffect(() => {
     setIsProfileOpen(false);
     setIsSearchOpen(false);
+    setIsMobileMenuOpen(false);
   }, [location.pathname]);
 
-  // Click outside to dismiss popups
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
@@ -161,6 +159,15 @@ export default function Navbar({ onOpenLogin }) {
     }
   };
 
+  const handleConversationsClick = () => {
+    setIsMobileMenuOpen(false);
+    if (!currentUser) {
+      handleTriggerLogin();
+    } else {
+      navigate('/messages');
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('thriftloop_user');
     localStorage.removeItem('thriftloop_token');
@@ -168,25 +175,24 @@ export default function Navbar({ onOpenLogin }) {
     if (cartContext.clearCart) cartContext.clearCart();
     setCurrentUser(null);
     setIsProfileOpen(false);
+    setIsMobileMenuOpen(false);
     window.dispatchEvent(new Event('auth-change'));
     navigate('/');
   };
-
-//   if (location.pathname === '/register') return null;
 
   const isAdmin = currentUser?.role === 'admin' || currentUser?.email === 'admin@thriftloop.com';
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#A8C3A0]/30 shadow-xs transition-all">
-      <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 sm:py-4 flex items-center justify-between gap-2 sm:gap-4">
         
-        {/* Brand Logo & Links */}
-        <div className="flex items-center gap-8 md:gap-10">
-          <Link to="/" className="font-serif text-3xl font-black tracking-tighter text-[#23313A]">
+        {/* Brand Logo & Navigation Links */}
+        <div className="flex items-center gap-4 md:gap-8 shrink-0">
+          <Link to="/" className="font-serif text-2xl sm:text-3xl font-black tracking-tighter text-[#23313A] shrink-0">
             Thrift<span className="text-[#2F6B4F]">Loop</span>
           </Link>
           
-          <nav className="hidden md:flex items-center gap-7 text-sm font-bold">
+          <nav className="hidden md:flex items-center gap-6 text-xs lg:text-sm font-bold">
             <Link 
               to="/" 
               className={`transition-colors ${
@@ -203,19 +209,31 @@ export default function Navbar({ onOpenLogin }) {
             >
               Shop
             </Link>
+
+            {/* Conversations Link: Positioned Directly Beside Shop */}
+            <button
+              type="button"
+              onClick={handleConversationsClick}
+              className={`flex items-center gap-1.5 transition-colors cursor-pointer ${
+                location.pathname === '/messages' ? 'text-[#2F6B4F] border-b-2 border-[#2F6B4F] pb-0.5' : 'text-[#A8C3A0] hover:text-[#23313A]'
+              }`}
+            >
+              <MessageSquare size={15} />
+              <span>Conversations</span>
+            </button>
           </nav>
         </div>
 
-        {/* Search, Cart & Profile */}
-        <div className="flex items-center gap-4 sm:gap-6">
+        {/* Search, Action Icons, Profile */}
+        <div className="flex items-center gap-2 sm:gap-4 md:gap-5 min-w-0">
           
-          {/* First-Letter Instant Search Bar */}
-          <div className="relative" ref={searchContainerRef}>
+          {/* Responsive Search Input */}
+          <div className="relative shrink min-w-0" ref={searchContainerRef}>
             <form onSubmit={handleSearchSubmit} className="relative">
-              <Search size={15} className="absolute left-3.5 top-2.5 text-[#A8C3A0]" />
+              <Search size={14} className="absolute left-3 top-2.5 text-[#A8C3A0]" />
               <input
                 type="text"
-                placeholder="Search pieces, size (e.g. M)..."
+                placeholder="Search..."
                 value={searchQuery}
                 onFocus={() => {
                   if (searchQuery.trim().length >= 1) {
@@ -223,16 +241,16 @@ export default function Navbar({ onOpenLogin }) {
                   }
                 }}
                 onChange={handleInputChange}
-                className="bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-full pl-9 pr-8 py-1.5 text-xs text-[#23313A] placeholder-[#A8C3A0] focus:outline-none focus:border-[#2F6B4F] focus:bg-white w-44 sm:w-60 lg:w-72 shadow-xs transition-all"
+                className="bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-full pl-8 pr-7 py-1.5 text-xs text-[#23313A] placeholder-[#A8C3A0] focus:outline-none focus:border-[#2F6B4F] focus:bg-white w-28 sm:w-48 md:w-60 lg:w-72 shadow-xs transition-all"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={handleClearSearch}
-                  className="absolute right-3 top-2.5 text-[#A8C3A0] hover:text-[#23313A] cursor-pointer"
+                  className="absolute right-2.5 top-2.5 text-[#A8C3A0] hover:text-[#23313A] cursor-pointer"
                   title="Clear"
                 >
-                  <X size={13} />
+                  <X size={12} />
                 </button>
               )}
             </form>
@@ -300,13 +318,26 @@ export default function Navbar({ onOpenLogin }) {
             )}
           </div>
 
+          {/* Direct 1-Tap Conversations Icon (Immediate access on Mobile & Tablet) */}
+          <button 
+            type="button"
+            onClick={handleConversationsClick} 
+            className={`relative transition-colors p-1 cursor-pointer shrink-0 ${
+              location.pathname === '/messages' ? 'text-[#2F6B4F]' : 'text-[#A8C3A0] hover:text-[#23313A]'
+            }`} 
+            title="Conversations & Messages"
+          >
+            <MessageSquare size={20} />
+          </button>
+
           {/* Cart Icon */}
           <button 
+            type="button"
             onClick={handleCartClick} 
-            className="relative text-[#A8C3A0] hover:text-[#23313A] transition-colors p-1 cursor-pointer" 
+            className="relative text-[#A8C3A0] hover:text-[#23313A] transition-colors p-1 cursor-pointer shrink-0" 
             title="Shopping Cart"
           >
-            <ShoppingBag size={22} />
+            <ShoppingBag size={21} />
             {currentUser && cartCount > 0 && (
               <span className="absolute -top-1 -right-2 bg-[#E67E5F] text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center shadow-xs">
                 {cartCount}
@@ -316,18 +347,19 @@ export default function Navbar({ onOpenLogin }) {
 
           {/* Profile Dropdown / Login Button */}
           {currentUser ? (
-            <div className="relative" ref={dropdownRef}>
+            <div className="relative shrink-0" ref={dropdownRef}>
               <button
+                type="button"
                 onClick={() => setIsProfileOpen(!isProfileOpen)}
-                className="flex items-center gap-2 bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 hover:border-[#2F6B4F] hover:bg-white rounded-full py-1.5 px-3 transition-all shadow-xs focus:outline-none cursor-pointer"
+                className="flex items-center gap-1.5 sm:gap-2 bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 hover:border-[#2F6B4F] hover:bg-white rounded-full py-1.5 px-2 sm:px-3 transition-all shadow-xs focus:outline-none cursor-pointer"
               >
-                <div className="w-6 h-6 rounded-full bg-[#2F6B4F] text-white flex items-center justify-center text-xs font-bold uppercase">
+                <div className="w-6 h-6 rounded-full bg-[#2F6B4F] text-white flex items-center justify-center text-xs font-bold uppercase shrink-0">
                   {currentUser.full_name ? currentUser.full_name[0] : <User size={12} />}
                 </div>
-                <span className="text-xs font-bold text-[#23313A] max-w-[100px] truncate hidden md:inline">
+                <span className="text-xs font-bold text-[#23313A] max-w-[80px] sm:max-w-[100px] truncate hidden md:inline">
                   {currentUser.full_name || 'My Account'}
                 </span>
-                <ChevronDown size={14} className={`text-[#A8C3A0] transition-transform duration-200 ${isProfileOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown size={13} className={`text-[#A8C3A0] transition-transform duration-200 hidden sm:block ${isProfileOpen ? 'rotate-180' : ''}`} />
               </button>
 
               <div className={`absolute right-0 mt-2.5 w-56 bg-white border border-[#A8C3A0]/30 rounded-2xl shadow-xl py-2 z-50 text-xs ${isProfileOpen ? 'block' : 'hidden'}`}>
@@ -344,6 +376,15 @@ export default function Navbar({ onOpenLogin }) {
                   >
                     <Settings size={15} className="text-[#A8C3A0]" />
                     <span>My Account & Addresses</span>
+                  </Link>
+
+                  <Link
+                    to="/messages"
+                    onClick={() => setIsProfileOpen(false)}
+                    className="flex items-center gap-2.5 px-4 py-2.5 font-bold text-[#23313A] hover:bg-[#F6F1E8] hover:text-[#2F6B4F] transition-colors"
+                  >
+                    <MessageSquare size={15} className="text-[#A8C3A0]" />
+                    <span>My Inquiries & Chats</span>
                   </Link>
 
                   <Link
@@ -369,6 +410,7 @@ export default function Navbar({ onOpenLogin }) {
 
                 <div className="border-t border-[#A8C3A0]/20 pt-1 mt-1">
                   <button
+                    type="button"
                     onClick={handleLogout}
                     className="w-full flex items-center gap-2.5 px-4 py-2.5 font-bold text-[#E67E5F] hover:bg-red-50/50 transition-colors text-left cursor-pointer"
                   >
@@ -380,16 +422,88 @@ export default function Navbar({ onOpenLogin }) {
             </div>
           ) : (
             <button
+              type="button"
               onClick={handleTriggerLogin}
-              className="flex items-center gap-1.5 bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 hover:border-[#2F6B4F] hover:bg-white text-[#23313A] text-xs font-bold px-4 py-2 rounded-full transition-all shadow-xs cursor-pointer active:scale-95"
+              className="flex items-center gap-1 bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 hover:border-[#2F6B4F] hover:bg-white text-[#23313A] text-xs font-bold px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-full transition-all shadow-xs cursor-pointer active:scale-95 shrink-0"
             >
-              <User size={14} className="text-[#2F6B4F]" />
-              <span>Log In</span>
+              <User size={13} className="text-[#2F6B4F]" />
+              <span className="hidden xs:inline">Log In</span>
             </button>
           )}
 
+          {/* Mobile Menu Button */}
+          <button
+            type="button"
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="md:hidden text-[#23313A] p-1.5 hover:bg-[#F6F1E8] rounded-xl transition-colors shrink-0"
+            title="Toggle Menu"
+          >
+            {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+
         </div>
       </div>
+
+      {/* Mobile Navigation Drawer */}
+      {isMobileMenuOpen && (
+        <div className="md:hidden bg-white border-t border-[#A8C3A0]/20 px-6 py-4 space-y-3 animate-in slide-in-from-top-2">
+          <nav className="flex flex-col space-y-2 text-xs font-bold text-[#23313A]">
+            <Link
+              to="/"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="py-1.5 border-b border-[#F6F1E8]"
+            >
+              Home
+            </Link>
+            <Link
+              to="/shop"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="py-1.5 border-b border-[#F6F1E8]"
+            >
+              Shop Catalog
+            </Link>
+            <button
+              type="button"
+              onClick={handleConversationsClick}
+              className="py-1.5 flex items-center justify-between text-left border-b border-[#F6F1E8] text-[#2F6B4F]"
+            >
+              <span className="flex items-center gap-2">
+                <MessageSquare size={14} />
+                <span>Conversations</span>
+              </span>
+              <span className="text-[10px] bg-[#2F6B4F]/10 px-2 py-0.5 rounded-full font-bold">
+                Inquiries
+              </span>
+            </button>
+            <Link
+              to="/track"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="py-1.5 border-b border-[#F6F1E8]"
+            >
+              Track Order
+            </Link>
+            {currentUser && (
+              <Link
+                to="/orders"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="py-1.5 border-b border-[#F6F1E8]"
+              >
+                My Orders
+              </Link>
+            )}
+            {isAdmin && (
+              <Link
+                to="/admin"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="py-1.5 text-[#E67E5F] flex items-center gap-1.5 border-b border-[#F6F1E8]"
+              >
+                <Shield size={14} />
+                <span>Admin Dashboard</span>
+              </Link>
+            )}
+          </nav>
+        </div>
+      )}
     </header>
   );
 }

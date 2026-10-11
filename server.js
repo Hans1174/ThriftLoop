@@ -273,6 +273,10 @@ app.post('/api/auth/google', async (req, res) => {
     const payload = ticket.getPayload();
     const { email, name } = payload;
 
+    if (!email) {
+      return res.status(400).json({ error: 'Unable to extract email from Google identity token.' });
+    }
+
     const { data: existingUser, error: findErr } = await supabase
       .from('users')
       .select('*')
@@ -299,7 +303,12 @@ app.post('/api/auth/google', async (req, res) => {
       user = newUser;
     }
 
-    const token = jwt.sign({ user_id: user.user_id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign(
+      { user_id: user.user_id, email: user.email, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
     const { password_hash, ...safeUser } = user;
     res.json({ message: 'Google login successful', user: safeUser, token });
   } catch (err) {
@@ -1339,7 +1348,7 @@ app.delete('/api/admin/orders/:id', async (req, res) => {
   }
 });
 
-// --- AI STYLIST & LOGISTICS CONCIERGE (gemini-3.6-flash) ---
+// --- AI STYLIST & LOGISTICS CONCIERGE (gemini-2.5-flash / gemini-1.5-flash) ---
 
 app.post('/api/chat', async (req, res) => {
   const { message, user_id, email, current_order_id } = req.body;
@@ -1383,9 +1392,7 @@ app.post('/api/chat', async (req, res) => {
       ).join('\n');
     }
 
-    // Resolves both '3.6-flash' and 'gemini-3.6-flash'
-    let rawModel = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
-    const modelName = rawModel.startsWith('gemini-') ? rawModel : `gemini-${rawModel}`;
+    let configuredModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
     const systemInstruction = `You are 'Loopie', the AI stylist and order logistics concierge for 'ThriftLoop'—an online curated vintage boutique in the Philippines.
 
@@ -1406,23 +1413,28 @@ GUIDELINES:
     let response;
     try {
       response = await ai.models.generateContent({
-        model: modelName,
+        model: configuredModel,
         contents: message,
         config: { systemInstruction },
       });
     } catch (primaryErr) {
-      console.warn(`⚠️ Model ${modelName} error (${primaryErr.message}). Attempting fallback to gemini-1.5-flash...`);
-      response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
-        contents: message,
-        config: { systemInstruction },
-      });
+      console.warn(`⚠️ Model ${configuredModel} failed (${primaryErr.message}). Falling back to gemini-1.5-flash...`);
+      try {
+        response = await ai.models.generateContent({
+          model: 'gemini-1.5-flash',
+          contents: message,
+          config: { systemInstruction },
+        });
+      } catch (fallbackErr) {
+        console.error('❌ Both Gemini models failed:', fallbackErr.message);
+        return res.json({ reply: "Loopie is currently unable to consult catalog records. Please message the seller directly via Conversations for instant help!" });
+      }
     }
 
     res.json({ reply: response?.text || 'I could not retrieve styling or tracking details right now.' });
   } catch (err) {
-    console.error('❌ Concierge generateContent failure:', err.message);
-    res.json({ reply: "I'm having trouble retrieving live records at the moment. Please try again shortly or contact our seller directly via Conversations." });
+    console.error('❌ Concierge chat route error:', err.message);
+    res.json({ reply: "I'm having trouble retrieving live records at the moment. Please message the seller directly via Conversations." });
   }
 });
 

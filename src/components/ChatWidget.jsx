@@ -1,106 +1,115 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  MessageSquare, X, Send, Bot, User, Bell, 
-  Package, Loader2 
+  Bot, X, Send, Package, Shirt, 
+  Ruler, Loader2, User, GripVertical 
 } from 'lucide-react';
-import { requestNotificationPermission, showBrowserNotification } from '../utils/notification';
-
-const API_URL = import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
+import { API_URL } from '../config';
 
 export default function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
     {
-      id: 1,
       sender: 'bot',
-      text: "Hello! I'm Loopie, your ThriftLoop vintage concierge 🌿\n\nAsk me about garment sizing, flat-lay measurements (PTP), or get instant shipment updates (e.g., 'Where is my order #4?').",
+      text: "Hi! I'm Loopie. Ask me about garment sizing, flat-lay measurements (PTP), or order status.",
     },
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [notifGranted, setNotifGranted] = useState(
-    typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted'
-  );
 
+  // Movable button positioning (Y-axis clamped to screen)
+  const [posY, setPosY] = useState(() => Math.max(120, window.innerHeight * 0.65));
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartY = useRef(0);
+  const initialPosY = useRef(0);
+  const hasMoved = useRef(false);
   const messagesEndRef = useRef(null);
-  const previousOrderStatusesRef = useRef({});
 
-  const currentUser = (() => {
-    try {
-      return JSON.parse(localStorage.getItem('thriftloop_user')) || {};
-    } catch {
-      return {};
-    }
-  })();
+  const storedUser = localStorage.getItem('thriftloop_user');
+  const currentUser = storedUser ? JSON.parse(storedUser) : null;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isOpen]);
+  }, [messages]);
 
-  const handleEnableNotifications = async () => {
-    const granted = await requestNotificationPermission();
-    setNotifGranted(granted);
-    if (granted) {
-      showBrowserNotification('ThriftLoop Alerts Enabled', {
-        body: 'You will receive notifications for order dispatches and chat replies.',
-      });
+  useEffect(() => {
+    const handleResize = () => {
+      setPosY((prev) => Math.min(Math.max(80, prev), window.innerHeight - 90));
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // --- Drag Event Handlers (Mouse & Touch) ---
+  const handleDragStart = (clientY) => {
+    setIsDragging(true);
+    hasMoved.current = false;
+    dragStartY.current = clientY;
+    initialPosY.current = posY;
+  };
+
+  const handleDragMove = (clientY) => {
+    if (!isDragging) return;
+    const deltaY = clientY - dragStartY.current;
+    if (Math.abs(deltaY) > 5) {
+      hasMoved.current = true;
+    }
+    const newY = initialPosY.current + deltaY;
+    const clampedY = Math.min(Math.max(80, newY), window.innerHeight - 90);
+    setPosY(clampedY);
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+  };
+
+  useEffect(() => {
+    const onMouseMove = (e) => {
+      if (isDragging) handleDragMove(e.clientY);
+    };
+    const onMouseUp = () => {
+      if (isDragging) handleDragEnd();
+    };
+
+    if (isDragging) {
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [isDragging]);
+
+  useEffect(() => {
+    const onTouchMove = (e) => {
+      if (isDragging && e.touches[0]) handleDragMove(e.touches[0].clientY);
+    };
+    const onTouchEnd = () => {
+      if (isDragging) handleDragEnd();
+    };
+
+    if (isDragging) {
+      window.addEventListener('touchmove', onTouchMove, { passive: false });
+      window.addEventListener('touchend', onTouchEnd);
+    }
+    return () => {
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [isDragging]);
+
+  const handleButtonClick = () => {
+    if (!hasMoved.current) {
+      setIsOpen(!isOpen);
     }
   };
 
-  // Background order watcher
-  useEffect(() => {
-    if (!currentUser.email) return;
+  const handleSend = async (messageToSend) => {
+    const text = (messageToSend || input).trim();
+    if (!text || loading) return;
 
-    const pollOrderUpdates = async () => {
-      try {
-        const res = await fetch(`${API_URL}/api/orders/user/${encodeURIComponent(currentUser.email)}`);
-        if (!res.ok) return;
-        const orders = await res.json();
-
-        orders.forEach((ord) => {
-          const prevStatus = previousOrderStatusesRef.current[ord.order_id];
-
-          if (prevStatus && prevStatus !== ord.status) {
-            const statusUpper = ord.status.toUpperCase();
-            showBrowserNotification(`ThriftLoop Order #${ord.order_id} Update`, {
-              body: `Your parcel is now ${statusUpper} via ${ord.courier}! Tracking: ${ord.tracking_number || 'In transit'}`,
-              url: `/track/${ord.order_id}`,
-              tag: `order-update-${ord.order_id}`,
-            });
-
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: Date.now(),
-                sender: 'bot',
-                text: `📦 Live Order Notice: Order #${ord.order_id} is now ${statusUpper} via ${ord.courier}. Tracking: ${ord.tracking_number}`,
-              },
-            ]);
-          }
-
-          previousOrderStatusesRef.current[ord.order_id] = ord.status;
-        });
-      } catch (err) {
-        console.warn('Order status polling notice:', err);
-      }
-    };
-
-    pollOrderUpdates();
-    const interval = setInterval(pollOrderUpdates, 30000);
-    return () => clearInterval(interval);
-  }, [currentUser.email]);
-
-  const handleSendMessage = async (e) => {
-    if (e) e.preventDefault();
-    if (!input.trim() || loading) return;
-
-    const userMessage = input.trim();
+    setMessages((prev) => [...prev, { sender: 'user', text }]);
     setInput('');
-
-    setMessages((prev) => [
-      ...prev,
-      { id: Date.now(), sender: 'user', text: userMessage },
-    ]);
     setLoading(true);
 
     try {
@@ -108,29 +117,21 @@ export default function ChatWidget() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: userMessage,
-          user_id: currentUser.user_id || null,
-          email: currentUser.email || null,
+          message: text,
+          user_id: currentUser?.user_id,
+          email: currentUser?.email,
         }),
       });
 
       const data = await res.json();
-      const botReply = data.reply || "I couldn't consult styling or delivery records right now.";
-
       setMessages((prev) => [
         ...prev,
-        { id: Date.now() + 1, sender: 'bot', text: botReply },
+        { sender: 'bot', text: data.reply || 'I could not retrieve details at this time.' },
       ]);
-
-      if (document.hidden) {
-        showBrowserNotification('ThriftLoop Concierge', {
-          body: botReply.length > 90 ? `${botReply.slice(0, 90)}...` : botReply,
-        });
-      }
-    } catch (err) {
+    } catch {
       setMessages((prev) => [
         ...prev,
-        { id: Date.now() + 1, sender: 'bot', text: 'Styling & logistics service is currently offline.' },
+        { sender: 'bot', text: 'Loopie is currently offline. Please try again shortly.' },
       ]);
     } finally {
       setLoading(false);
@@ -138,141 +139,148 @@ export default function ChatWidget() {
   };
 
   return (
-    <div 
-      className="fixed bottom-6 right-6 font-sans" 
-      style={{ zIndex: 99999 }}
-    >
-      {/* Floating Trigger Button */}
+    <>
+      {/* 1. Movable Side-Docked Button */}
       {!isOpen && (
-        <button
-          onClick={() => setIsOpen(true)}
-          className="relative bg-[#2F6B4F] hover:bg-[#23313A] text-white p-4 rounded-full shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 flex items-center justify-center cursor-pointer"
-          title="Open AI Concierge & Order Assistant"
+        <div
+          style={{ top: `${posY}px` }}
+          className="fixed right-0 z-50 flex items-center select-none touch-none"
         >
-          <MessageSquare size={24} />
-          <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-[#E67E5F] rounded-full border-2 border-white animate-pulse"></span>
-        </button>
+          <div
+            onMouseDown={(e) => handleDragStart(e.clientY)}
+            onTouchStart={(e) => handleDragStart(e.touches[0].clientY)}
+            onClick={handleButtonClick}
+            className="flex items-center gap-1.5 bg-[#2F6B4F] hover:bg-[#23313A] text-white py-2.5 pl-2.5 pr-3.5 rounded-l-2xl shadow-xl border-l border-t border-b border-[#A8C3A0]/40 cursor-grab active:cursor-grabbing transition-transform active:scale-95"
+            title="Drag to reposition or click to open"
+          >
+            <GripVertical size={13} className="text-white/40 -mr-0.5" />
+            <div className="w-7 h-7 rounded-full bg-white/15 flex items-center justify-center">
+              <Bot size={17} className="text-white" />
+            </div>
+            <span className="text-xs font-bold hidden sm:inline">Loopie</span>
+          </div>
+        </div>
       )}
 
-      {/* Chat Window Panel */}
+      {/* 2. Refined Chat Window */}
       {isOpen && (
-        <div className="bg-white border border-[#A8C3A0]/40 rounded-3xl shadow-2xl w-[92vw] sm:w-[380px] h-[530px] flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-5 duration-300">
+        <div className="fixed bottom-3 right-3 sm:bottom-5 sm:right-5 z-50 w-[94vw] sm:w-[380px] max-w-[400px] h-[85dvh] sm:h-[540px] max-h-[600px] bg-white rounded-3xl shadow-2xl border border-[#A8C3A0]/40 flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
           
-          <div className="bg-[#2F6B4F] text-white p-4 flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                <Bot size={18} />
+          {/* Clean Header: Just Loopie + Status + Close */}
+          <div className="bg-[#2F6B4F] text-white px-5 py-4 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center">
+                <Bot size={20} className="text-white" />
               </div>
               <div>
-                <h3 className="font-serif font-bold text-sm leading-none">ThriftLoop Concierge</h3>
-                <span className="text-[10px] text-[#A8C3A0] font-semibold flex items-center gap-1 mt-0.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                  Gemini 3.6 • Styling & Orders
-                </span>
+                <h3 className="font-serif font-bold text-base leading-tight">Loopie</h3>
+                <p className="text-[11px] text-[#A8C3A0] flex items-center gap-1.5 mt-0.5 font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#A8C3A0] animate-pulse"></span>
+                  Online
+                </p>
               </div>
             </div>
-
-            <div className="flex items-center gap-1">
-              {!notifGranted && (
-                <button
-                  onClick={handleEnableNotifications}
-                  className="text-white/80 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
-                  title="Enable order dispatch notifications"
-                >
-                  <Bell size={16} />
-                </button>
-              )}
-              <button
-                onClick={() => setIsOpen(false)}
-                className="text-white/80 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="p-1.5 text-white/80 hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+              title="Close"
+            >
+              <X size={18} />
+            </button>
           </div>
 
-          {!notifGranted && (
-            <div className="bg-[#F6F1E8] border-b border-[#A8C3A0]/30 px-3.5 py-2 flex items-center justify-between text-[11px]">
-              <span className="text-[#23313A]/80 font-medium">Receive real-time parcel notifications?</span>
-              <button
-                onClick={handleEnableNotifications}
-                className="bg-[#2F6B4F] text-white px-2.5 py-1 rounded-md font-bold text-[10px] hover:bg-[#23313A] transition-colors cursor-pointer"
-              >
-                Enable
-              </button>
-            </div>
-          )}
-
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#F6F1E8]/25 text-xs">
-            {messages.map((m) => (
-              <div
-                key={m.id}
-                className={`flex gap-2 items-start ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                {m.sender === 'bot' && (
-                  <div className="w-6 h-6 rounded-full bg-[#2F6B4F]/15 text-[#2F6B4F] flex items-center justify-center shrink-0 mt-0.5">
-                    <Bot size={13} />
-                  </div>
-                )}
+          {/* Messages Feed */}
+          <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-[#FAF7F2]">
+            {messages.map((m, idx) => {
+              const isUser = m.sender === 'user';
+              return (
                 <div
-                  className={`max-w-[80%] px-3.5 py-2.5 rounded-2xl leading-relaxed whitespace-pre-wrap ${
-                    m.sender === 'user'
-                      ? 'bg-[#2F6B4F] text-white rounded-tr-none shadow-2xs'
-                      : 'bg-white border border-[#A8C3A0]/30 text-[#23313A] rounded-tl-none shadow-2xs'
-                  }`}
+                  key={idx}
+                  className={`flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}
                 >
-                  {m.text}
-                </div>
-                {m.sender === 'user' && (
-                  <div className="w-6 h-6 rounded-full bg-[#23313A] text-white flex items-center justify-center shrink-0 mt-0.5">
-                    <User size={13} />
+                  {!isUser && (
+                    <div className="w-7 h-7 rounded-full bg-[#2F6B4F]/10 text-[#2F6B4F] flex items-center justify-center shrink-0 mb-1">
+                      <Bot size={15} />
+                    </div>
+                  )}
+
+                  <div
+                    className={`max-w-[80%] px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed shadow-xs ${
+                      isUser
+                        ? 'bg-[#2F6B4F] text-white rounded-br-xs'
+                        : 'bg-white text-[#23313A] border border-[#A8C3A0]/30 rounded-bl-xs'
+                    }`}
+                  >
+                    {m.text}
                   </div>
-                )}
-              </div>
-            ))}
+
+                  {isUser && (
+                    <div className="w-7 h-7 rounded-full bg-[#23313A] text-white flex items-center justify-center shrink-0 mb-1">
+                      <User size={13} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
 
             {loading && (
-              <div className="flex items-center gap-2 text-[#A8C3A0] text-xs font-semibold">
-                <Loader2 size={13} className="animate-spin text-[#2F6B4F]" />
-                <span>Consulting catalog measurements & orders...</span>
+              <div className="flex items-center gap-2 text-xs text-[#23313A]/60 p-2">
+                <Loader2 size={15} className="animate-spin text-[#2F6B4F]" />
+                <span className="text-[11px]">Loopie is checking archive records...</span>
               </div>
             )}
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="px-3 py-1.5 bg-white border-t border-[#A8C3A0]/20 flex gap-1.5 overflow-x-auto text-[10px]">
+          {/* Quick Action Chips */}
+          <div className="px-3 py-2 bg-white border-t border-[#A8C3A0]/20 flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0">
             <button
-              onClick={() => setInput('What is the status of my order?')}
-              className="bg-[#F6F1E8] hover:bg-[#A8C3A0]/30 text-[#23313A] px-2.5 py-1 rounded-full whitespace-nowrap font-medium cursor-pointer"
+              type="button"
+              onClick={() => handleSend('What is the status of my order?')}
+              className="flex items-center gap-1 bg-[#F6F1E8] hover:bg-[#FAF7F2] text-[#23313A] text-[11px] font-bold px-3 py-1 rounded-full border border-[#A8C3A0]/30 whitespace-nowrap cursor-pointer transition-colors"
             >
-              📦 Track my order
+              <Package size={12} className="text-[#2F6B4F]" />
+              <span>Track order</span>
             </button>
             <button
-              onClick={() => setInput('What tops are currently in stock?')}
-              className="bg-[#F6F1E8] hover:bg-[#A8C3A0]/30 text-[#23313A] px-2.5 py-1 rounded-full whitespace-nowrap font-medium cursor-pointer"
+              type="button"
+              onClick={() => handleSend('What tops are currently available?')}
+              className="flex items-center gap-1 bg-[#F6F1E8] hover:bg-[#FAF7F2] text-[#23313A] text-[11px] font-bold px-3 py-1 rounded-full border border-[#A8C3A0]/30 whitespace-nowrap cursor-pointer transition-colors"
             >
-              👕 Tops available
+              <Shirt size={12} className="text-[#2F6B4F]" />
+              <span>Available tops</span>
             </button>
             <button
-              onClick={() => setInput('How do I measure pit-to-pit sizing?')}
-              className="bg-[#F6F1E8] hover:bg-[#A8C3A0]/30 text-[#23313A] px-2.5 py-1 rounded-full whitespace-nowrap font-medium cursor-pointer"
+              type="button"
+              onClick={() => handleSend('How do pit-to-pit (PTP) measurements work?')}
+              className="flex items-center gap-1 bg-[#F6F1E8] hover:bg-[#FAF7F2] text-[#23313A] text-[11px] font-bold px-3 py-1 rounded-full border border-[#A8C3A0]/30 whitespace-nowrap cursor-pointer transition-colors"
             >
-              📏 Sizing help
+              <Ruler size={12} className="text-[#2F6B4F]" />
+              <span>Sizing guide</span>
             </button>
           </div>
 
-          <form onSubmit={handleSendMessage} className="p-3 bg-white border-t border-[#A8C3A0]/20 flex gap-2 items-center">
+          {/* Input Bar */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSend();
+            }}
+            className="p-3 bg-white border-t border-[#A8C3A0]/20 flex items-center gap-2 shrink-0"
+          >
             <input
               type="text"
-              placeholder="Ask about sizing or order #..."
+              placeholder="Ask Loopie..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              className="flex-1 bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
+              className="flex-1 bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-full px-4 py-2 text-xs text-[#23313A] focus:outline-none focus:border-[#2F6B4F] focus:bg-white"
             />
             <button
               type="submit"
               disabled={loading || !input.trim()}
-              className="bg-[#2F6B4F] hover:bg-[#23313A] disabled:opacity-40 text-white p-2.5 rounded-xl transition-colors cursor-pointer shrink-0"
+              className="bg-[#2F6B4F] hover:bg-[#23313A] disabled:opacity-40 text-white p-2.5 rounded-full transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
+              title="Send"
             >
               <Send size={14} />
             </button>
@@ -280,6 +288,6 @@ export default function ChatWidget() {
 
         </div>
       )}
-    </div>
+    </>
   );
 }

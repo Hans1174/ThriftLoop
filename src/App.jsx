@@ -21,6 +21,7 @@ import MyOrders from './MyOrders';
 import Login from './Login';
 import ChatWidget from './components/ChatWidget';
 import ResetPassword from './ResetPassword';
+import BuyerMessages from './BuyerMessages';
 
 const GOOGLE_CLIENT_ID = '1089526724617-1e8fas2jq3noffeigk0kh5v7gfsids1f.apps.googleusercontent.com';
 
@@ -58,6 +59,9 @@ export default function App() {
                 <Route path="/account" element={<MyAccount />} />
                 <Route path="/register" element={<Register />} />
 
+                {/* Direct Buyer-to-Seller Conversations */}
+                <Route path="/messages" element={<BuyerMessages />} />
+
                 {/* Password Recovery Routes */}
                 <Route path="/forgot-password" element={<ResetPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
@@ -89,7 +93,7 @@ export default function App() {
             {/* Global Persistent Footer */}
             <Footer />
 
-            {/* Dual AI Styling & Logistics Assistant with Realtime Notifications */}
+            {/* AI Concierge (Loopie) Side Widget */}
             <ChatWidget />
 
             {/* Global Interactive Login Modal */}
