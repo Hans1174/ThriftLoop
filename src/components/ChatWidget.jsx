@@ -1,114 +1,109 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Bot, X, Send, Package, Shirt, 
-  Ruler, Loader2, User, GripVertical 
-} from 'lucide-react';
 import { API_URL } from '../config';
+import React, { useState, useRef, useEffect } from 'react';
+import { ChevronLeft, ChevronRight, X, Send, Loader2 } from 'lucide-react';
 
 export default function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
+  const [input, setInput] = useState('');
   const [messages, setMessages] = useState([
     {
       sender: 'bot',
-      text: "Hi! I'm Loopie. Ask me about garment sizing, flat-lay measurements (PTP), or order status.",
+      text: "Hi! I'm Loopie. Ask me about sizing, flat-lay measurements (PTP), or order status.",
     },
   ]);
-  const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-
-  // Movable button positioning (Y-axis clamped to screen)
-  const [posY, setPosY] = useState(() => Math.max(120, window.innerHeight * 0.65));
-  const [isDragging, setIsDragging] = useState(false);
-  const dragStartY = useRef(0);
-  const initialPosY = useRef(0);
-  const hasMoved = useRef(false);
   const messagesEndRef = useRef(null);
+
+  // Side-docking & vertical drag state
+  const [position, setPosition] = useState({
+    side: 'right', // 'left' | 'right'
+    y: typeof window !== 'undefined' ? window.innerHeight * 0.55 : 350,
+  });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragCoords, setDragCoords] = useState(null);
+
+  const dragStartRef = useRef({ x: 0, y: 0, initialY: 0 });
+  const hasMovedRef = useRef(false);
 
   const storedUser = localStorage.getItem('thriftloop_user');
   const currentUser = storedUser ? JSON.parse(storedUser) : null;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, loading]);
 
   useEffect(() => {
     const handleResize = () => {
-      setPosY((prev) => Math.min(Math.max(80, prev), window.innerHeight - 90));
+      setPosition((prev) => ({
+        ...prev,
+        y: Math.min(Math.max(prev.y, 80), window.innerHeight - 100),
+      }));
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // --- Drag Event Handlers (Mouse & Touch) ---
-  const handleDragStart = (clientY) => {
+  const handlePointerDown = (e) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+
+    e.currentTarget.setPointerCapture(e.pointerId);
     setIsDragging(true);
-    hasMoved.current = false;
-    dragStartY.current = clientY;
-    initialPosY.current = posY;
+    hasMovedRef.current = false;
+    dragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      initialY: position.y,
+    };
   };
 
-  const handleDragMove = (clientY) => {
+  const handlePointerMove = (e) => {
     if (!isDragging) return;
-    const deltaY = clientY - dragStartY.current;
-    if (Math.abs(deltaY) > 5) {
-      hasMoved.current = true;
+
+    const deltaX = e.clientX - dragStartRef.current.x;
+    const deltaY = e.clientY - dragStartRef.current.y;
+
+    if (Math.hypot(deltaX, deltaY) > 5) {
+      hasMovedRef.current = true;
     }
-    const newY = initialPosY.current + deltaY;
-    const clampedY = Math.min(Math.max(80, newY), window.innerHeight - 90);
-    setPosY(clampedY);
+
+    const clampedY = Math.min(
+      Math.max(dragStartRef.current.initialY + deltaY, 70),
+      window.innerHeight - 80
+    );
+
+    setDragCoords({
+      x: e.clientX,
+      y: clampedY,
+    });
   };
 
-  const handleDragEnd = () => {
+  const handlePointerUp = (e) => {
+    if (!isDragging) return;
     setIsDragging(false);
-  };
 
-  useEffect(() => {
-    const onMouseMove = (e) => {
-      if (isDragging) handleDragMove(e.clientY);
-    };
-    const onMouseUp = () => {
-      if (isDragging) handleDragEnd();
-    };
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {}
 
-    if (isDragging) {
-      window.addEventListener('mousemove', onMouseMove);
-      window.addEventListener('mouseup', onMouseUp);
-    }
-    return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-    };
-  }, [isDragging]);
+    if (hasMovedRef.current) {
+      const snapSide = e.clientX < window.innerWidth / 2 ? 'left' : 'right';
+      const finalY = dragCoords ? dragCoords.y : position.y;
 
-  useEffect(() => {
-    const onTouchMove = (e) => {
-      if (isDragging && e.touches[0]) handleDragMove(e.touches[0].clientY);
-    };
-    const onTouchEnd = () => {
-      if (isDragging) handleDragEnd();
-    };
-
-    if (isDragging) {
-      window.addEventListener('touchmove', onTouchMove, { passive: false });
-      window.addEventListener('touchend', onTouchEnd);
-    }
-    return () => {
-      window.removeEventListener('touchmove', onTouchMove);
-      window.removeEventListener('touchend', onTouchEnd);
-    };
-  }, [isDragging]);
-
-  const handleButtonClick = () => {
-    if (!hasMoved.current) {
-      setIsOpen(!isOpen);
+      setPosition({
+        side: snapSide,
+        y: finalY,
+      });
+      setDragCoords(null);
+    } else {
+      setIsOpen((prev) => !prev);
     }
   };
 
-  const handleSend = async (messageToSend) => {
-    const text = (messageToSend || input).trim();
-    if (!text || loading) return;
+  const handleSend = async (customMessage) => {
+    const messageToSend = (typeof customMessage === 'string' ? customMessage : input).trim();
+    if (!messageToSend || loading) return;
 
-    setMessages((prev) => [...prev, { sender: 'user', text }]);
+    setMessages((prev) => [...prev, { sender: 'user', text: messageToSend }]);
     setInput('');
     setLoading(true);
 
@@ -117,7 +112,7 @@ export default function ChatWidget() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: text,
+          message: messageToSend,
           user_id: currentUser?.user_id,
           email: currentUser?.email,
         }),
@@ -126,7 +121,7 @@ export default function ChatWidget() {
       const data = await res.json();
       setMessages((prev) => [
         ...prev,
-        { sender: 'bot', text: data.reply || 'I could not retrieve details at this time.' },
+        { sender: 'bot', text: data.reply || 'Could not retrieve details right now.' },
       ]);
     } catch {
       setMessages((prev) => [
@@ -138,52 +133,63 @@ export default function ChatWidget() {
     }
   };
 
+  const triggerStyle = dragCoords
+    ? {
+        left: `${dragCoords.x - 16}px`,
+        top: `${dragCoords.y}px`,
+        transition: 'none',
+      }
+    : {
+        top: `${position.y}px`,
+        left: position.side === 'left' ? '0px' : 'auto',
+        right: position.side === 'right' ? '0px' : 'auto',
+        transition: 'all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
+      };
+
   return (
     <>
-      {/* 1. Movable Side-Docked Button */}
+      {/* 1. Movable Edge Arrow Tab */}
       {!isOpen && (
         <div
-          style={{ top: `${posY}px` }}
-          className="fixed right-0 z-50 flex items-center select-none touch-none"
+          style={triggerStyle}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          className={`fixed z-50 select-none touch-none cursor-grab active:cursor-grabbing flex items-center shadow-xl ${
+            isDragging ? 'scale-105 opacity-90' : 'hover:scale-105'
+          }`}
+          title="Open Loopie"
         >
           <div
-            onMouseDown={(e) => handleDragStart(e.clientY)}
-            onTouchStart={(e) => handleDragStart(e.touches[0].clientY)}
-            onClick={handleButtonClick}
-            className="flex items-center gap-1.5 bg-[#2F6B4F] hover:bg-[#23313A] text-white py-2.5 pl-2.5 pr-3.5 rounded-l-2xl shadow-xl border-l border-t border-b border-[#A8C3A0]/40 cursor-grab active:cursor-grabbing transition-transform active:scale-95"
-            title="Drag to reposition or click to open"
+            className={`bg-[#2F6B4F] hover:bg-[#23313A] text-white flex items-center justify-center py-3.5 px-2 border border-[#A8C3A0]/40 transition-colors shadow-md ${
+              position.side === 'left'
+                ? 'rounded-r-xl border-l-0 pl-2 pr-2.5'
+                : 'rounded-l-xl border-r-0 pr-2 pl-2.5'
+            }`}
           >
-            <GripVertical size={13} className="text-white/40 -mr-0.5" />
-            <div className="w-7 h-7 rounded-full bg-white/15 flex items-center justify-center">
-              <Bot size={17} className="text-white" />
-            </div>
-            <span className="text-xs font-bold hidden sm:inline">Loopie</span>
+            {position.side === 'left' ? (
+              <ChevronRight size={18} className="text-white" />
+            ) : (
+              <ChevronLeft size={18} className="text-white" />
+            )}
           </div>
         </div>
       )}
 
       {/* 2. Refined Chat Window */}
       {isOpen && (
-        <div className="fixed bottom-3 right-3 sm:bottom-5 sm:right-5 z-50 w-[94vw] sm:w-[380px] max-w-[400px] h-[85dvh] sm:h-[540px] max-h-[600px] bg-white rounded-3xl shadow-2xl border border-[#A8C3A0]/40 flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
-          
-          {/* Clean Header: Just Loopie + Status + Close */}
-          <div className="bg-[#2F6B4F] text-white px-5 py-4 flex items-center justify-between shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center">
-                <Bot size={20} className="text-white" />
-              </div>
-              <div>
-                <h3 className="font-serif font-bold text-base leading-tight">Loopie</h3>
-                <p className="text-[11px] text-[#A8C3A0] flex items-center gap-1.5 mt-0.5 font-medium">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#A8C3A0] animate-pulse"></span>
-                  Online
-                </p>
-              </div>
-            </div>
+        <div
+          className={`fixed z-50 bottom-4 ${
+            position.side === 'left' ? 'left-3 sm:left-6' : 'right-3 sm:right-6'
+          } w-[92vw] sm:w-[370px] max-w-[390px] h-[82dvh] sm:h-[520px] max-h-[580px] bg-white rounded-3xl shadow-2xl border border-[#A8C3A0]/40 flex flex-col overflow-hidden animate-in zoom-in-95 duration-150`}
+        >
+          {/* Header */}
+          <div className="bg-[#2F6B4F] text-white px-5 py-3.5 flex items-center justify-between border-b border-[#A8C3A0]/20 shrink-0">
+            <h3 className="font-serif font-bold text-base tracking-tight leading-tight">Loopie</h3>
             <button
               type="button"
               onClick={() => setIsOpen(false)}
-              className="p-1.5 text-white/80 hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+              className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
               title="Close"
             >
               <X size={18} />
@@ -191,73 +197,60 @@ export default function ChatWidget() {
           </div>
 
           {/* Messages Feed */}
-          <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-[#FAF7F2]">
+          <div className="flex-1 p-4 overflow-y-auto space-y-2.5 text-xs bg-[#FAF7F2]">
             {messages.map((m, idx) => {
               const isUser = m.sender === 'user';
               return (
                 <div
                   key={idx}
-                  className={`flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}
+                  className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
                 >
-                  {!isUser && (
-                    <div className="w-7 h-7 rounded-full bg-[#2F6B4F]/10 text-[#2F6B4F] flex items-center justify-center shrink-0 mb-1">
-                      <Bot size={15} />
-                    </div>
-                  )}
-
                   <div
-                    className={`max-w-[80%] px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed shadow-xs ${
+                    className={`max-w-[82%] px-3.5 py-2.5 rounded-2xl leading-relaxed shadow-xs ${
                       isUser
                         ? 'bg-[#2F6B4F] text-white rounded-br-xs'
-                        : 'bg-white text-[#23313A] border border-[#A8C3A0]/30 rounded-bl-xs'
+                        : 'bg-white border border-[#A8C3A0]/30 text-[#23313A] rounded-bl-xs'
                     }`}
                   >
                     {m.text}
                   </div>
-
-                  {isUser && (
-                    <div className="w-7 h-7 rounded-full bg-[#23313A] text-white flex items-center justify-center shrink-0 mb-1">
-                      <User size={13} />
-                    </div>
-                  )}
                 </div>
               );
             })}
 
             {loading && (
-              <div className="flex items-center gap-2 text-xs text-[#23313A]/60 p-2">
-                <Loader2 size={15} className="animate-spin text-[#2F6B4F]" />
-                <span className="text-[11px]">Loopie is checking archive records...</span>
+              <div className="flex justify-start">
+                <div className="bg-white border border-[#A8C3A0]/30 px-3 py-2 rounded-2xl rounded-bl-xs shadow-xs flex items-center gap-2 text-[#23313A]/60">
+                  <Loader2 size={13} className="animate-spin text-[#2F6B4F]" />
+                  <span>Loopie is checking records...</span>
+                </div>
               </div>
             )}
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Quick Action Chips */}
+          {/* Action Chips */}
           <div className="px-3 py-2 bg-white border-t border-[#A8C3A0]/20 flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0">
             <button
               type="button"
               onClick={() => handleSend('What is the status of my order?')}
-              className="flex items-center gap-1 bg-[#F6F1E8] hover:bg-[#FAF7F2] text-[#23313A] text-[11px] font-bold px-3 py-1 rounded-full border border-[#A8C3A0]/30 whitespace-nowrap cursor-pointer transition-colors"
+              className="bg-[#F6F1E8] hover:bg-[#FAF7F2] text-[#23313A] text-[11px] font-bold px-3 py-1 rounded-full border border-[#A8C3A0]/30 whitespace-nowrap cursor-pointer transition-colors"
             >
-              <Package size={12} className="text-[#2F6B4F]" />
-              <span>Track order</span>
+              Track order
             </button>
             <button
               type="button"
               onClick={() => handleSend('What tops are currently available?')}
-              className="flex items-center gap-1 bg-[#F6F1E8] hover:bg-[#FAF7F2] text-[#23313A] text-[11px] font-bold px-3 py-1 rounded-full border border-[#A8C3A0]/30 whitespace-nowrap cursor-pointer transition-colors"
+              className="bg-[#F6F1E8] hover:bg-[#FAF7F2] text-[#23313A] text-[11px] font-bold px-3 py-1 rounded-full border border-[#A8C3A0]/30 whitespace-nowrap cursor-pointer transition-colors"
             >
-              <Shirt size={12} className="text-[#2F6B4F]" />
-              <span>Available tops</span>
+              Available tops
             </button>
             <button
               type="button"
               onClick={() => handleSend('How do pit-to-pit (PTP) measurements work?')}
-              className="flex items-center gap-1 bg-[#F6F1E8] hover:bg-[#FAF7F2] text-[#23313A] text-[11px] font-bold px-3 py-1 rounded-full border border-[#A8C3A0]/30 whitespace-nowrap cursor-pointer transition-colors"
+              className="bg-[#F6F1E8] hover:bg-[#FAF7F2] text-[#23313A] text-[11px] font-bold px-3 py-1 rounded-full border border-[#A8C3A0]/30 whitespace-nowrap cursor-pointer transition-colors"
             >
-              <Ruler size={12} className="text-[#2F6B4F]" />
-              <span>Sizing guide</span>
+              Sizing guide
             </button>
           </div>
 
@@ -267,25 +260,24 @@ export default function ChatWidget() {
               e.preventDefault();
               handleSend();
             }}
-            className="p-3 bg-white border-t border-[#A8C3A0]/20 flex items-center gap-2 shrink-0"
+            className="p-2.5 bg-white border-t border-[#A8C3A0]/20 flex gap-2 shrink-0"
           >
             <input
               type="text"
               placeholder="Ask Loopie..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              className="flex-1 bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-full px-4 py-2 text-xs text-[#23313A] focus:outline-none focus:border-[#2F6B4F] focus:bg-white"
+              className="flex-1 bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2 text-xs text-[#23313A] focus:outline-none focus:border-[#2F6B4F] focus:bg-white transition-all"
             />
             <button
               type="submit"
               disabled={loading || !input.trim()}
-              className="bg-[#2F6B4F] hover:bg-[#23313A] disabled:opacity-40 text-white p-2.5 rounded-full transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
+              className="bg-[#2F6B4F] hover:bg-[#23313A] disabled:opacity-40 text-white p-2.5 rounded-xl transition-colors shadow-xs cursor-pointer"
               title="Send"
             >
               <Send size={14} />
             </button>
           </form>
-
         </div>
       )}
     </>

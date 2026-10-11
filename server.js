@@ -11,7 +11,9 @@ import nodemailer from 'nodemailer';
 dotenv.config();
 
 const app = express();
-app.use(cors());
+
+// Permissive CORS to allow seamless desktop & mobile web authentication
+app.use(cors({ origin: true, credentials: true }));
 
 // High-capacity body parser for base64 images (50MB)
 app.use(express.json({ limit: '50mb' }));
@@ -42,7 +44,8 @@ app.get('/', (req, res) => {
 });
 
 // 2. Services
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+const geminiApiKey = (process.env.GEMINI_API_KEY || '').trim();
+const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
 const mailTransporter = nodemailer.createTransport({
   service: 'gmail',
@@ -259,22 +262,60 @@ app.post('/api/admin/inventory/apply-markdowns', async (req, res) => {
   res.json({ message: 'Automated aging markdown cycle completed successfully.' });
 });
 
-// --- AUTHENTICATION ROUTES ---
+// ==========================================
+// AUTHENTICATION ROUTES (ROBUST DESKTOP + MOBILE GOOGLE OAUTH)
+// ==========================================
 
 app.post('/api/auth/google', async (req, res) => {
-  const { credential } = req.body;
-  if (!credential) return res.status(400).json({ error: 'Google credential token is required.' });
+  const { credential, access_token, token: genericToken } = req.body;
+  const tokenPayload = credential || genericToken;
+
+  if (!tokenPayload && !access_token) {
+    return res.status(400).json({ error: 'Google credential (ID token) or access token is required.' });
+  }
 
   try {
-    const ticket = await googleClient.verifyIdToken({
-      idToken: credential,
-      audience: GOOGLE_CLIENT_ID,
-    });
-    const payload = ticket.getPayload();
-    const { email, name } = payload;
+    let email = null;
+    let name = null;
+
+    // Strategy A: If an ID Token is provided (from <GoogleLogin />)
+    if (tokenPayload) {
+      try {
+        const ticket = await googleClient.verifyIdToken({
+          idToken: tokenPayload,
+          audience: GOOGLE_CLIENT_ID,
+        });
+        const payload = ticket.getPayload();
+        email = payload?.email;
+        name = payload?.name;
+      } catch (verifyErr) {
+        console.warn('⚠️ Local verifyIdToken failed, falling back to Google TokenInfo API:', verifyErr.message);
+        // Fallback directly to Google tokeninfo to eliminate clock skew or environment mismatch
+        const infoRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(tokenPayload)}`);
+        if (infoRes.ok) {
+          const info = await infoRes.json();
+          email = info.email;
+          name = info.name;
+        } else {
+          throw verifyErr;
+        }
+      }
+    } 
+    // Strategy B: If an Access Token is provided (from useGoogleLogin())
+    else if (access_token) {
+      const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${access_token}` },
+      });
+      if (!userRes.ok) {
+        throw new Error('Could not fetch user profile from Google using the provided access token.');
+      }
+      const profile = await userRes.json();
+      email = profile.email;
+      name = profile.name;
+    }
 
     if (!email) {
-      return res.status(400).json({ error: 'Unable to extract email from Google identity token.' });
+      return res.status(400).json({ error: 'Unable to extract email from Google identity response.' });
     }
 
     const { data: existingUser, error: findErr } = await supabase
@@ -1348,15 +1389,14 @@ app.delete('/api/admin/orders/:id', async (req, res) => {
   }
 });
 
-// --- AI STYLIST & LOGISTICS CONCIERGE (gemini-2.5-flash / gemini-1.5-flash) ---
+// --- AI STYLIST & LOGISTICS CONCIERGE (gemini-2.5-flash / gemini-2.0-flash / gemini-1.5-flash) ---
 
 app.post('/api/chat', async (req, res) => {
   const { message, user_id, email, current_order_id } = req.body;
   if (!message) return res.status(400).json({ error: 'Message is required' });
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey.includes('YourGeminiKey')) {
-    return res.json({ reply: '⚠️ AI Concierge Notice: GEMINI_API_KEY is not configured in your .env file.' });
+  if (!geminiApiKey || geminiApiKey.includes('YourGeminiKey')) {
+    return res.json({ reply: '⚠️ AI Concierge Notice: GEMINI_API_KEY is not configured in your backend environment variables.' });
   }
 
   try {
@@ -1392,7 +1432,7 @@ app.post('/api/chat', async (req, res) => {
       ).join('\n');
     }
 
-    let configuredModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    let configuredModel = (process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim();
 
     const systemInstruction = `You are 'Loopie', the AI stylist and order logistics concierge for 'ThriftLoop'—an online curated vintage boutique in the Philippines.
 
@@ -1411,30 +1451,37 @@ GUIDELINES:
 - Keep answers warm, concise, and helpful.`;
 
     let response;
-    try {
-      response = await ai.models.generateContent({
-        model: configuredModel,
-        contents: message,
-        config: { systemInstruction },
-      });
-    } catch (primaryErr) {
-      console.warn(`⚠️ Model ${configuredModel} failed (${primaryErr.message}). Falling back to gemini-1.5-flash...`);
+    const candidateModels = [configuredModel, 'gemini-2.0-flash', 'gemini-1.5-flash'].filter(
+      (m, idx, arr) => arr.indexOf(m) === idx
+    );
+
+    let lastError = null;
+    for (const modelCandidate of candidateModels) {
       try {
         response = await ai.models.generateContent({
-          model: 'gemini-1.5-flash',
+          model: modelCandidate,
           contents: message,
           config: { systemInstruction },
         });
-      } catch (fallbackErr) {
-        console.error('❌ Both Gemini models failed:', fallbackErr.message);
-        return res.json({ reply: "Loopie is currently unable to consult catalog records. Please message the seller directly via Conversations for instant help!" });
+        if (response?.text) break;
+      } catch (err) {
+        lastError = err;
+        console.warn(`⚠️ Model ${modelCandidate} failed (${err.message}). Trying next candidate...`);
       }
     }
 
-    res.json({ reply: response?.text || 'I could not retrieve styling or tracking details right now.' });
+    if (response?.text) {
+      return res.json({ reply: response.text });
+    }
+
+    // Direct diagnosis: surfaces the actual Google API error so it's transparent why it failed
+    console.error('❌ All Gemini candidates failed:', lastError?.message);
+    res.json({ 
+      reply: `[AI Alert: ${lastError?.message || 'Check Render GEMINI_API_KEY settings or token limits'}]` 
+    });
   } catch (err) {
     console.error('❌ Concierge chat route error:', err.message);
-    res.json({ reply: "I'm having trouble retrieving live records at the moment. Please message the seller directly via Conversations." });
+    res.json({ reply: `[Error: ${err.message}]` });
   }
 });
 

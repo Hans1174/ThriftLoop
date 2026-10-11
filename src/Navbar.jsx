@@ -8,7 +8,6 @@ import {
 } from 'lucide-react';
 import { useCart } from './context/CartContext';
 
-// Reliable fallback items so search always has instant data
 const BACKUP_PRODUCTS = [
   { product_id: 1, name: 'Vintage Floral Midi Dress', category_name: 'Dresses', price: 450, size: 'M', condition_grade: 'Grade A', image_url: 'https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=500&auto=format&fit=crop' },
   { product_id: 2, name: 'Classic Washed Denim Jacket', category_name: 'Outerwear', price: 750, size: 'L', condition_grade: 'Deadstock', image_url: 'https://images.unsplash.com/photo-1576995853123-5a10305d93c0?q=80&w=500&auto=format&fit=crop' },
@@ -24,12 +23,10 @@ export default function Navbar({ onOpenLogin }) {
   const dropdownRef = useRef(null);
   const searchContainerRef = useRef(null);
 
-  // Cart Context
   const cartContext = useCart ? useCart() : {};
   const cart = cartContext.cart || cartContext.cartItems || [];
   const rawCartCount = cartContext.cartCount ?? cart.reduce((sum, item) => sum + (item.quantity || 1), 0);
 
-  // User State
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       const saved = localStorage.getItem('thriftloop_user');
@@ -43,31 +40,23 @@ export default function Navbar({ onOpenLogin }) {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // Search State
   const [searchQuery, setSearchQuery] = useState('');
   const [allProducts, setAllProducts] = useState(BACKUP_PRODUCTS);
   const [searchResults, setSearchResults] = useState([]);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
-  // Pre-fetch live inventory
   useEffect(() => {
     fetch(`${API_URL}/api/products`)
       .then((res) => res.json())
       .then((data) => {
         const list = Array.isArray(data) ? data : (data.products || data.data || []);
-        if (list.length > 0) {
-          setAllProducts(list);
-        }
+        if (list.length > 0) setAllProducts(list);
       })
-      .catch(() => {
-        setAllProducts(BACKUP_PRODUCTS);
-      });
+      .catch(() => setAllProducts(BACKUP_PRODUCTS));
   }, []);
 
-  // Filter matching engine that prioritizes first-letter startsWith matches
   const runSearch = (inputVal, dataset = allProducts) => {
     const q = inputVal.trim().toLowerCase();
-
     if (!q) {
       setSearchResults([]);
       setIsSearchOpen(false);
@@ -143,29 +132,20 @@ export default function Navbar({ onOpenLogin }) {
   };
 
   const handleTriggerLogin = () => {
-    if (onOpenLogin) {
-      onOpenLogin();
-    } else {
-      window.dispatchEvent(new Event('open-login-modal'));
-    }
+    if (onOpenLogin) onOpenLogin();
+    else window.dispatchEvent(new Event('open-login-modal'));
   };
 
   const handleCartClick = (e) => {
     e.preventDefault();
-    if (!currentUser) {
-      handleTriggerLogin();
-    } else {
-      navigate('/cart');
-    }
+    if (!currentUser) handleTriggerLogin();
+    else navigate('/cart');
   };
 
-  const handleConversationsClick = () => {
+  const handleMessagesClick = () => {
     setIsMobileMenuOpen(false);
-    if (!currentUser) {
-      handleTriggerLogin();
-    } else {
-      navigate('/messages');
-    }
+    if (!currentUser) handleTriggerLogin();
+    else navigate('/messages');
   };
 
   const handleLogout = () => {
@@ -186,13 +166,13 @@ export default function Navbar({ onOpenLogin }) {
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#A8C3A0]/30 shadow-xs transition-all">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 sm:py-4 flex items-center justify-between gap-2 sm:gap-4">
         
-        {/* Brand Logo & Navigation Links */}
-        <div className="flex items-center gap-4 md:gap-8 shrink-0">
+        {/* Brand Logo & Navigation */}
+        <div className="flex items-center gap-6 md:gap-10 shrink-0">
           <Link to="/" className="font-serif text-2xl sm:text-3xl font-black tracking-tighter text-[#23313A] shrink-0">
             Thrift<span className="text-[#2F6B4F]">Loop</span>
           </Link>
           
-          <nav className="hidden md:flex items-center gap-6 text-xs lg:text-sm font-bold">
+          <nav className="hidden md:flex items-center gap-7 text-xs lg:text-sm font-bold">
             <Link 
               to="/" 
               className={`transition-colors ${
@@ -209,25 +189,13 @@ export default function Navbar({ onOpenLogin }) {
             >
               Shop
             </Link>
-
-            {/* Conversations Link: Positioned Directly Beside Shop */}
-            <button
-              type="button"
-              onClick={handleConversationsClick}
-              className={`flex items-center gap-1.5 transition-colors cursor-pointer ${
-                location.pathname === '/messages' ? 'text-[#2F6B4F] border-b-2 border-[#2F6B4F] pb-0.5' : 'text-[#A8C3A0] hover:text-[#23313A]'
-              }`}
-            >
-              <MessageSquare size={15} />
-              <span>Conversations</span>
-            </button>
           </nav>
         </div>
 
-        {/* Search, Action Icons, Profile */}
+        {/* Search, Messages, Cart, Profile */}
         <div className="flex items-center gap-2 sm:gap-4 md:gap-5 min-w-0">
           
-          {/* Responsive Search Input */}
+          {/* Instant Search Bar */}
           <div className="relative shrink min-w-0" ref={searchContainerRef}>
             <form onSubmit={handleSearchSubmit} className="relative">
               <Search size={14} className="absolute left-3 top-2.5 text-[#A8C3A0]" />
@@ -236,9 +204,7 @@ export default function Navbar({ onOpenLogin }) {
                 placeholder="Search..."
                 value={searchQuery}
                 onFocus={() => {
-                  if (searchQuery.trim().length >= 1) {
-                    runSearch(searchQuery, allProducts);
-                  }
+                  if (searchQuery.trim().length >= 1) runSearch(searchQuery, allProducts);
                 }}
                 onChange={handleInputChange}
                 className="bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-full pl-8 pr-7 py-1.5 text-xs text-[#23313A] placeholder-[#A8C3A0] focus:outline-none focus:border-[#2F6B4F] focus:bg-white w-28 sm:w-48 md:w-60 lg:w-72 shadow-xs transition-all"
@@ -279,11 +245,7 @@ export default function Navbar({ onOpenLogin }) {
                           className="p-2.5 flex items-center gap-3 hover:bg-[#F6F1E8]/60 cursor-pointer transition-colors"
                         >
                           <div className="w-10 h-10 rounded-lg overflow-hidden bg-[#F6F1E8] shrink-0 border border-[#A8C3A0]/20">
-                            <img
-                              src={img}
-                              alt={title}
-                              className="w-full h-full object-cover"
-                            />
+                            <img src={img} alt={title} className="w-full h-full object-cover" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="font-bold text-[#23313A] truncate">{title}</p>
@@ -318,34 +280,36 @@ export default function Navbar({ onOpenLogin }) {
             )}
           </div>
 
-          {/* Direct 1-Tap Conversations Icon (Immediate access on Mobile & Tablet) */}
+          {/* Messages Button: Exclusively placed beside Cart */}
           <button 
             type="button"
-            onClick={handleConversationsClick} 
-            className={`relative transition-colors p-1 cursor-pointer shrink-0 ${
-              location.pathname === '/messages' ? 'text-[#2F6B4F]' : 'text-[#A8C3A0] hover:text-[#23313A]'
+            onClick={handleMessagesClick} 
+            className={`relative transition-colors p-1.5 rounded-lg cursor-pointer shrink-0 ${
+              location.pathname === '/messages' 
+                ? 'text-[#2F6B4F] bg-[#2F6B4F]/10' 
+                : 'text-[#A8C3A0] hover:text-[#23313A] hover:bg-[#F6F1E8]'
             }`} 
-            title="Conversations & Messages"
+            title="Messages & Inquiries"
           >
-            <MessageSquare size={20} />
+            <MessageSquare size={21} />
           </button>
 
           {/* Cart Icon */}
           <button 
             type="button"
             onClick={handleCartClick} 
-            className="relative text-[#A8C3A0] hover:text-[#23313A] transition-colors p-1 cursor-pointer shrink-0" 
+            className="relative text-[#A8C3A0] hover:text-[#23313A] transition-colors p-1.5 rounded-lg hover:bg-[#F6F1E8] cursor-pointer shrink-0" 
             title="Shopping Cart"
           >
             <ShoppingBag size={21} />
             {currentUser && cartCount > 0 && (
-              <span className="absolute -top-1 -right-2 bg-[#E67E5F] text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center shadow-xs">
+              <span className="absolute 0 -top-1 -right-1 bg-[#E67E5F] text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center shadow-xs">
                 {cartCount}
               </span>
             )}
           </button>
 
-          {/* Profile Dropdown / Login Button */}
+          {/* Profile Dropdown / Login */}
           {currentUser ? (
             <div className="relative shrink-0" ref={dropdownRef}>
               <button
@@ -424,10 +388,10 @@ export default function Navbar({ onOpenLogin }) {
             <button
               type="button"
               onClick={handleTriggerLogin}
-              className="flex items-center gap-1 bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 hover:border-[#2F6B4F] hover:bg-white text-[#23313A] text-xs font-bold px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-full transition-all shadow-xs cursor-pointer active:scale-95 shrink-0"
+              className="flex items-center gap-1 bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 hover:border-[#2F6B4F] hover:bg-white text-[#23313A] text-xs font-bold px-3 sm:px-4 py-1.5 sm:py-2 rounded-full transition-all shadow-xs cursor-pointer active:scale-95 shrink-0"
             >
               <User size={13} className="text-[#2F6B4F]" />
-              <span className="hidden xs:inline">Log In</span>
+              <span>Log In</span>
             </button>
           )}
 
@@ -444,63 +408,19 @@ export default function Navbar({ onOpenLogin }) {
         </div>
       </div>
 
-      {/* Mobile Navigation Drawer */}
+      {/* Mobile Drawer */}
       {isMobileMenuOpen && (
         <div className="md:hidden bg-white border-t border-[#A8C3A0]/20 px-6 py-4 space-y-3 animate-in slide-in-from-top-2">
           <nav className="flex flex-col space-y-2 text-xs font-bold text-[#23313A]">
-            <Link
-              to="/"
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="py-1.5 border-b border-[#F6F1E8]"
-            >
+            <Link to="/" onClick={() => setIsMobileMenuOpen(false)} className="py-1.5 border-b border-[#F6F1E8]">
               Home
             </Link>
-            <Link
-              to="/shop"
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="py-1.5 border-b border-[#F6F1E8]"
-            >
+            <Link to="/shop" onClick={() => setIsMobileMenuOpen(false)} className="py-1.5 border-b border-[#F6F1E8]">
               Shop Catalog
             </Link>
-            <button
-              type="button"
-              onClick={handleConversationsClick}
-              className="py-1.5 flex items-center justify-between text-left border-b border-[#F6F1E8] text-[#2F6B4F]"
-            >
-              <span className="flex items-center gap-2">
-                <MessageSquare size={14} />
-                <span>Conversations</span>
-              </span>
-              <span className="text-[10px] bg-[#2F6B4F]/10 px-2 py-0.5 rounded-full font-bold">
-                Inquiries
-              </span>
-            </button>
-            <Link
-              to="/track"
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="py-1.5 border-b border-[#F6F1E8]"
-            >
+            <Link to="/track" onClick={() => setIsMobileMenuOpen(false)} className="py-1.5 border-b border-[#F6F1E8]">
               Track Order
             </Link>
-            {currentUser && (
-              <Link
-                to="/orders"
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="py-1.5 border-b border-[#F6F1E8]"
-              >
-                My Orders
-              </Link>
-            )}
-            {isAdmin && (
-              <Link
-                to="/admin"
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="py-1.5 text-[#E67E5F] flex items-center gap-1.5 border-b border-[#F6F1E8]"
-              >
-                <Shield size={14} />
-                <span>Admin Dashboard</span>
-              </Link>
-            )}
           </nav>
         </div>
       )}
