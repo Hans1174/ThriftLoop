@@ -6,14 +6,13 @@ import { useGoogleLogin } from '@react-oauth/google';
 const API_URL = import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
 
 export default function Login({ isOpen, onClose, onLoginSuccess }) {
+  // 1. All hooks MUST be declared at the top before any returns
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
-
-  if (!isOpen) return null;
 
   const handleSuccess = (user, token) => {
     localStorage.setItem('thriftloop_user', JSON.stringify(user));
@@ -29,30 +28,6 @@ export default function Login({ isOpen, onClose, onLoginSuccess }) {
     }
   };
 
-  const handleStandardLogin = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-
-    try {
-      const res = await fetch(`${API_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Invalid email or password.');
-
-      handleSuccess(data.user, data.token);
-    } catch (err) {
-      setError(err.message || 'Login failed. Please verify your credentials.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Direct trigger bypassing opaque iframe popup blockers
   const triggerGoogleLogin = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
       setError('');
@@ -81,6 +56,32 @@ export default function Login({ isOpen, onClose, onLoginSuccess }) {
       setError(`Google Sign-In failed: ${errorResponse.error_description || errorResponse.error || 'Popup was blocked'}`);
     },
   });
+
+  // 2. Early return sits safely below all hook declarations
+  if (!isOpen) return null;
+
+  const handleStandardLogin = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      const res = await fetch(`${API_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Invalid email or password.');
+
+      handleSuccess(data.user, data.token);
+    } catch (err) {
+      setError(err.message || 'Login failed. Please verify your credentials.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleGoToRegister = () => {
     onClose();
@@ -123,7 +124,7 @@ export default function Login({ isOpen, onClose, onLoginSuccess }) {
           </div>
         )}
 
-        {/* Native Button triggering useGoogleLogin directly */}
+        {/* Native Unblocked Google Login Button */}
         <div className="mb-4">
           <button
             type="button"
@@ -161,6 +162,7 @@ export default function Login({ isOpen, onClose, onLoginSuccess }) {
           <hr className="flex-1 border-[#A8C3A0]/30" />
         </div>
 
+        {/* Standard Email/Password Form */}
         <form onSubmit={handleStandardLogin} className="space-y-3.5 text-xs">
           <div>
             <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
