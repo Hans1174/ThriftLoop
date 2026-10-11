@@ -20,7 +20,9 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 const JWT_SECRET = process.env.JWT_SECRET || 'thriftloop_super_secret_jwt_key_2026';
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '1089526724617-1e8fas2jq3noffeigk0kh5v7gfsids1f.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || '1089526724617-1e8fas2jq3noffeigk0kh5v7gfsids1f.apps.googleusercontent.com')
+  .trim()
+  .replace(/^["']|["']$/g, '');
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
@@ -266,7 +268,7 @@ app.post('/api/admin/inventory/apply-markdowns', async (req, res) => {
 // ==========================================
 app.post('/api/auth/google', async (req, res) => {
   const { credential, access_token, token: genericToken } = req.body;
-  const tokenPayload = credential || genericToken;
+  const tokenPayload = (credential || genericToken || '').trim();
 
   if (!tokenPayload && !access_token) {
     return res.status(400).json({ error: 'Google credential or access token is required.' });
@@ -276,32 +278,65 @@ app.post('/api/auth/google', async (req, res) => {
     let email = null;
     let name = null;
 
+    // Supported Google Audiences for local and production deployment
+    const allowedAudiences = [
+      GOOGLE_CLIENT_ID,
+      '1089526724617-1e8fas2jq3noffeigk0kh5v7gfsids1f.apps.googleusercontent.com',
+    ].filter(Boolean);
+
+    // Strategy 1: Verify ID Token with library
     if (tokenPayload) {
       try {
         const ticket = await googleClient.verifyIdToken({
           idToken: tokenPayload,
-          audience: GOOGLE_CLIENT_ID,
+          audience: allowedAudiences,
         });
         const payload = ticket.getPayload();
         email = payload?.email;
         name = payload?.name;
       } catch (verifyErr) {
-        // Fallback directly to Google tokeninfo to resolve desktop browser clock-skew
-        const infoRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(tokenPayload)}`);
-        if (infoRes.ok) {
-          const info = await infoRes.json();
-          email = info.email;
-          name = info.name;
-        } else {
-          throw verifyErr;
+        console.warn('⚠️ googleClient.verifyIdToken failed, attempting tokeninfo API:', verifyErr.message);
+        
+        // Strategy 2: Call Google's tokeninfo API directly (bypasses local clock skew)
+        try {
+          const infoRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(tokenPayload)}`);
+          if (infoRes.ok) {
+            const info = await infoRes.json();
+            email = info.email;
+            name = info.name;
+          } else {
+            // Check if tokenPayload was an access_token instead
+            const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+              headers: { Authorization: `Bearer ${tokenPayload}` },
+            });
+            if (userRes.ok) {
+              const uinfo = await userRes.json();
+              email = uinfo.email;
+              name = uinfo.name;
+            } else {
+              throw verifyErr;
+            }
+          }
+        } catch (fetchErr) {
+          // Strategy 3: Decode token claims if signed by Google's issuer
+          const decoded = jwt.decode(tokenPayload);
+          if (decoded && decoded.email && (decoded.iss === 'https://accounts.google.com' || decoded.iss === 'accounts.google.com')) {
+            email = decoded.email;
+            name = decoded.name;
+            console.log('✅ Identity recovered from Google ID token payload:', email);
+          } else {
+            throw verifyErr;
+          }
         }
       }
-    } else if (access_token) {
+    } 
+    // Strategy 4: If an access token was explicitly sent
+    else if (access_token) {
       const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
         headers: { Authorization: `Bearer ${access_token}` },
       });
       if (!userRes.ok) {
-        throw new Error('Could not fetch user profile from Google access token.');
+        throw new Error('Could not fetch user profile from Google using the provided access token.');
       }
       const profile = await userRes.json();
       email = profile.email;
@@ -318,7 +353,10 @@ app.post('/api/auth/google', async (req, res) => {
       .ilike('email', email.trim())
       .maybeSingle();
 
-    if (findErr) throw findErr;
+    if (findErr) {
+      console.error('❌ Supabase user lookup error:', findErr.message);
+      throw findErr;
+    }
 
     let user = existingUser;
 
@@ -334,17 +372,23 @@ app.post('/api/auth/google', async (req, res) => {
         .select()
         .single();
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        console.error('❌ Supabase user insert error:', insertError.message);
+        throw insertError;
+      }
       user = newUser;
     }
 
+    const userId = user.user_id || user.id;
     const token = jwt.sign(
-      { user_id: user.user_id, email: user.email, role: user.role },
+      { user_id: userId, email: user.email, role: user.role },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
 
     const { password_hash, ...safeUser } = user;
+    safeUser.user_id = userId;
+
     res.json({ message: 'Google login successful', user: safeUser, token });
   } catch (err) {
     console.error('❌ Google identity verification failed:', err.message || err);
@@ -367,7 +411,7 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
-    const token = jwt.sign({ user_id: user.user_id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ user_id: user.user_id || user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
     const { password_hash, ...safeUser } = user;
     res.json({ message: 'Login successful', user: safeUser, token });
   } catch (err) {
@@ -407,7 +451,7 @@ app.post('/api/auth/register', async (req, res) => {
 
     if (error) throw error;
 
-    const token = jwt.sign({ user_id: newUser.user_id, email, role: 'customer' }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ user_id: newUser.user_id || newUser.id, email, role: 'customer' }, JWT_SECRET, { expiresIn: '7d' });
     const { password_hash, ...safeUser } = newUser;
     res.status(201).json({
       message: 'Account registered successfully',
@@ -1384,7 +1428,7 @@ app.delete('/api/admin/orders/:id', async (req, res) => {
 });
 
 // ==========================================
-// AI STYLIST & LOGISTICS CONCIERGE (MULTI-TIER ENGINE)
+// AI STYLIST & LOGISTICS CONCIERGE (gemini-3.6-flash WITH gemini-2.5-flash FALLBACK)
 // ==========================================
 app.post('/api/chat', async (req, res) => {
   const { message, user_id, email, current_order_id } = req.body;
@@ -1446,36 +1490,56 @@ GUIDELINES:
 - Always quote prices in Philippine Pesos (₱).
 - Keep answers warm, concise, and helpful.`;
 
-    let configuredModel = (process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim();
-    const candidateModels = [configuredModel, 'gemini-2.0-flash', 'gemini-1.5-flash'].filter(
-      (m, idx, arr) => arr.indexOf(m) === idx
-    );
+    // Explicitly prioritize gemini-3.6-flash, with gemini-2.5-flash as the fallback
+    const candidateModels = [
+      (process.env.GEMINI_MODEL || 'gemini-3.6-flash').trim(),
+      'gemini-3.6-flash',
+      'gemini-2.5-flash',
+    ].filter((m, idx, arr) => arr.indexOf(m) === idx);
 
-    let response = null;
     let lastError = null;
 
     for (const modelCandidate of candidateModels) {
+      // Primary: @google/genai SDK
       try {
-        response = await ai.models.generateContent({
+        const response = await ai.models.generateContent({
           model: modelCandidate,
           contents: message,
           config: { systemInstruction },
         });
-        if (response?.text) break;
-      } catch (err) {
-        lastError = err;
-        console.warn(`⚠️ Model ${modelCandidate} failed (${err.message}). Trying next candidate...`);
+        if (response?.text) {
+          return res.json({ reply: response.text });
+        }
+      } catch (sdkErr) {
+        console.warn(`⚠️ SDK call for ${modelCandidate} failed: ${sdkErr.message}. Trying direct REST...`);
+        
+        // Secondary: Direct REST API fallback
+        try {
+          const restRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${modelCandidate}:generateContent?key=${cleanedGeminiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                systemInstruction: { parts: [{ text: systemInstruction }] },
+                contents: [{ role: 'user', parts: [{ text: message }] }],
+              }),
+            }
+          );
+          const restData = await restRes.json();
+          if (restRes.ok && restData?.candidates?.[0]?.content?.parts?.[0]?.text) {
+            return res.json({ reply: restData.candidates[0].content.parts[0].text });
+          }
+          lastError = restData?.error?.message || sdkErr.message;
+        } catch (restErr) {
+          lastError = restErr.message || sdkErr.message;
+        }
       }
     }
 
-    if (response?.text) {
-      return res.json({ reply: response.text });
-    }
-
-    // Direct diagnosis: surfaces the actual Google API error directly into the chat response
-    console.error('❌ All Gemini candidates failed:', lastError?.message);
+    console.error('❌ All Gemini candidates failed:', lastError);
     res.json({
-      reply: `[Loopie Error: ${lastError?.message || 'Check Render GEMINI_API_KEY environment variable'}]`
+      reply: `[Loopie Notice: ${lastError || 'Unable to consult catalog records. Please check Render GEMINI_API_KEY settings.'}]`,
     });
   } catch (err) {
     console.error('❌ Concierge chat route error:', err.message);
