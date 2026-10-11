@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Search, ShoppingBag, User, LogOut, Shield, 
-  Package, ChevronDown, Settings, X, ArrowRight,
+  Package, ChevronDown, Settings, X,
   MessageSquare, Menu
 } from 'lucide-react';
 import { useCart } from './context/CartContext';
@@ -39,6 +39,7 @@ export default function Navbar({ onOpenLogin }) {
   const cartCount = currentUser ? rawCartCount : 0;
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [allProducts, setAllProducts] = useState(BACKUP_PRODUCTS);
@@ -96,6 +97,7 @@ export default function Navbar({ onOpenLogin }) {
     setIsProfileOpen(false);
     setIsSearchOpen(false);
     setIsMobileMenuOpen(false);
+    setIsMobileSearchOpen(false);
   }, [location.pathname]);
 
   useEffect(() => {
@@ -115,12 +117,14 @@ export default function Navbar({ onOpenLogin }) {
     if (e) e.preventDefault();
     if (searchQuery.trim()) {
       setIsSearchOpen(false);
+      setIsMobileSearchOpen(false);
       navigate(`/shop?search=${encodeURIComponent(searchQuery.trim())}`);
     }
   };
 
   const handleSelectProduct = (productId) => {
     setIsSearchOpen(false);
+    setIsMobileSearchOpen(false);
     setSearchQuery('');
     navigate(`/product/${productId}`);
   };
@@ -132,6 +136,7 @@ export default function Navbar({ onOpenLogin }) {
   };
 
   const handleTriggerLogin = () => {
+    setIsMobileMenuOpen(false);
     if (onOpenLogin) onOpenLogin();
     else window.dispatchEvent(new Event('open-login-modal'));
   };
@@ -164,11 +169,11 @@ export default function Navbar({ onOpenLogin }) {
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#A8C3A0]/30 shadow-xs transition-all">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 sm:py-4 flex items-center justify-between gap-2 sm:gap-4">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3">
         
-        {/* Brand Logo & Navigation */}
-        <div className="flex items-center gap-6 md:gap-10 shrink-0">
-          <Link to="/" className="font-serif text-2xl sm:text-3xl font-black tracking-tighter text-[#23313A] shrink-0">
+        {/* Brand Logo & Desktop Nav Links */}
+        <div className="flex items-center gap-6 lg:gap-10 shrink-0">
+          <Link to="/" className="font-serif text-2xl sm:text-3xl font-black tracking-tighter text-[#23313A]">
             Thrift<span className="text-[#2F6B4F]">Loop</span>
           </Link>
           
@@ -192,236 +197,238 @@ export default function Navbar({ onOpenLogin }) {
           </nav>
         </div>
 
-        {/* Search, Messages, Cart, Profile */}
-        <div className="flex items-center gap-2 sm:gap-4 md:gap-5 min-w-0">
+        {/* Actions Toolbar */}
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           
-          {/* Instant Search Bar */}
-          <div className="relative shrink min-w-0" ref={searchContainerRef}>
+          {/* Desktop Search Bar (Hidden on Mobile) */}
+          <div className="relative hidden md:block" ref={searchContainerRef}>
             <form onSubmit={handleSearchSubmit} className="relative">
               <Search size={14} className="absolute left-3 top-2.5 text-[#A8C3A0]" />
               <input
                 type="text"
-                placeholder="Search..."
+                placeholder="Search archive pieces..."
                 value={searchQuery}
                 onFocus={() => {
                   if (searchQuery.trim().length >= 1) runSearch(searchQuery, allProducts);
                 }}
                 onChange={handleInputChange}
-                className="bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-full pl-8 pr-7 py-1.5 text-xs text-[#23313A] placeholder-[#A8C3A0] focus:outline-none focus:border-[#2F6B4F] focus:bg-white w-28 sm:w-48 md:w-60 lg:w-72 shadow-xs transition-all"
+                className="bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-full pl-8 pr-7 py-1.5 text-xs text-[#23313A] placeholder-[#A8C3A0] focus:outline-none focus:border-[#2F6B4F] focus:bg-white w-48 lg:w-64 shadow-xs transition-all"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={handleClearSearch}
                   className="absolute right-2.5 top-2.5 text-[#A8C3A0] hover:text-[#23313A] cursor-pointer"
-                  title="Clear"
                 >
                   <X size={12} />
                 </button>
               )}
             </form>
 
-            {/* Live Search Preview Dropdown */}
             {isSearchOpen && (
-              <div className="absolute right-0 sm:left-0 mt-2 w-72 sm:w-84 bg-white border border-[#A8C3A0]/30 rounded-2xl shadow-xl overflow-hidden z-50 text-xs animate-in fade-in slide-in-from-top-1">
-                <div className="p-2.5 border-b border-[#A8C3A0]/20 bg-[#F6F1E8]/40 flex justify-between items-center text-[10px] font-bold text-[#A8C3A0] uppercase tracking-wider">
+              <div className="absolute right-0 mt-2 w-80 bg-white border border-[#A8C3A0]/30 rounded-2xl shadow-xl overflow-hidden z-50 text-xs">
+                <div className="p-2.5 border-b border-[#A8C3A0]/20 bg-[#F6F1E8]/40 flex justify-between items-center text-[10px] font-bold text-[#A8C3A0] uppercase">
                   <span>Results for "{searchQuery}" ({searchResults.length})</span>
                 </div>
-
-                <div className="max-h-68 overflow-y-auto divide-y divide-[#A8C3A0]/10">
+                <div className="max-h-64 overflow-y-auto divide-y divide-[#A8C3A0]/10">
                   {searchResults.length > 0 ? (
-                    searchResults.map((item) => {
-                      const id = item.product_id || item.id;
-                      const title = item.name || item.title || 'Vintage Item';
-                      const category = item.category_name || item.category || 'Archive';
-                      const price = item.price ? parseFloat(item.price).toFixed(2) : '0.00';
-                      const img = item.image_url || item.img;
-                      const size = item.size || 'OS';
-
-                      return (
-                        <div
-                          key={id}
-                          onClick={() => handleSelectProduct(id)}
-                          className="p-2.5 flex items-center gap-3 hover:bg-[#F6F1E8]/60 cursor-pointer transition-colors"
-                        >
-                          <div className="w-10 h-10 rounded-lg overflow-hidden bg-[#F6F1E8] shrink-0 border border-[#A8C3A0]/20">
-                            <img src={img} alt={title} className="w-full h-full object-cover" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-bold text-[#23313A] truncate">{title}</p>
-                            <div className="flex items-center gap-2 text-[10px] text-[#A8C3A0]">
-                              <span>{category}</span>
-                              <span>•</span>
-                              <span className="font-bold text-[#23313A]/70">Size {size}</span>
-                              <span>•</span>
-                              <span className="font-bold text-[#2F6B4F]">₱{price}</span>
-                            </div>
-                          </div>
+                    searchResults.map((item) => (
+                      <div
+                        key={item.product_id || item.id}
+                        onClick={() => handleSelectProduct(item.product_id || item.id)}
+                        className="p-2.5 flex items-center gap-3 hover:bg-[#F6F1E8]/60 cursor-pointer"
+                      >
+                        <img src={item.image_url || item.img} alt={item.name} className="w-10 h-10 rounded-lg object-cover bg-[#F6F1E8]" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-[#23313A] truncate">{item.name}</p>
+                          <p className="text-[10px] text-[#2F6B4F] font-bold">₱{parseFloat(item.price || 0).toFixed(2)}</p>
                         </div>
-                      );
-                    })
+                      </div>
+                    ))
                   ) : (
-                    <div className="p-4 text-center text-xs font-medium text-[#23313A]/60">
-                      No matching vintage items found.
-                    </div>
+                    <div className="p-4 text-center text-xs text-[#23313A]/60">No items found.</div>
                   )}
                 </div>
-
-                {searchQuery.trim() && searchResults.length > 0 && (
-                  <button
-                    onClick={handleSearchSubmit}
-                    className="w-full p-2.5 bg-[#2F6B4F] hover:bg-[#23313A] text-white font-bold flex items-center justify-center gap-1.5 text-[11px] transition-colors cursor-pointer"
-                  >
-                    <span>View all matches in Shop</span>
-                    <ArrowRight size={13} />
-                  </button>
-                )}
               </div>
             )}
           </div>
 
-          {/* Messages Button: Exclusively placed beside Cart */}
+          {/* Mobile Search Toggle Icon Button */}
+          <button
+            type="button"
+            onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
+            className="md:hidden text-[#23313A] p-2 rounded-xl hover:bg-[#F6F1E8] transition-colors"
+            title="Search"
+          >
+            {isMobileSearchOpen ? <X size={20} /> : <Search size={20} />}
+          </button>
+
+          {/* Messages Button (Beside Cart) */}
           <button 
             type="button"
             onClick={handleMessagesClick} 
-            className={`relative transition-colors p-1.5 rounded-lg cursor-pointer shrink-0 ${
+            className={`p-2 rounded-xl transition-colors cursor-pointer shrink-0 ${
               location.pathname === '/messages' 
                 ? 'text-[#2F6B4F] bg-[#2F6B4F]/10' 
                 : 'text-[#A8C3A0] hover:text-[#23313A] hover:bg-[#F6F1E8]'
             }`} 
-            title="Messages & Inquiries"
+            title="Inquiries"
           >
-            <MessageSquare size={21} />
+            <MessageSquare size={20} />
           </button>
 
           {/* Cart Icon */}
           <button 
             type="button"
             onClick={handleCartClick} 
-            className="relative text-[#A8C3A0] hover:text-[#23313A] transition-colors p-1.5 rounded-lg hover:bg-[#F6F1E8] cursor-pointer shrink-0" 
+            className="relative text-[#A8C3A0] hover:text-[#23313A] transition-colors p-2 rounded-xl hover:bg-[#F6F1E8] cursor-pointer shrink-0" 
             title="Shopping Cart"
           >
-            <ShoppingBag size={21} />
+            <ShoppingBag size={20} />
             {currentUser && cartCount > 0 && (
-              <span className="absolute 0 -top-1 -right-1 bg-[#E67E5F] text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center shadow-xs">
+              <span className="absolute -top-1 -right-1 bg-[#E67E5F] text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
                 {cartCount}
               </span>
             )}
           </button>
 
-          {/* Profile Dropdown / Login */}
-          {currentUser ? (
-            <div className="relative shrink-0" ref={dropdownRef}>
+          {/* Desktop User Profile Button (Hidden on Mobile) */}
+          <div className="hidden md:block">
+            {currentUser ? (
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsProfileOpen(!isProfileOpen)}
+                  className="flex items-center gap-2 bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-full py-1.5 px-3 transition-all cursor-pointer"
+                >
+                  <div className="w-6 h-6 rounded-full bg-[#2F6B4F] text-white flex items-center justify-center text-xs font-bold uppercase">
+                    {currentUser.full_name ? currentUser.full_name[0] : <User size={12} />}
+                  </div>
+                  <span className="text-xs font-bold text-[#23313A] max-w-[90px] truncate">
+                    {currentUser.full_name || 'Account'}
+                  </span>
+                  <ChevronDown size={13} className={`text-[#A8C3A0] transition-transform ${isProfileOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isProfileOpen && (
+                  <div className="absolute right-0 mt-2 w-52 bg-white border border-[#A8C3A0]/30 rounded-2xl shadow-xl py-2 z-50 text-xs">
+                    <div className="px-4 py-2 border-b border-[#A8C3A0]/20">
+                      <p className="font-bold text-[#23313A] truncate">{currentUser.full_name}</p>
+                      <p className="text-[10px] text-[#A8C3A0] truncate">{currentUser.email}</p>
+                    </div>
+                    <Link to="/account" className="flex items-center gap-2 px-4 py-2 hover:bg-[#F6F1E8] font-bold text-[#23313A]">
+                      <Settings size={14} /> My Account
+                    </Link>
+                    <Link to="/orders" className="flex items-center gap-2 px-4 py-2 hover:bg-[#F6F1E8] font-bold text-[#23313A]">
+                      <Package size={14} /> Orders
+                    </Link>
+                    {isAdmin && (
+                      <Link to="/admin" className="flex items-center gap-2 px-4 py-2 hover:bg-[#F6F1E8] font-bold text-[#2F6B4F]">
+                        <Shield size={14} /> Admin Dashboard
+                      </Link>
+                    )}
+                    <button onClick={handleLogout} className="w-full flex items-center gap-2 px-4 py-2 text-[#E67E5F] hover:bg-red-50 font-bold text-left cursor-pointer">
+                      <LogOut size={14} /> Sign Out
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
               <button
                 type="button"
-                onClick={() => setIsProfileOpen(!isProfileOpen)}
-                className="flex items-center gap-1.5 sm:gap-2 bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 hover:border-[#2F6B4F] hover:bg-white rounded-full py-1.5 px-2 sm:px-3 transition-all shadow-xs focus:outline-none cursor-pointer"
+                onClick={handleTriggerLogin}
+                className="flex items-center gap-1.5 bg-[#2F6B4F] hover:bg-[#23313A] text-white text-xs font-bold px-4 py-2 rounded-full transition-all cursor-pointer shadow-xs"
               >
-                <div className="w-6 h-6 rounded-full bg-[#2F6B4F] text-white flex items-center justify-center text-xs font-bold uppercase shrink-0">
-                  {currentUser.full_name ? currentUser.full_name[0] : <User size={12} />}
-                </div>
-                <span className="text-xs font-bold text-[#23313A] max-w-[80px] sm:max-w-[100px] truncate hidden md:inline">
-                  {currentUser.full_name || 'My Account'}
-                </span>
-                <ChevronDown size={13} className={`text-[#A8C3A0] transition-transform duration-200 hidden sm:block ${isProfileOpen ? 'rotate-180' : ''}`} />
+                <User size={13} />
+                <span>Log In</span>
               </button>
+            )}
+          </div>
 
-              <div className={`absolute right-0 mt-2.5 w-56 bg-white border border-[#A8C3A0]/30 rounded-2xl shadow-xl py-2 z-50 text-xs ${isProfileOpen ? 'block' : 'hidden'}`}>
-                <div className="px-4 py-2 border-b border-[#A8C3A0]/20">
-                  <p className="font-bold text-[#23313A] truncate">{currentUser.full_name || 'Member'}</p>
-                  <p className="text-[10px] text-[#A8C3A0] truncate">{currentUser.email}</p>
-                </div>
-
-                <div className="py-1">
-                  <Link
-                    to="/account"
-                    onClick={() => setIsProfileOpen(false)}
-                    className="flex items-center gap-2.5 px-4 py-2.5 font-bold text-[#23313A] hover:bg-[#F6F1E8] hover:text-[#2F6B4F] transition-colors"
-                  >
-                    <Settings size={15} className="text-[#A8C3A0]" />
-                    <span>My Account & Addresses</span>
-                  </Link>
-
-                  <Link
-                    to="/messages"
-                    onClick={() => setIsProfileOpen(false)}
-                    className="flex items-center gap-2.5 px-4 py-2.5 font-bold text-[#23313A] hover:bg-[#F6F1E8] hover:text-[#2F6B4F] transition-colors"
-                  >
-                    <MessageSquare size={15} className="text-[#A8C3A0]" />
-                    <span>My Inquiries & Chats</span>
-                  </Link>
-
-                  <Link
-                    to="/orders"
-                    onClick={() => setIsProfileOpen(false)}
-                    className="flex items-center gap-2.5 px-4 py-2.5 font-bold text-[#23313A] hover:bg-[#F6F1E8] hover:text-[#2F6B4F] transition-colors"
-                  >
-                    <Package size={15} className="text-[#A8C3A0]" />
-                    <span>My Orders & Tracking</span>
-                  </Link>
-
-                  {isAdmin && (
-                    <Link
-                      to="/admin"
-                      onClick={() => setIsProfileOpen(false)}
-                      className="flex items-center gap-2.5 px-4 py-2.5 font-bold text-[#2F6B4F] hover:bg-[#F6F1E8] transition-colors"
-                    >
-                      <Shield size={15} className="text-[#2F6B4F]" />
-                      <span>Admin Dashboard</span>
-                    </Link>
-                  )}
-                </div>
-
-                <div className="border-t border-[#A8C3A0]/20 pt-1 mt-1">
-                  <button
-                    type="button"
-                    onClick={handleLogout}
-                    className="w-full flex items-center gap-2.5 px-4 py-2.5 font-bold text-[#E67E5F] hover:bg-red-50/50 transition-colors text-left cursor-pointer"
-                  >
-                    <LogOut size={15} />
-                    <span>Sign Out</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={handleTriggerLogin}
-              className="flex items-center gap-1 bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 hover:border-[#2F6B4F] hover:bg-white text-[#23313A] text-xs font-bold px-3 sm:px-4 py-1.5 sm:py-2 rounded-full transition-all shadow-xs cursor-pointer active:scale-95 shrink-0"
-            >
-              <User size={13} className="text-[#2F6B4F]" />
-              <span>Log In</span>
-            </button>
-          )}
-
-          {/* Mobile Menu Button */}
+          {/* Mobile Hamburger Toggle Button */}
           <button
             type="button"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="md:hidden text-[#23313A] p-1.5 hover:bg-[#F6F1E8] rounded-xl transition-colors shrink-0"
-            title="Toggle Menu"
+            className="md:hidden text-[#23313A] p-2 hover:bg-[#F6F1E8] rounded-xl transition-colors"
+            title="Menu"
           >
-            {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+            {isMobileMenuOpen ? <X size={21} /> : <Menu size={21} />}
           </button>
 
         </div>
       </div>
 
-      {/* Mobile Drawer */}
+      {/* Mobile Expanding Search Drawer */}
+      {isMobileSearchOpen && (
+        <div className="md:hidden px-4 pb-3 pt-1 border-t border-[#A8C3A0]/20 bg-white">
+          <form onSubmit={handleSearchSubmit} className="relative">
+            <Search size={14} className="absolute left-3.5 top-3 text-[#A8C3A0]" />
+            <input
+              type="text"
+              placeholder="Search garments, sizes, brands..."
+              value={searchQuery}
+              onChange={handleInputChange}
+              className="w-full bg-[#F6F1E8]/70 border border-[#A8C3A0]/40 rounded-full pl-9 pr-8 py-2 text-xs text-[#23313A] focus:outline-none focus:border-[#2F6B4F]"
+              autoFocus
+            />
+            {searchQuery && (
+              <button type="button" onClick={handleClearSearch} className="absolute right-3 top-2.5 text-[#A8C3A0]">
+                <X size={14} />
+              </button>
+            )}
+          </form>
+        </div>
+      )}
+
+      {/* Mobile Drawer Navigation (Contains Login) */}
       {isMobileMenuOpen && (
-        <div className="md:hidden bg-white border-t border-[#A8C3A0]/20 px-6 py-4 space-y-3 animate-in slide-in-from-top-2">
-          <nav className="flex flex-col space-y-2 text-xs font-bold text-[#23313A]">
-            <Link to="/" onClick={() => setIsMobileMenuOpen(false)} className="py-1.5 border-b border-[#F6F1E8]">
+        <div className="md:hidden bg-white border-t border-[#A8C3A0]/20 px-5 py-4 space-y-4 animate-in slide-in-from-top-2">
+          <nav className="flex flex-col space-y-2.5 text-xs font-bold text-[#23313A]">
+            <Link to="/" onClick={() => setIsMobileMenuOpen(false)} className="py-2 border-b border-[#F6F1E8]">
               Home
             </Link>
-            <Link to="/shop" onClick={() => setIsMobileMenuOpen(false)} className="py-1.5 border-b border-[#F6F1E8]">
-              Shop Catalog
+            <Link to="/shop" onClick={() => setIsMobileMenuOpen(false)} className="py-2 border-b border-[#F6F1E8]">
+              Shop Collection
             </Link>
-            <Link to="/track" onClick={() => setIsMobileMenuOpen(false)} className="py-1.5 border-b border-[#F6F1E8]">
+            <Link to="/track" onClick={() => setIsMobileMenuOpen(false)} className="py-2 border-b border-[#F6F1E8]">
               Track Order
             </Link>
+            {currentUser && (
+              <>
+                <Link to="/account" onClick={() => setIsMobileMenuOpen(false)} className="py-2 border-b border-[#F6F1E8]">
+                  My Account
+                </Link>
+                <Link to="/orders" onClick={() => setIsMobileMenuOpen(false)} className="py-2 border-b border-[#F6F1E8]">
+                  My Orders
+                </Link>
+                {isAdmin && (
+                  <Link to="/admin" onClick={() => setIsMobileMenuOpen(false)} className="py-2 text-[#2F6B4F]">
+                    Admin Dashboard
+                  </Link>
+                )}
+              </>
+            )}
           </nav>
+
+          <div className="pt-2">
+            {currentUser ? (
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="w-full py-2.5 bg-red-50 text-[#E67E5F] font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <LogOut size={14} /> Sign Out ({currentUser.full_name?.split(' ')[0]})
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleTriggerLogin}
+                className="w-full py-3 bg-[#2F6B4F] text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer active:scale-95"
+              >
+                Sign In / Register
+              </button>
+            )}
+          </div>
         </div>
       )}
     </header>

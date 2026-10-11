@@ -1,8 +1,10 @@
-import { API_URL } from './config';
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Mail, X, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { GoogleLogin } from '@react-oauth/google';
+
+// Safe backend fallback ensures production Vercel connects to Render
+const API_URL = import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
 
 export default function Login({ isOpen, onClose, onLoginSuccess }) {
   const [email, setEmail] = useState('');
@@ -56,6 +58,10 @@ export default function Login({ isOpen, onClose, onLoginSuccess }) {
     setLoading(true);
 
     try {
+      if (!credentialResponse?.credential) {
+        throw new Error('Google did not return an identity token.');
+      }
+
       const res = await fetch(`${API_URL}/api/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -63,10 +69,11 @@ export default function Login({ isOpen, onClose, onLoginSuccess }) {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Google login failed.');
+      if (!res.ok) throw new Error(data.error || 'Backend failed to verify Google identity.');
 
       handleSuccess(data.user, data.token);
     } catch (err) {
+      console.error('❌ Google Auth Error:', err);
       setError(err.message || 'Google login failed.');
     } finally {
       setLoading(false);
@@ -112,7 +119,7 @@ export default function Login({ isOpen, onClose, onLoginSuccess }) {
         {error && (
           <div className="bg-[#E67E5F]/10 border border-[#E67E5F]/30 text-[#E67E5F] text-xs p-3 rounded-xl flex items-center gap-2 mb-4 font-bold animate-in fade-in">
             <AlertCircle size={15} className="shrink-0" />
-            <span>{error}</span>
+            <span className="leading-tight">{error}</span>
           </div>
         )}
 
@@ -120,7 +127,7 @@ export default function Login({ isOpen, onClose, onLoginSuccess }) {
         <div className="flex justify-center mb-4">
           <GoogleLogin
             onSuccess={handleGoogleSuccess}
-            onError={() => setError('Google sign-in was unsuccessful.')}
+            onError={() => setError('Google popup failed or was blocked by browser. Check origins & third-party cookies.')}
             shape="pill"
             theme="outline"
             width="320"
@@ -178,7 +185,6 @@ export default function Login({ isOpen, onClose, onLoginSuccess }) {
               </button>
             </div>
             
-            {/* Forgot Password Link */}
             <div className="flex justify-end pt-1.5">
               <button
                 type="button"
@@ -199,7 +205,6 @@ export default function Login({ isOpen, onClose, onLoginSuccess }) {
           </button>
         </form>
 
-        {/* Redirect to Register */}
         <div className="mt-5 border-t border-[#A8C3A0]/25 pt-4 text-center">
           <p className="text-xs text-[#23313A]/70 font-medium">
             Don't have an account?{' '}
