@@ -140,7 +140,7 @@ export const sendEmailNotification = async ({ to, userId, subject, type, data = 
       </div>
     `;
   } else if (type === 'direct_message') {
-    const { senderName, messageText, productName, conversationId } = data;
+    const { senderName, messageText, productName } = data;
     htmlContent = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #A8C3A0; border-radius: 20px; overflow: hidden;">
         <div style="background-color: #2F6B4F; padding: 24px; text-align: center;">
@@ -266,14 +266,20 @@ app.post('/api/auth/google', async (req, res) => {
   if (!credential) return res.status(400).json({ error: 'Google credential token is required.' });
 
   try {
-    const ticket = await googleClient.verifyIdToken({ idToken: credential, audience: GOOGLE_CLIENT_ID });
-    const { email, name } = ticket.getPayload();
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    const { email, name } = payload;
 
-    const { data: existingUser } = await supabase
+    const { data: existingUser, error: findErr } = await supabase
       .from('users')
       .select('*')
-      .eq('email', email)
+      .ilike('email', email.trim())
       .maybeSingle();
+
+    if (findErr) throw findErr;
 
     let user = existingUser;
 
@@ -281,8 +287,8 @@ app.post('/api/auth/google', async (req, res) => {
       const { data: newUser, error: insertError } = await supabase
         .from('users')
         .insert([{
-          full_name: name,
-          email,
+          full_name: name || 'Google User',
+          email: email.trim(),
           password_hash: 'GOOGLE_OAUTH_ACCOUNT',
           role: 'customer',
         }])
@@ -294,9 +300,11 @@ app.post('/api/auth/google', async (req, res) => {
     }
 
     const token = jwt.sign({ user_id: user.user_id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ message: 'Google login successful', user, token });
+    const { password_hash, ...safeUser } = user;
+    res.json({ message: 'Google login successful', user: safeUser, token });
   } catch (err) {
-    res.status(401).json({ error: 'Failed to verify Google identity.' });
+    console.error('❌ Google identity verification failed:', err.message || err);
+    res.status(401).json({ error: `Failed to verify Google identity: ${err.message || 'Unknown error'}` });
   }
 });
 
@@ -633,7 +641,6 @@ app.patch('/api/products/:id/status', async (req, res) => {
 // BUYER-TO-SELLER DIRECT MESSAGING ROUTES
 // ==========================================
 
-// 1. Get or Create a Direct Thread between Buyer and Seller (Admin)
 app.post('/api/messages/conversations', async (req, res) => {
   const { buyer_id, seller_id, product_id } = req.body;
   if (!buyer_id) return res.status(400).json({ error: 'Buyer ID is required.' });
@@ -685,7 +692,6 @@ app.post('/api/messages/conversations', async (req, res) => {
   }
 });
 
-// 2. Fetch User's Conversations (Inbox for Buyer or Seller)
 app.get('/api/messages/conversations/user/:userId', async (req, res) => {
   const { userId } = req.params;
 
@@ -714,7 +720,6 @@ app.get('/api/messages/conversations/user/:userId', async (req, res) => {
   }
 });
 
-// 3. Fetch Message History for a Specific Thread
 app.get('/api/messages/:conversationId', async (req, res) => {
   try {
     const { data: messages, error } = await supabase
@@ -730,7 +735,6 @@ app.get('/api/messages/:conversationId', async (req, res) => {
   }
 });
 
-// 4. Send Message (Direct Communication with Email Notification)
 app.post('/api/messages', async (req, res) => {
   const { conversation_id, sender_id, receiver_id, message_text } = req.body;
   if (!conversation_id || !sender_id || !message_text?.trim()) {
@@ -751,7 +755,6 @@ app.post('/api/messages', async (req, res) => {
 
     if (msgErr) throw msgErr;
 
-    // Update conversation metadata
     await supabase
       .from('conversations')
       .update({
@@ -760,7 +763,6 @@ app.post('/api/messages', async (req, res) => {
       })
       .eq('conversation_id', conversation_id);
 
-    // Alert the receiver via registered email if they are not active
     if (receiver_id) {
       const { data: convo } = await supabase
         .from('conversations')
@@ -792,7 +794,6 @@ app.post('/api/messages', async (req, res) => {
 // CHECKOUT & ORDERS CRUD
 // ==========================================
 
-// --- PAYMONGO CHECKOUT ---
 app.post('/api/checkout/paymongo', async (req, res) => {
   const { 
     items, cart_items, customer, deliveryAddress, 
@@ -1185,7 +1186,6 @@ app.get('/api/orders/user/:email', async (req, res) => {
   }
 });
 
-// Cancel Order & Restore Stock
 app.post('/api/orders/:id/cancel', async (req, res) => {
   const orderId = req.params.id;
   try {
@@ -1339,7 +1339,7 @@ app.delete('/api/admin/orders/:id', async (req, res) => {
   }
 });
 
-// --- AI STYLIST & LOGISTICS CONCIERGE (gemini-3.6) ---
+// --- AI STYLIST & LOGISTICS CONCIERGE (gemini-3.6-flash) ---
 
 app.post('/api/chat', async (req, res) => {
   const { message, user_id, email, current_order_id } = req.body;
@@ -1383,13 +1383,11 @@ app.post('/api/chat', async (req, res) => {
       ).join('\n');
     }
 
-    const modelName = process.env.GEMINI_MODEL || 'gemini-3.6';
+    // Resolves both '3.6-flash' and 'gemini-3.6-flash'
+    let rawModel = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+    const modelName = rawModel.startsWith('gemini-') ? rawModel : `gemini-${rawModel}`;
 
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents: message,
-      config: {
-        systemInstruction: `You are 'Loopie', the AI stylist and order logistics concierge for 'ThriftLoop'—an online curated vintage boutique in the Philippines.
+    const systemInstruction = `You are 'Loopie', the AI stylist and order logistics concierge for 'ThriftLoop'—an online curated vintage boutique in the Philippines.
 
 YOUR CORE RESPONSIBILITIES:
 1. VINTAGE CATALOG & SIZING: Answer customer questions regarding specific archive pieces, sizing, chest width (pit-to-pit / PTP flat-lay in inches), lengths, condition grading (Deadstock, Grade A, Grade B), outfit pairings, and sustainable clothing care.
@@ -1403,13 +1401,28 @@ ${orderContext}
 
 GUIDELINES:
 - Always quote prices in Philippine Pesos (₱).
-- Keep answers warm, concise, and helpful.`,
-      },
-    });
+- Keep answers warm, concise, and helpful.`;
 
-    res.json({ reply: response.text || 'I could not retrieve styling or tracking details right now.' });
+    let response;
+    try {
+      response = await ai.models.generateContent({
+        model: modelName,
+        contents: message,
+        config: { systemInstruction },
+      });
+    } catch (primaryErr) {
+      console.warn(`⚠️ Model ${modelName} error (${primaryErr.message}). Attempting fallback to gemini-1.5-flash...`);
+      response = await ai.models.generateContent({
+        model: 'gemini-1.5-flash',
+        contents: message,
+        config: { systemInstruction },
+      });
+    }
+
+    res.json({ reply: response?.text || 'I could not retrieve styling or tracking details right now.' });
   } catch (err) {
-    res.json({ reply: `Concierge notice: ${err.message || 'Unable to consult records.'}` });
+    console.error('❌ Concierge generateContent failure:', err.message);
+    res.json({ reply: "I'm having trouble retrieving live records at the moment. Please try again shortly or contact our seller directly via Conversations." });
   }
 });
 
