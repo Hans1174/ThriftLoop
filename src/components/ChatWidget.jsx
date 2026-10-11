@@ -14,14 +14,12 @@ export default function ChatWidget() {
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // Side-docking & vertical drag state
+  // Screen-edge docking & vertical drag state
   const [position, setPosition] = useState({
     side: 'right', // 'left' | 'right'
-    y: typeof window !== 'undefined' ? window.innerHeight * 0.55 : 350,
+    y: typeof window !== 'undefined' ? Math.max(100, window.innerHeight * 0.55) : 350,
   });
   const [isDragging, setIsDragging] = useState(false);
-  const [dragCoords, setDragCoords] = useState(null);
-
   const dragStartRef = useRef({ x: 0, y: 0, initialY: 0 });
   const hasMovedRef = useRef(false);
 
@@ -36,7 +34,7 @@ export default function ChatWidget() {
     const handleResize = () => {
       setPosition((prev) => ({
         ...prev,
-        y: Math.min(Math.max(prev.y, 80), window.innerHeight - 100),
+        y: Math.min(Math.max(prev.y, 70), window.innerHeight - 90),
       }));
     };
     window.addEventListener('resize', handleResize);
@@ -68,13 +66,13 @@ export default function ChatWidget() {
 
     const clampedY = Math.min(
       Math.max(dragStartRef.current.initialY + deltaY, 70),
-      window.innerHeight - 80
+      window.innerHeight - 90
     );
 
-    setDragCoords({
-      x: e.clientX,
+    setPosition((prev) => ({
+      ...prev,
       y: clampedY,
-    });
+    }));
   };
 
   const handlePointerUp = (e) => {
@@ -86,15 +84,14 @@ export default function ChatWidget() {
     } catch {}
 
     if (hasMovedRef.current) {
+      // Snap to whichever side is closer upon release
       const snapSide = e.clientX < window.innerWidth / 2 ? 'left' : 'right';
-      const finalY = dragCoords ? dragCoords.y : position.y;
-
-      setPosition({
+      setPosition((prev) => ({
+        ...prev,
         side: snapSide,
-        y: finalY,
-      });
-      setDragCoords(null);
+      }));
     } else {
+      // Clean tap/click toggles the chat window
       setIsOpen((prev) => !prev);
     }
   };
@@ -133,35 +130,26 @@ export default function ChatWidget() {
     }
   };
 
-  const triggerStyle = dragCoords
-    ? {
-        left: `${dragCoords.x - 16}px`,
-        top: `${dragCoords.y}px`,
-        transition: 'none',
-      }
-    : {
-        top: `${position.y}px`,
-        left: position.side === 'left' ? '0px' : 'auto',
-        right: position.side === 'right' ? '0px' : 'auto',
-        transition: 'all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
-      };
-
   return (
     <>
-      {/* 1. Movable Edge Arrow Tab */}
+      {/* 1. Movable Side-Docked Arrow Tab (0px Gap) */}
       {!isOpen && (
         <div
-          style={triggerStyle}
+          style={{
+            top: `${position.y}px`,
+            left: position.side === 'left' ? '0px' : 'auto',
+            right: position.side === 'right' ? '0px' : 'auto',
+          }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
-          className={`fixed z-50 select-none touch-none cursor-grab active:cursor-grabbing flex items-center shadow-xl ${
+          className={`fixed z-50 select-none touch-none cursor-grab active:cursor-grabbing flex items-center transition-transform duration-150 ${
             isDragging ? 'scale-105 opacity-90' : 'hover:scale-105'
           }`}
           title="Open Loopie"
         >
           <div
-            className={`bg-[#2F6B4F] hover:bg-[#23313A] text-white flex items-center justify-center py-3.5 px-2 border border-[#A8C3A0]/40 transition-colors shadow-md ${
+            className={`bg-[#2F6B4F] hover:bg-[#23313A] text-white flex items-center justify-center py-3.5 px-2 border border-[#A8C3A0]/40 shadow-xl transition-colors ${
               position.side === 'left'
                 ? 'rounded-r-xl border-l-0 pl-2 pr-2.5'
                 : 'rounded-l-xl border-r-0 pr-2 pl-2.5'
@@ -176,12 +164,12 @@ export default function ChatWidget() {
         </div>
       )}
 
-      {/* 2. Refined Chat Window */}
+      {/* 2. Responsive Chat Drawer */}
       {isOpen && (
         <div
-          className={`fixed z-50 bottom-4 ${
-            position.side === 'left' ? 'left-3 sm:left-6' : 'right-3 sm:right-6'
-          } w-[92vw] sm:w-[370px] max-w-[390px] h-[82dvh] sm:h-[520px] max-h-[580px] bg-white rounded-3xl shadow-2xl border border-[#A8C3A0]/40 flex flex-col overflow-hidden animate-in zoom-in-95 duration-150`}
+          className={`fixed z-50 bottom-3 sm:bottom-5 ${
+            position.side === 'left' ? 'left-2 sm:left-6' : 'right-2 sm:right-6'
+          } w-[94vw] sm:w-[370px] max-w-[390px] h-[86dvh] sm:h-[520px] max-h-[580px] bg-white rounded-3xl shadow-2xl border border-[#A8C3A0]/40 flex flex-col overflow-hidden animate-in zoom-in-95 duration-150`}
         >
           {/* Header */}
           <div className="bg-[#2F6B4F] text-white px-5 py-3.5 flex items-center justify-between border-b border-[#A8C3A0]/20 shrink-0">
@@ -197,7 +185,7 @@ export default function ChatWidget() {
           </div>
 
           {/* Messages Feed */}
-          <div className="flex-1 p-4 overflow-y-auto space-y-2.5 text-xs bg-[#FAF7F2]">
+          <div className="flex-1 p-3.5 sm:p-4 overflow-y-auto space-y-2.5 text-xs bg-[#FAF7F2]">
             {messages.map((m, idx) => {
               const isUser = m.sender === 'user';
               return (
@@ -206,7 +194,7 @@ export default function ChatWidget() {
                   className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
                 >
                   <div
-                    className={`max-w-[82%] px-3.5 py-2.5 rounded-2xl leading-relaxed shadow-xs ${
+                    className={`max-w-[85%] px-3.5 py-2.5 rounded-2xl leading-relaxed shadow-xs ${
                       isUser
                         ? 'bg-[#2F6B4F] text-white rounded-br-xs'
                         : 'bg-white border border-[#A8C3A0]/30 text-[#23313A] rounded-bl-xs'
@@ -260,14 +248,14 @@ export default function ChatWidget() {
               e.preventDefault();
               handleSend();
             }}
-            className="p-2.5 bg-white border-t border-[#A8C3A0]/20 flex gap-2 shrink-0"
+            className="p-2.5 sm:p-3 bg-white border-t border-[#A8C3A0]/20 flex gap-2 shrink-0"
           >
             <input
               type="text"
               placeholder="Ask Loopie..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              className="flex-1 bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2 text-xs text-[#23313A] focus:outline-none focus:border-[#2F6B4F] focus:bg-white transition-all"
+              className="flex-1 bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2 text-base sm:text-xs text-[#23313A] focus:outline-none focus:border-[#2F6B4F] focus:bg-white transition-all"
             />
             <button
               type="submit"

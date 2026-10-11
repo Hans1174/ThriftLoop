@@ -12,7 +12,7 @@ dotenv.config();
 
 const app = express();
 
-// Permissive CORS to allow seamless desktop & mobile web authentication
+// Permissive CORS for seamless desktop & mobile web authentication
 app.use(cors({ origin: true, credentials: true }));
 
 // High-capacity body parser for base64 images (50MB)
@@ -44,8 +44,8 @@ app.get('/', (req, res) => {
 });
 
 // 2. Services
-const geminiApiKey = (process.env.GEMINI_API_KEY || '').trim();
-const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+const cleanedGeminiKey = (process.env.GEMINI_API_KEY || '').trim().replace(/^["']|["']$/g, '');
+const ai = new GoogleGenAI(cleanedGeminiKey ? { apiKey: cleanedGeminiKey } : {});
 
 const mailTransporter = nodemailer.createTransport({
   service: 'gmail',
@@ -55,7 +55,6 @@ const mailTransporter = nodemailer.createTransport({
   },
 });
 
-// Verify SMTP connection on startup
 mailTransporter.verify((error) => {
   if (error) {
     console.error('❌ Nodemailer SMTP Connection Failed:', error.message);
@@ -263,22 +262,20 @@ app.post('/api/admin/inventory/apply-markdowns', async (req, res) => {
 });
 
 // ==========================================
-// AUTHENTICATION ROUTES (ROBUST DESKTOP + MOBILE GOOGLE OAUTH)
+// AUTHENTICATION (DUAL DESKTOP + MOBILE GOOGLE OAUTH)
 // ==========================================
-
 app.post('/api/auth/google', async (req, res) => {
   const { credential, access_token, token: genericToken } = req.body;
   const tokenPayload = credential || genericToken;
 
   if (!tokenPayload && !access_token) {
-    return res.status(400).json({ error: 'Google credential (ID token) or access token is required.' });
+    return res.status(400).json({ error: 'Google credential or access token is required.' });
   }
 
   try {
     let email = null;
     let name = null;
 
-    // Strategy A: If an ID Token is provided (from <GoogleLogin />)
     if (tokenPayload) {
       try {
         const ticket = await googleClient.verifyIdToken({
@@ -289,8 +286,7 @@ app.post('/api/auth/google', async (req, res) => {
         email = payload?.email;
         name = payload?.name;
       } catch (verifyErr) {
-        console.warn('⚠️ Local verifyIdToken failed, falling back to Google TokenInfo API:', verifyErr.message);
-        // Fallback directly to Google tokeninfo to eliminate clock skew or environment mismatch
+        // Fallback directly to Google tokeninfo to resolve desktop browser clock-skew
         const infoRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(tokenPayload)}`);
         if (infoRes.ok) {
           const info = await infoRes.json();
@@ -300,14 +296,12 @@ app.post('/api/auth/google', async (req, res) => {
           throw verifyErr;
         }
       }
-    } 
-    // Strategy B: If an Access Token is provided (from useGoogleLogin())
-    else if (access_token) {
+    } else if (access_token) {
       const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
         headers: { Authorization: `Bearer ${access_token}` },
       });
       if (!userRes.ok) {
-        throw new Error('Could not fetch user profile from Google using the provided access token.');
+        throw new Error('Could not fetch user profile from Google access token.');
       }
       const profile = await userRes.json();
       email = profile.email;
@@ -1389,14 +1383,15 @@ app.delete('/api/admin/orders/:id', async (req, res) => {
   }
 });
 
-// --- AI STYLIST & LOGISTICS CONCIERGE (gemini-2.5-flash / gemini-2.0-flash / gemini-1.5-flash) ---
-
+// ==========================================
+// AI STYLIST & LOGISTICS CONCIERGE (MULTI-TIER ENGINE)
+// ==========================================
 app.post('/api/chat', async (req, res) => {
   const { message, user_id, email, current_order_id } = req.body;
   if (!message) return res.status(400).json({ error: 'Message is required' });
 
-  if (!geminiApiKey || geminiApiKey.includes('YourGeminiKey')) {
-    return res.json({ reply: '⚠️ AI Concierge Notice: GEMINI_API_KEY is not configured in your backend environment variables.' });
+  if (!cleanedGeminiKey || cleanedGeminiKey.includes('YourGeminiKey')) {
+    return res.json({ reply: '⚠️ AI Concierge Notice: GEMINI_API_KEY is not configured in backend environment variables.' });
   }
 
   try {
@@ -1410,29 +1405,30 @@ app.post('/api/chat', async (req, res) => {
       ? products.map((p) => `- [#${p.product_id}] ${p.name} (Size: ${p.size || 'OS'}, PTP: ${p.chest_width || 'N/A'}, Length: ${p.length || 'N/A'}, Grade: ${p.condition_grade || 'Grade A'}, Price: ₱${p.price})`).join('\n')
       : 'No items currently in stock.';
 
-    let orderContext = 'No order records found for this session.';
+    let orderContext = 'No order records associated with this guest session.';
     const orderMatch = message.match(/#?(\b\d+\b)/);
     const targetOrderId = current_order_id || (orderMatch ? parseInt(orderMatch[1], 10) : null);
 
-    let ordersQuery = supabase.from('orders').select('*');
+    // Only query orders if an explicit order ID or authenticated identity exists
+    if (targetOrderId || user_id || email) {
+      let ordersQuery = supabase.from('orders').select('*');
 
-    if (targetOrderId) {
-      ordersQuery = ordersQuery.eq('order_id', targetOrderId);
-    } else if (user_id) {
-      ordersQuery = ordersQuery.eq('user_id', user_id).order('order_id', { ascending: false }).limit(3);
-    } else if (email) {
-      ordersQuery = ordersQuery.ilike('email', email.trim()).order('order_id', { ascending: false }).limit(3);
+      if (targetOrderId) {
+        ordersQuery = ordersQuery.eq('order_id', targetOrderId);
+      } else if (user_id) {
+        ordersQuery = ordersQuery.eq('user_id', user_id).order('order_id', { ascending: false }).limit(3);
+      } else if (email) {
+        ordersQuery = ordersQuery.ilike('email', email.trim()).order('order_id', { ascending: false }).limit(3);
+      }
+
+      const { data: userOrders, error: orderErr } = await ordersQuery;
+
+      if (!orderErr && userOrders && userOrders.length > 0) {
+        orderContext = userOrders.map((o) => 
+          `- Order #${o.order_id}: Status = ${(o.status || '').toUpperCase()}, Courier = ${o.courier || 'J&T'}, Tracking Number = ${o.tracking_number || 'Assigning'}, Total = ₱${o.total_amount}, Placed on = ${new Date(o.created_at).toLocaleDateString()}`
+        ).join('\n');
+      }
     }
-
-    const { data: userOrders } = await ordersQuery;
-
-    if (userOrders && userOrders.length > 0) {
-      orderContext = userOrders.map((o) => 
-        `- Order #${o.order_id}: Status = ${o.status.toUpperCase()}, Courier = ${o.courier}, Tracking Number = ${o.tracking_number || 'Assigning'}, Total = ₱${o.total_amount}, Destination = ${o.city || 'Metro'}, Placed on = ${new Date(o.created_at).toLocaleDateString()}`
-      ).join('\n');
-    }
-
-    let configuredModel = (process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim();
 
     const systemInstruction = `You are 'Loopie', the AI stylist and order logistics concierge for 'ThriftLoop'—an online curated vintage boutique in the Philippines.
 
@@ -1450,12 +1446,14 @@ GUIDELINES:
 - Always quote prices in Philippine Pesos (₱).
 - Keep answers warm, concise, and helpful.`;
 
-    let response;
+    let configuredModel = (process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim();
     const candidateModels = [configuredModel, 'gemini-2.0-flash', 'gemini-1.5-flash'].filter(
       (m, idx, arr) => arr.indexOf(m) === idx
     );
 
+    let response = null;
     let lastError = null;
+
     for (const modelCandidate of candidateModels) {
       try {
         response = await ai.models.generateContent({
@@ -1474,14 +1472,14 @@ GUIDELINES:
       return res.json({ reply: response.text });
     }
 
-    // Direct diagnosis: surfaces the actual Google API error so it's transparent why it failed
+    // Direct diagnosis: surfaces the actual Google API error directly into the chat response
     console.error('❌ All Gemini candidates failed:', lastError?.message);
-    res.json({ 
-      reply: `[AI Alert: ${lastError?.message || 'Check Render GEMINI_API_KEY settings or token limits'}]` 
+    res.json({
+      reply: `[Loopie Error: ${lastError?.message || 'Check Render GEMINI_API_KEY environment variable'}]`
     });
   } catch (err) {
     console.error('❌ Concierge chat route error:', err.message);
-    res.json({ reply: `[Error: ${err.message}]` });
+    res.json({ reply: `[System Error: ${err.message}]` });
   }
 });
 

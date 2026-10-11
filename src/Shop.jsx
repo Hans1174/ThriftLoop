@@ -3,7 +3,6 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { SlidersHorizontal, Check, Loader2, X, RotateCcw, Tag } from 'lucide-react';
 import { useCart } from './context/CartContext';
 
-// Safe environment fallback without external import dependency
 const API_URL = import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
 
 export default function Shop() {
@@ -15,7 +14,6 @@ export default function Shop() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Filter & Layout States
   const [showFilters, setShowFilters] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || 'All');
   const [selectedCondition, setSelectedCondition] = useState('All');
@@ -24,37 +22,25 @@ export default function Shop() {
   const [sortBy, setSortBy] = useState('newest');
   const [addedId, setAddedId] = useState(null);
 
-  // Dynamic Aging Discount Calculation (Objectives 3 & 5)
   const calculatePricing = (item) => {
     const rawPrice = parseFloat(item.price || 0);
     const originalPrice = parseFloat(item.original_price || rawPrice);
 
-    // If backend already marked down price compared to original_price
     if (item.original_price && originalPrice > rawPrice) {
       const discountPercent = Math.round(((originalPrice - rawPrice) / originalPrice) * 100);
-      return {
-        currentPrice: rawPrice,
-        originalPrice,
-        discountPercent,
-        isDiscounted: true,
-      };
+      return { currentPrice: rawPrice, originalPrice, discountPercent, isDiscounted: true };
     }
 
-    // Dynamic aging calculation based on created_at timestamp
     if (item.created_at) {
-      const daysInInventory = Math.floor(
-        (new Date() - new Date(item.created_at)) / (1000 * 60 * 60 * 24)
-      );
-
+      const daysInInventory = Math.floor((new Date() - new Date(item.created_at)) / (1000 * 60 * 60 * 24));
       let discountRate = 0;
       if (daysInInventory >= 30) discountRate = 0.25;
       else if (daysInInventory >= 14) discountRate = 0.15;
       else if (daysInInventory >= 7) discountRate = 0.10;
 
       if (discountRate > 0) {
-        const discounted = rawPrice * (1 - discountRate);
         return {
-          currentPrice: discounted,
+          currentPrice: rawPrice * (1 - discountRate),
           originalPrice: rawPrice,
           discountPercent: Math.round(discountRate * 100),
           isDiscounted: true,
@@ -62,15 +48,9 @@ export default function Shop() {
       }
     }
 
-    return {
-      currentPrice: rawPrice,
-      originalPrice: rawPrice,
-      discountPercent: 0,
-      isDiscounted: false,
-    };
+    return { currentPrice: rawPrice, originalPrice: rawPrice, discountPercent: 0, isDiscounted: false };
   };
 
-  // Fetch live products from backend
   useEffect(() => {
     fetch(`${API_URL}/api/products`)
       .then((res) => res.json())
@@ -84,7 +64,6 @@ export default function Shop() {
       });
   }, []);
 
-  // Sync URL query params with component state cleanly
   useEffect(() => {
     const cat = searchParams.get('category');
     const search = searchParams.get('search');
@@ -126,7 +105,6 @@ export default function Shop() {
     Boolean(searchQuery.trim()),
   ].filter(Boolean).length;
 
-  // Search, Filter, and Pricing Computation
   const filteredProducts = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
 
@@ -184,26 +162,26 @@ export default function Shop() {
 
   return (
     <div className="min-h-screen bg-[#F6F1E8] text-[#23313A] font-sans pb-16">
-      <main className="max-w-7xl mx-auto px-6 py-8 sm:py-10">
+      <main className="max-w-7xl mx-auto px-3.5 sm:px-6 py-6 sm:py-8 lg:py-10">
         
         {/* Header Title Bar & Controls */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 sm:gap-4 mb-6 sm:mb-8">
           <div>
-            <h1 className="font-serif text-3xl md:text-4xl font-bold text-[#23313A] tracking-tight">
+            <h1 className="font-serif text-2xl sm:text-3xl md:text-4xl font-bold text-[#23313A] tracking-tight">
               Curated Pieces
             </h1>
-            <div className="flex items-center gap-2.5 mt-1.5 flex-wrap">
-              <p className="text-xs font-semibold text-[#A8C3A0]">
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <p className="text-[11px] sm:text-xs font-semibold text-[#A8C3A0]">
                 Showing {filteredProducts.length} unique 1-of-1 items
               </p>
               {searchQuery && (
-                <span className="inline-flex items-center gap-1.5 bg-white border border-[#A8C3A0]/40 text-[#23313A] text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-xs">
+                <span className="inline-flex items-center gap-1.5 bg-white border border-[#A8C3A0]/40 text-[#23313A] text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-xs">
                   Search: "{searchQuery}"
                   <button 
                     onClick={clearSearch} 
                     className="text-[#E67E5F] hover:text-black transition-colors"
                   >
-                    <X size={12} />
+                    <X size={11} />
                   </button>
                 </span>
               )}
@@ -211,20 +189,20 @@ export default function Shop() {
           </div>
 
           {/* Controls: Filter Toggle + Sort By */}
-          <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+          <div className="flex items-center gap-2.5 sm:gap-3 w-full md:w-auto justify-between md:justify-end">
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border transition-all duration-200 active:scale-95 shadow-xs cursor-pointer ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold border transition-all duration-200 active:scale-95 shadow-xs cursor-pointer ${
                 showFilters
-                  ? 'bg-[#2F6B4F] text-white border-[#2F6B4F] shadow-sm'
+                  ? 'bg-[#2F6B4F] text-white border-[#2F6B4F]'
                   : 'bg-white text-[#23313A] border-[#A8C3A0]/40 hover:border-[#2F6B4F] hover:bg-[#F6F1E8]/50'
               }`}
             >
               <SlidersHorizontal 
-                size={14} 
+                size={13} 
                 className={`transition-transform duration-300 ${showFilters ? 'rotate-90 text-white' : 'text-[#2F6B4F]'}`} 
               />
-              <span>{showFilters ? 'Hide Filters' : 'Show Filters'}</span>
+              <span>{showFilters ? 'Hide Filters' : 'Filters'}</span>
               {activeFilterCount > 0 && (
                 <span
                   className={`w-4 h-4 rounded-full text-[10px] flex items-center justify-center font-bold ${
@@ -236,12 +214,12 @@ export default function Shop() {
               )}
             </button>
 
-            <div className="flex items-center gap-2 text-xs">
+            <div className="flex items-center gap-1.5 sm:gap-2 text-xs">
               <span className="text-[#23313A]/70 font-semibold hidden sm:inline">Sort:</span>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
-                className="bg-white border border-[#A8C3A0]/40 text-[#23313A] rounded-xl px-3.5 py-2 font-bold focus:outline-none focus:border-[#2F6B4F] shadow-xs cursor-pointer hover:border-[#2F6B4F]/80 transition-colors"
+                className="bg-white border border-[#A8C3A0]/40 text-[#23313A] rounded-xl px-2.5 sm:px-3.5 py-2 text-xs font-bold focus:outline-none focus:border-[#2F6B4F] shadow-xs cursor-pointer hover:border-[#2F6B4F]/80 transition-colors"
               >
                 <option value="newest">Latest Drops</option>
                 <option value="price-low">Price: Low to High</option>
@@ -252,34 +230,34 @@ export default function Shop() {
         </div>
 
         {/* Content Layout */}
-        <div className={`grid grid-cols-1 gap-8 transition-all duration-500 ease-in-out ${showFilters ? 'lg:grid-cols-4' : 'w-full'}`}>
+        <div className={`grid grid-cols-1 gap-6 sm:gap-8 transition-all duration-300 ${showFilters ? 'lg:grid-cols-4' : 'w-full'}`}>
           
-          {/* Collapsible Sidebar */}
+          {/* Collapsible Filter Sidebar (Drawer on mobile/tablet, Sidebar on desktop) */}
           {showFilters && (
-            <aside className="space-y-6 bg-white border border-[#A8C3A0]/30 rounded-2xl p-6 h-fit shadow-xs animate-in fade-in slide-in-from-left-6 duration-300">
-              <div className="flex items-center justify-between border-b border-[#A8C3A0]/20 pb-3">
+            <aside className="space-y-4 sm:space-y-6 bg-white border border-[#A8C3A0]/30 rounded-2xl p-4 sm:p-6 h-fit shadow-xs animate-in fade-in duration-200">
+              <div className="flex items-center justify-between border-b border-[#A8C3A0]/20 pb-2.5 sm:pb-3">
                 <div className="flex items-center gap-2">
-                  <SlidersHorizontal size={16} className="text-[#2F6B4F]" />
-                  <h2 className="font-serif font-bold text-base text-[#23313A]">Filters</h2>
+                  <SlidersHorizontal size={15} className="text-[#2F6B4F]" />
+                  <h2 className="font-serif font-bold text-sm sm:text-base text-[#23313A]">Filters</h2>
                 </div>
                 <button
                   onClick={() => setShowFilters(false)}
-                  className="text-[#A8C3A0] hover:text-[#23313A] p-1 rounded-lg hover:bg-[#F6F1E8] transition-all"
+                  className="text-[#A8C3A0] hover:text-[#23313A] p-1 rounded-lg hover:bg-[#F6F1E8] transition-all cursor-pointer"
                   title="Close filter panel"
                 >
-                  <X size={16} />
+                  <X size={15} />
                 </button>
               </div>
 
               {/* Category */}
               <div>
-                <p className="text-[11px] font-bold text-[#23313A] uppercase tracking-wider mb-2.5">Category</p>
-                <div className="flex flex-wrap gap-1.5">
+                <p className="text-[10px] sm:text-[11px] font-bold text-[#23313A] uppercase tracking-wider mb-2">Category</p>
+                <div className="flex flex-wrap gap-1 sm:gap-1.5">
                   {categories.map((c) => (
                     <button
                       key={c}
                       onClick={() => setSelectedCategory(c)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer ${
+                      className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                         selectedCategory === c
                           ? 'bg-[#2F6B4F] text-white shadow-xs'
                           : 'bg-[#F6F1E8]/70 text-[#23313A] hover:bg-[#A8C3A0]/30'
@@ -293,13 +271,13 @@ export default function Shop() {
 
               {/* Condition */}
               <div>
-                <p className="text-[11px] font-bold text-[#23313A] uppercase tracking-wider mb-2.5">Condition Grade</p>
-                <div className="flex flex-wrap gap-1.5">
+                <p className="text-[10px] sm:text-[11px] font-bold text-[#23313A] uppercase tracking-wider mb-2">Condition Grade</p>
+                <div className="flex flex-wrap gap-1 sm:gap-1.5">
                   {conditions.map((g) => (
                     <button
                       key={g}
                       onClick={() => setSelectedCondition(g)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer ${
+                      className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                         selectedCondition === g
                           ? 'bg-[#2F6B4F] text-white shadow-xs'
                           : 'bg-[#F6F1E8]/70 text-[#23313A] hover:bg-[#A8C3A0]/30'
@@ -313,13 +291,13 @@ export default function Shop() {
 
               {/* Size */}
               <div>
-                <p className="text-[11px] font-bold text-[#23313A] uppercase tracking-wider mb-2.5">Size</p>
-                <div className="flex flex-wrap gap-1.5">
+                <p className="text-[10px] sm:text-[11px] font-bold text-[#23313A] uppercase tracking-wider mb-2">Size</p>
+                <div className="flex flex-wrap gap-1 sm:gap-1.5">
                   {sizes.map((s) => (
                     <button
                       key={s}
                       onClick={() => setSelectedSize(s)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer ${
+                      className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                         selectedSize === s
                           ? 'bg-[#2F6B4F] text-white shadow-xs'
                           : 'bg-[#F6F1E8]/70 text-[#23313A] hover:bg-[#A8C3A0]/30'
@@ -334,38 +312,38 @@ export default function Shop() {
               {activeFilterCount > 0 && (
                 <button
                   onClick={resetAllFilters}
-                  className="w-full text-xs text-[#E67E5F] hover:text-[#d67053] font-bold pt-2 flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="w-full text-xs text-[#E67E5F] hover:text-[#d67053] font-bold pt-1.5 flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <RotateCcw size={13} />
+                  <RotateCcw size={12} />
                   <span>Reset All Filters</span>
                 </button>
               )}
             </aside>
           )}
 
-          {/* Product Grid */}
+          {/* Product Grid: 2 cols (mobile), 3 cols (tablet / desktop filtered), 4 cols (desktop wide) */}
           <div className={showFilters ? 'lg:col-span-3' : 'w-full'}>
             {loading ? (
-              <div className="py-24 flex justify-center items-center gap-2.5 text-sm text-[#A8C3A0] font-bold animate-pulse">
-                <Loader2 size={20} className="animate-spin text-[#2F6B4F]" /> Loading inventory pieces...
+              <div className="py-20 flex justify-center items-center gap-2 text-xs text-[#A8C3A0] font-bold">
+                <Loader2 size={18} className="animate-spin text-[#2F6B4F]" /> Loading inventory pieces...
               </div>
             ) : filteredProducts.length === 0 ? (
-              <div className="bg-white border border-[#A8C3A0]/30 rounded-2xl p-12 text-center text-[#23313A] shadow-xs">
+              <div className="bg-white border border-[#A8C3A0]/30 rounded-2xl p-8 sm:p-12 text-center text-[#23313A] shadow-xs">
                 <p className="font-bold text-sm">No items match your search.</p>
                 <p className="text-xs text-[#A8C3A0] font-semibold mt-1">Try checking for typos or resetting active filters.</p>
                 <button
                   onClick={resetAllFilters}
-                  className="mt-5 inline-flex items-center gap-1.5 bg-[#2F6B4F] hover:bg-[#23313A] text-white text-xs font-bold py-2.5 px-5 rounded-xl shadow-xs transition-colors cursor-pointer"
+                  className="mt-4 inline-flex items-center gap-1.5 bg-[#2F6B4F] hover:bg-[#23313A] text-white text-xs font-bold py-2.5 px-5 rounded-xl shadow-xs transition-colors cursor-pointer"
                 >
                   <RotateCcw size={13} /> Reset Filters
                 </button>
               </div>
             ) : (
               <div
-                className={`grid gap-6 transition-all duration-500 ${
+                className={`grid gap-3 sm:gap-5 md:gap-6 ${
                   showFilters
-                    ? 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-3'
-                    : 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4'
+                    ? 'grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-3'
+                    : 'grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4'
                 }`}
               >
                 {filteredProducts.map((item) => {
@@ -374,50 +352,51 @@ export default function Shop() {
                   return (
                     <div
                       key={item.product_id}
-                      className="bg-white border border-[#A8C3A0]/30 rounded-2xl overflow-hidden shadow-xs flex flex-col justify-between group hover:shadow-xl hover:-translate-y-1.5 hover:border-[#2F6B4F]/50 transition-all duration-300"
+                      className="bg-white border border-[#A8C3A0]/30 rounded-2xl overflow-hidden shadow-xs flex flex-col justify-between group hover:shadow-lg hover:-translate-y-1 hover:border-[#2F6B4F]/50 transition-all duration-300"
                     >
                       <Link to={`/product/${item.product_id}`} className="block relative">
-                        <div className="h-64 bg-[#F6F1E8]/70 overflow-hidden flex items-center justify-center relative border-b border-[#A8C3A0]/10">
-                          <span className="absolute top-3 left-3 z-10 bg-[#23313A] text-[#F6F1E8] text-[10px] font-bold px-2 py-0.5 rounded shadow-xs">
+                        <div className="h-44 sm:h-56 md:h-64 bg-[#F6F1E8]/70 overflow-hidden flex items-center justify-center relative border-b border-[#A8C3A0]/10">
+                          <span className="absolute top-2 left-2 sm:top-3 sm:left-3 z-10 bg-[#23313A] text-[#F6F1E8] text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded shadow-xs">
                             {item.condition_grade}
                           </span>
                           
-                          {/* Markdown Discount Badge */}
                           {isDiscounted && (
-                            <span className="absolute bottom-3 left-3 z-10 bg-[#E67E5F] text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-xs flex items-center gap-1 uppercase tracking-wider">
-                              <Tag size={10} /> -{discountPercent}% OFF
+                            <span className="absolute bottom-2 left-2 sm:bottom-3 sm:left-3 z-10 bg-[#E67E5F] text-white text-[8px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded shadow-xs flex items-center gap-0.5 uppercase tracking-wider">
+                              <Tag size={9} /> -{discountPercent}%
                             </span>
                           )}
 
-                          <span className="absolute top-3 right-3 z-10 bg-white/95 backdrop-blur-xs border border-[#A8C3A0]/30 text-[#23313A] text-[10px] font-bold px-2 py-0.5 rounded shadow-xs">
+                          <span className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10 bg-white/95 backdrop-blur-xs border border-[#A8C3A0]/30 text-[#23313A] text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded shadow-xs">
                             Size {item.size}
                           </span>
+
                           {item.status === 'sold' && (
-                            <span className="absolute inset-0 bg-[#23313A]/70 flex items-center justify-center text-white text-xs font-bold uppercase tracking-wider z-20 backdrop-blur-[1px]">
+                            <span className="absolute inset-0 bg-[#23313A]/70 flex items-center justify-center text-white text-[11px] sm:text-xs font-bold uppercase tracking-wider z-20 backdrop-blur-[1px]">
                               Sold Out
                             </span>
                           )}
+
                           <img
                             src={item.image_url}
                             alt={item.name}
-                            className="w-full h-full object-cover group-hover:scale-108 transition-transform duration-700 ease-out"
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
                           />
                         </div>
-                        <div className="p-4 bg-white">
-                          <p className="text-[10px] font-bold text-[#A8C3A0] uppercase tracking-wider">
+
+                        <div className="p-3 sm:p-4 bg-white">
+                          <p className="text-[9px] sm:text-[10px] font-bold text-[#A8C3A0] uppercase tracking-wider truncate">
                             {item.category_name || 'Vintage'}
                           </p>
-                          <h3 className="font-serif font-bold text-sm text-[#23313A] line-clamp-1 group-hover:text-[#2F6B4F] transition-colors mt-0.5">
+                          <h3 className="font-serif font-bold text-xs sm:text-sm text-[#23313A] line-clamp-1 group-hover:text-[#2F6B4F] transition-colors mt-0.5">
                             {item.name}
                           </h3>
 
-                          {/* Dynamic Pricing Display */}
-                          <div className="flex items-center gap-2 mt-1">
-                            <p className="text-[#2F6B4F] font-bold text-base">
+                          <div className="flex items-center gap-1.5 sm:gap-2 mt-1">
+                            <p className="text-[#2F6B4F] font-bold text-xs sm:text-sm md:text-base">
                               ₱{currentPrice.toFixed(2)}
                             </p>
                             {isDiscounted && (
-                              <p className="text-xs text-[#23313A]/40 line-through font-semibold">
+                              <p className="text-[10px] sm:text-xs text-[#23313A]/40 line-through font-semibold">
                                 ₱{originalPrice.toFixed(2)}
                               </p>
                             )}
@@ -425,23 +404,23 @@ export default function Shop() {
                         </div>
                       </Link>
 
-                      <div className="px-4 pb-4 bg-white">
+                      <div className="px-3 pb-3 sm:px-4 sm:pb-4 bg-white">
                         <button
                           onClick={(e) => handleAddToCart(e, item)}
                           disabled={item.status === 'sold'}
-                          className={`w-full font-bold py-2.5 rounded-xl text-xs transition-all duration-200 active:scale-95 flex items-center justify-center gap-1.5 shadow-xs cursor-pointer ${
+                          className={`w-full font-bold py-2 sm:py-2.5 rounded-xl text-[11px] sm:text-xs transition-all duration-200 active:scale-95 flex items-center justify-center gap-1.5 shadow-xs cursor-pointer ${
                             item.status === 'sold'
                               ? 'bg-[#F6F1E8] text-[#A8C3A0] cursor-not-allowed border border-[#A8C3A0]/20'
                               : addedId === item.product_id || cart.some((c) => (c.product_id || c.id) === item.product_id)
-                              ? 'bg-[#2F6B4F] text-white scale-[1.01]'
+                              ? 'bg-[#2F6B4F] text-white'
                               : 'bg-[#E67E5F] hover:bg-[#d67053] hover:shadow-md text-white'
                           }`}
                         >
                           {item.status === 'sold' ? (
                             'Sold Out'
                           ) : addedId === item.product_id || cart.some((c) => (c.product_id || c.id) === item.product_id) ? (
-                            <span className="flex items-center gap-1.5 animate-in zoom-in-75 duration-200">
-                              <Check size={14} className="stroke-[3]" /> In Cart
+                            <span className="flex items-center gap-1">
+                              <Check size={13} className="stroke-[3]" /> In Cart
                             </span>
                           ) : (
                             'Add to Cart'
