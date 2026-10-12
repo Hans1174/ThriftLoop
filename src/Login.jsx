@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Mail, X, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react';
-import { useGoogleLogin } from '@react-oauth/google';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
 const GOOGLE_CLIENT_ID = '1089526724617-1e8fas2jq3noffeigk0kh5v7gfsids1f.apps.googleusercontent.com';
@@ -46,11 +45,11 @@ export default function Login({ isOpen, onClose, onLoginSuccess }) {
     }
   };
 
-  // Check URL hash for token if returning from a direct redirect
+  // Catch token when returning from Google's redirect
   useEffect(() => {
     if (typeof window !== 'undefined' && window.location.hash) {
-      const params = new URLSearchParams(window.location.hash.substring(1));
-      const accessToken = params.get('access_token');
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const accessToken = hashParams.get('access_token');
       if (accessToken) {
         window.history.replaceState(null, '', window.location.pathname);
         exchangeToken(accessToken);
@@ -58,29 +57,14 @@ export default function Login({ isOpen, onClose, onLoginSuccess }) {
     }
   }, []);
 
-  const hookLogin = useGoogleLogin({
-    onSuccess: (tokenResponse) => exchangeToken(tokenResponse.access_token),
-    onError: () => {
-      // Fallback: If browser blocks the popup, perform direct tab redirect
-      launchDirectRedirect();
-    },
-  });
-
-  const launchDirectRedirect = () => {
-    const redirectUri = window.location.origin;
+  // Direct tab redirection - cannot be blocked by popup blockers or mobile emulation
+  const handleGoogleRedirect = () => {
+    const currentOrigin = window.location.origin;
     const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(
-      redirectUri
+      currentOrigin
     )}&response_type=token&scope=email%20profile%20openid&prompt=select_account`;
-    window.location.assign(authUrl);
-  };
-
-  const handleGoogleClick = () => {
-    setError('');
-    try {
-      hookLogin();
-    } catch {
-      launchDirectRedirect();
-    }
+    
+    window.location.href = authUrl;
   };
 
   if (!isOpen) return null;
@@ -136,10 +120,11 @@ export default function Login({ isOpen, onClose, onLoginSuccess }) {
           </div>
         )}
 
+        {/* Redirect Button */}
         <div className="mb-4">
           <button
             type="button"
-            onClick={handleGoogleClick}
+            onClick={handleGoogleRedirect}
             disabled={loading}
             className="w-full flex items-center justify-center gap-3 bg-white border border-[#A8C3A0]/60 hover:bg-[#F6F1E8] text-[#23313A] font-bold text-xs py-3 px-4 rounded-full shadow-xs transition-all active:scale-95 cursor-pointer"
           >
