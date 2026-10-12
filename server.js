@@ -26,6 +26,7 @@ const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || '1089526724617-1e8fas2
   .replace(/^["']|["']$/g, '');
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const BLOGGER_SUBDOMAIN = (process.env.BLOGGER_SUBDOMAIN || 'thriftloop').trim();
+const BLOGGER_POST_EMAIL = (process.env.BLOGGER_POST_EMAIL || '').trim();
 
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
@@ -182,6 +183,41 @@ app.post('/api/notifications/email', async (req, res) => {
   }
 });
 
+// ==========================================
+// AUTOMATED BLOGGER AUTO-PUBLISH HELPER
+// ==========================================
+const autoPublishToBlogger = async (product) => {
+  if (!BLOGGER_POST_EMAIL || !process.env.EMAIL_USER) return;
+
+  const articleTitle = `New Archive Drop: ${product.name} (${product.size || 'OS'})`;
+  const articleBody = `
+    <div style="font-family: sans-serif; max-width: 650px;">
+      <p>A new 1-of-1 vintage garment has just been cataloged into the ThriftLoop archive.</p>
+      ${product.image_url ? `<p><img src="${product.image_url}" alt="${product.name}" style="max-width: 100%; border-radius: 12px;" /></p>` : ''}
+      <ul>
+        <li><strong>Brand:</strong> ${product.brand || 'Vintage Archive'}</li>
+        <li><strong>Size:</strong> ${product.size || 'OS'} (Chest/PTP: ${product.chest_width || 'N/A'}, Length: ${product.length || 'N/A'})</li>
+        <li><strong>Condition Grade:</strong> ${product.condition_grade || 'Grade A'}</li>
+        <li><strong>Archive Price:</strong> ₱${Number(product.price).toFixed(2)}</li>
+      </ul>
+      <p>${product.description || ''}</p>
+      <p><a href="${FRONTEND_URL}/product/${product.product_id}" style="color: #2F6B4F; font-weight: bold;">View Piece on ThriftLoop →</a></p>
+    </div>
+  `;
+
+  try {
+    await mailTransporter.sendMail({
+      from: `"ThriftLoop Auto-Curate" <${process.env.EMAIL_USER}>`,
+      to: BLOGGER_POST_EMAIL,
+      subject: articleTitle,
+      html: articleBody,
+    });
+    console.log(`📰 [Blogger Integration] Successfully auto-published "${product.name}" to Google Blog.`);
+  } catch (err) {
+    console.warn('⚠️ [Blogger Integration] Auto-publish notice:', err.message);
+  }
+};
+
 // 3. Voucher Rules
 const ACTIVE_VOUCHERS = {
   VINTAGE20: { code: 'VINTAGE20', type: 'percent', value: 20, minSpend: 0, description: 'Flash Drop: 20% off all archive pieces' },
@@ -306,6 +342,7 @@ app.post('/api/auth/google', async (req, res) => {
           if (decoded && decoded.email && (decoded.iss === 'https://accounts.google.com' || decoded.iss === 'accounts.google.com')) {
             email = decoded.email;
             name = decoded.name;
+            console.log('✅ Identity recovered from Google ID token payload:', email);
           } else {
             throw verifyErr;
           }
@@ -637,6 +674,10 @@ app.post('/api/products', async (req, res) => {
       .single();
 
     if (error) throw error;
+
+    // Auto-publish to Blogger in the background if configured
+    autoPublishToBlogger(product).catch(() => null);
+
     res.status(201).json({ message: 'Product listed successfully', productId: product.product_id });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Failed to insert product' });
