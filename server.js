@@ -983,14 +983,18 @@ app.post('/api/checkout/paymongo', async (req, res) => {
     }));
     await supabase.from('order_items').insert(orderItemsPayload);
 
-    await supabase.from('payments').insert([{
-      order_id: orderId,
-      user_id: validUserId,
-      payment_method: 'PayMongo',
-      amount: totalAmount,
-      status: 'pending',
-      transaction_reference: referenceNumber || `PM-${orderId}`,
-    }]).catch(() => null);
+    try {
+      await supabase.from('payments').insert([{
+        order_id: orderId,
+        user_id: validUserId,
+        payment_method: 'PayMongo',
+        amount: totalAmount,
+        status: 'pending',
+        transaction_reference: referenceNumber || `PM-${orderId}`,
+      }]);
+    } catch (paymentErr) {
+      console.warn('⚠️ Non-fatal payment record insert notice:', paymentErr.message);
+    }
 
     await supabase.from('products').update({ status: 'sold' }).in('product_id', productIds);
 
@@ -1085,11 +1089,14 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
         .eq('order_id', order_id)
         .eq('status', 'pending');
 
-      await supabase
-        .from('payments')
-        .update({ status: 'paid' })
-        .eq('order_id', order_id)
-        .catch(() => null);
+      try {
+        await supabase
+          .from('payments')
+          .update({ status: 'paid' })
+          .eq('order_id', order_id);
+      } catch (e) {
+        console.warn('⚠️ Payment status update notice:', e.message);
+      }
     }
 
     res.json({ paid: isPaid, status: isPaid ? 'paid' : 'unpaid' });
@@ -1198,14 +1205,18 @@ app.post('/api/orders', async (req, res) => {
     }));
     await supabase.from('order_items').insert(orderItemsPayload);
 
-    await supabase.from('payments').insert([{
-      order_id: orderId,
-      user_id: validUserId,
-      payment_method: 'Cash on Delivery (COD)',
-      amount: total_amount,
-      status: 'pending',
-      transaction_reference: `COD-${orderId}`,
-    }]).catch(() => null);
+    try {
+      await supabase.from('payments').insert([{
+        order_id: orderId,
+        user_id: validUserId,
+        payment_method: 'Cash on Delivery (COD)',
+        amount: total_amount,
+        status: 'pending',
+        transaction_reference: `COD-${orderId}`,
+      }]);
+    } catch (paymentErr) {
+      console.warn('⚠️ Non-fatal COD payment record notice:', paymentErr.message);
+    }
 
     await supabase.from('products').update({ status: 'sold' }).in('product_id', productIds);
 
@@ -1361,7 +1372,11 @@ app.delete('/api/admin/orders/:id', async (req, res) => {
     }
 
     await supabase.from('order_items').delete().eq('order_id', orderId);
-    await supabase.from('payments').delete().eq('order_id', orderId).catch(() => null);
+    try {
+      await supabase.from('payments').delete().eq('order_id', orderId);
+    } catch (e) {
+      console.warn('⚠️ Payment delete notice:', e.message);
+    }
     const { error } = await supabase.from('orders').delete().eq('order_id', orderId);
 
     if (error) throw error;

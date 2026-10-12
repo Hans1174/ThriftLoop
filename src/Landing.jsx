@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChevronRight, ChevronLeft, Check, X, Megaphone, Sparkles, Tag } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Check, X, Megaphone, Sparkles, Tag, Send, Bell } from 'lucide-react';
 import { useCart } from './context/CartContext';
-import BlogSection from './components/BlogSection';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
+const TELEGRAM_URL = import.meta.env.VITE_TELEGRAM_CHANNEL_URL || 'https://t.me/thriftdrops_bot';
 
 export default function Landing() {
   const navigate = useNavigate();
@@ -324,8 +324,57 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Google Blogger / Curated Journal Feed */}
-      <BlogSection />
+      {/* Telegram VIP Drops Community Broadcast Section */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
+        <div className="bg-[#2F6B4F] text-white rounded-3xl p-6 sm:p-10 md:p-12 relative overflow-hidden shadow-lg border border-[#A8C3A0]/30">
+          {/* Subtle Decorative Elements */}
+          <div className="absolute -top-16 -right-16 w-64 h-64 bg-white/5 rounded-full blur-2xl pointer-events-none"></div>
+          <div className="absolute -bottom-16 -left-16 w-64 h-64 bg-[#E67E5F]/10 rounded-full blur-2xl pointer-events-none"></div>
+
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-8">
+            <div className="max-w-xl space-y-3">
+              <div className="inline-flex items-center gap-1.5 bg-[#F6F1E8]/15 text-[#A8C3A0] text-[10px] sm:text-[11px] font-bold uppercase tracking-wider px-3 py-1 rounded-full border border-white/10">
+                <Bell size={12} className="text-[#E67E5F]" />
+                VIP Archive Drops Channel
+              </div>
+
+              <h2 className="font-serif text-2xl sm:text-3xl md:text-4xl font-bold text-[#F6F1E8] leading-tight">
+                Never Miss a 1-of-1 Vintage Drop
+              </h2>
+
+              <p className="text-white/80 text-xs sm:text-sm leading-relaxed">
+                Because every vintage piece in our archive is strictly 1-of-1, pieces sell out fast. 
+                Subscribe to our automated Telegram channel to get real-time photo alerts, exact measurements, 
+                and direct cop links before anyone else.
+              </p>
+
+              <div className="pt-2 flex flex-wrap gap-2 text-[10px] sm:text-xs font-semibold text-[#A8C3A0]">
+                <span className="bg-white/10 px-2.5 py-1 rounded-lg">⚡ Instant Drop Alerts</span>
+                <span className="bg-white/10 px-2.5 py-1 rounded-lg">📸 High-Res Sizing Cards</span>
+                <span className="bg-white/10 px-2.5 py-1 rounded-lg">🏷️ Exclusive Vouchers</span>
+              </div>
+            </div>
+
+            <div className="shrink-0 flex flex-col sm:flex-row md:flex-col gap-3">
+              <a
+                href={TELEGRAM_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-2 bg-[#E67E5F] hover:bg-[#d67053] text-white font-bold text-xs sm:text-sm px-7 py-4 rounded-2xl shadow-md transition-all active:scale-95 text-center"
+              >
+                <Send size={15} /> Join Drops on Telegram
+              </a>
+
+              <Link
+                to="/shop"
+                className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 text-[#F6F1E8] font-bold text-xs sm:text-sm px-7 py-4 rounded-2xl border border-white/15 transition-all active:scale-95 text-center"
+              >
+                Browse Current Rack
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
 
     </div>
   );
