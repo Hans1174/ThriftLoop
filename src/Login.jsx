@@ -45,7 +45,7 @@ export default function Login({ isOpen, onClose, onLoginSuccess }) {
     }
   };
 
-  // Catch token when returning from Google's redirect
+  // Intercept the access token when returning from Google's redirect
   useEffect(() => {
     if (typeof window !== 'undefined' && window.location.hash) {
       const hashParams = new URLSearchParams(window.location.hash.substring(1));
@@ -57,8 +57,8 @@ export default function Login({ isOpen, onClose, onLoginSuccess }) {
     }
   }, []);
 
-  // Direct tab redirection - cannot be blocked by popup blockers or mobile emulation
-  const handleGoogleRedirect = () => {
+  // Direct tab redirect: Cannot be blocked by pop-up blockers or Device Emulation
+  const handleGoogleLogin = () => {
     const currentOrigin = window.location.origin;
     const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(
       currentOrigin
@@ -124,7 +124,7 @@ export default function Login({ isOpen, onClose, onLoginSuccess }) {
         <div className="mb-4">
           <button
             type="button"
-            onClick={handleGoogleRedirect}
+            onClick={handleGoogleLogin}
             disabled={loading}
             className="w-full flex items-center justify-center gap-3 bg-white border border-[#A8C3A0]/60 hover:bg-[#F6F1E8] text-[#23313A] font-bold text-xs py-3 px-4 rounded-full shadow-xs transition-all active:scale-95 cursor-pointer"
           >
