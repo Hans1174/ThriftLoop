@@ -166,8 +166,10 @@ export const sendEmailNotification = async ({ to, userId, subject, type, data = 
       subject: subject || 'ThriftLoop Notification',
       html: htmlContent,
     });
+    console.log(`✉️ [Nodemailer] Dispatched "${type}" email to ${recipientEmail}`);
     return { success: true, messageId: info.messageId, deliveredTo: recipientEmail };
   } catch (err) {
+    console.warn(`⚠️ [Nodemailer] Delivery failed to ${recipientEmail}:`, err.message);
     return { success: false, error: err.message };
   }
 };
@@ -303,7 +305,7 @@ app.post('/api/admin/inventory/apply-markdowns', async (req, res) => {
 });
 
 // ==========================================
-// AUTHENTICATION (DUAL DESKTOP + MOBILE GOOGLE OAUTH)
+// AUTHENTICATION
 // ==========================================
 app.post('/api/auth/google', async (req, res) => {
   const { credential, access_token, token: genericToken } = req.body;
@@ -495,7 +497,6 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 // --- FORGOT & RESET PASSWORD FLOW ---
-
 app.post('/api/auth/forgot-password', async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'Please provide your registered email address.' });
@@ -586,7 +587,6 @@ app.post('/api/auth/reset-password', async (req, res) => {
 });
 
 // --- VOUCHER VALIDATION ---
-
 app.post('/api/vouchers/validate', (req, res) => {
   const { code, subtotal } = req.body;
   if (!code) return res.status(400).json({ error: 'Please provide a voucher code.' });
@@ -611,7 +611,6 @@ app.post('/api/vouchers/validate', (req, res) => {
 });
 
 // --- CATALOG & INVENTORY ROUTES ---
-
 app.get('/api/products', async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -686,7 +685,6 @@ app.post('/api/products', async (req, res) => {
 
     if (error) throw error;
 
-    // Auto-broadcast new drop to Telegram channel
     postToTelegram(product).catch(() => null);
 
     res.status(201).json({ message: 'Product listed successfully', productId: product.product_id });
@@ -761,7 +759,6 @@ app.patch('/api/products/:id/status', async (req, res) => {
 // ==========================================
 // BUYER-TO-SELLER DIRECT MESSAGING ROUTES
 // ==========================================
-
 app.post('/api/messages/conversations', async (req, res) => {
   const { buyer_id, seller_id, product_id } = req.body;
   if (!buyer_id) return res.status(400).json({ error: 'Buyer ID is required.' });
@@ -1064,6 +1061,7 @@ app.post('/api/checkout/paymongo', async (req, res) => {
   }
 });
 
+// --- VERIFY PAYMONGO PAYMENT & DISPATCH OFFICIAL CONFIRMATION RECEIPT ---
 app.get('/api/checkout/verify/:sessionId', async (req, res) => {
   const { sessionId } = req.params;
   const { order_id } = req.query;
@@ -1083,11 +1081,14 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
     }
 
     if (isPaid && order_id) {
-      await supabase
+      // 1. Update pending order to processing and retrieve full record
+      const { data: updatedOrder } = await supabase
         .from('orders')
         .update({ status: 'processing' })
         .eq('order_id', order_id)
-        .eq('status', 'pending');
+        .eq('status', 'pending')
+        .select('*')
+        .maybeSingle();
 
       try {
         await supabase
@@ -1097,6 +1098,24 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
       } catch (e) {
         console.warn('⚠️ Payment status update notice:', e.message);
       }
+
+      // 2. Dispatch ThriftLoop official confirmation email upon payment verification
+      if (updatedOrder && updatedOrder.email) {
+        sendEmailNotification({
+          to: updatedOrder.email,
+          userId: updatedOrder.user_id,
+          subject: `Order Confirmed: #${updatedOrder.order_id} - ThriftLoop Curated Archive`,
+          type: 'order_confirmation',
+          data: {
+            orderId: updatedOrder.order_id,
+            customerName: updatedOrder.customer_name,
+            courier: updatedOrder.courier,
+            trackingNumber: updatedOrder.tracking_number,
+            paymentMethod: 'PayMongo Online Payment',
+            totalAmount: updatedOrder.total_amount,
+          },
+        }).catch((mailErr) => console.warn('⚠️ PayMongo confirmation email notice:', mailErr.message));
+      }
     }
 
     res.json({ paid: isPaid, status: isPaid ? 'paid' : 'unpaid' });
@@ -1105,7 +1124,7 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
   }
 });
 
-// --- CASH ON DELIVERY (COD) ROUTE ---
+// --- CASH ON DELIVERY (COD) ROUTE & DISPATCH CONFIRMATION RECEIPT ---
 app.post('/api/orders', async (req, res) => {
   const { 
     user_id, customer_name, email, phone, shipping_address, city, province, 
@@ -1220,6 +1239,22 @@ app.post('/api/orders', async (req, res) => {
 
     await supabase.from('products').update({ status: 'sold' }).in('product_id', productIds);
 
+    // Dispatch ThriftLoop Order Confirmation Email for COD
+    sendEmailNotification({
+      to: registeredEmail,
+      userId: validUserId,
+      subject: `Order Confirmed: #${orderId} - ThriftLoop Curated Archive`,
+      type: 'order_confirmation',
+      data: {
+        orderId,
+        customerName: customer_name,
+        courier: courier || 'J&T Express',
+        trackingNumber: tracking_number,
+        paymentMethod: payment_method || 'Cash on Delivery (COD)',
+        totalAmount: total_amount,
+      },
+    }).catch((mailErr) => console.warn('⚠️ COD confirmation email notice:', mailErr.message));
+
     res.status(201).json({ message: 'Order created successfully', orderId, tracking_number, total_amount });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Failed to process checkout order.' });
@@ -1227,7 +1262,6 @@ app.post('/api/orders', async (req, res) => {
 });
 
 // --- TRACKING & USER ORDERS ---
-
 app.get('/api/track/:id', async (req, res) => {
   try {
     const { data: order, error } = await supabase
@@ -1284,8 +1318,7 @@ app.post('/api/orders/:id/cancel', async (req, res) => {
   }
 });
 
-// --- ADMIN MANAGEMENT ---
-
+// --- ADMIN MANAGEMENT & SHIPMENT STATUS DISPATCH ---
 app.get('/api/admin/stats', async (req, res) => {
   try {
     const { count: activeCount } = await supabase.from('products').select('*', { count: 'exact', head: true }).eq('status', 'active');
@@ -1349,6 +1382,23 @@ app.patch('/api/admin/orders/:id', async (req, res) => {
       }
     }
 
+    // Dispatch ThriftLoop Shipment Status Notification Email
+    if (order && status) {
+      sendEmailNotification({
+        to: order.email || order.users?.email,
+        userId: order.user_id,
+        subject: `Shipment Update: Order #${order.order_id} (${status.toUpperCase()}) - ThriftLoop Logistics`,
+        type: 'order_status',
+        data: {
+          orderId: order.order_id,
+          customerName: order.customer_name || order.users?.full_name,
+          status,
+          courier: order.courier,
+          trackingNumber: order.tracking_number,
+        },
+      }).catch((err) => console.warn('⚠️ Order status notification notice:', err.message));
+    }
+
     res.json({ message: 'Order status updated successfully.' });
   } catch {
     res.status(500).json({ error: 'Failed to update order' });
@@ -1387,7 +1437,7 @@ app.delete('/api/admin/orders/:id', async (req, res) => {
 });
 
 // ==========================================
-// AI CONCIERGE (gemini-3.6-flash WITH MULTI-TIER FALLBACK)
+// AI CONCIERGE
 // ==========================================
 app.post('/api/chat', async (req, res) => {
   const { message, user_id, email, current_order_id } = req.body;
