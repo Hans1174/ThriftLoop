@@ -11,29 +11,29 @@ export default function Footer() {
   }
 
   return (
-    <footer className="bg-white border-t border-[#A8C3A0]/30 py-5 sm:py-4 px-4 sm:px-8 mt-auto transition-colors">
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3.5 sm:gap-4">
+    <footer className="bg-white border-t border-[#A8C3A0]/30 py-4 px-4 sm:px-8 mt-auto transition-colors">
+      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 items-center gap-3 sm:gap-4">
         
-        {/* Left: Copyright */}
-        <div className="flex items-center order-3 md:order-1 text-center md:text-left">
+        {/* Left Column: Copyright */}
+        <div className="flex justify-center md:justify-start items-center order-3 md:order-1">
           <p className="text-[11px] sm:text-xs font-medium text-[#23313A]/60">
             Copyright © 2026 ThriftLoop. All rights reserved.
           </p>
         </div>
 
-        {/* Center: Navigation Links */}
-        <div className="flex items-center gap-5 sm:gap-4 text-xs sm:text-sm font-medium text-[#23313A] order-1 md:order-2">
-          <Link to="/about" className="hover:text-[#2F6B4F] transition-colors py-1">
+        {/* Center Column: Mathematically Centered Links */}
+        <div className="flex justify-center items-center gap-4 text-xs sm:text-sm font-medium text-[#23313A] order-1 md:order-2">
+          <Link to="/about" className="hover:text-[#2F6B4F] transition-colors">
             About Us
           </Link>
           <span className="text-[#A8C3A0] select-none text-xs">•</span>
-          <Link to="/contact" className="hover:text-[#2F6B4F] transition-colors py-1">
+          <Link to="/contact" className="hover:text-[#2F6B4F] transition-colors">
             Contact
           </Link>
         </div>
 
-        {/* Right: Icon-only Telegram Channel Button */}
-        <div className="flex items-center order-2 md:order-3">
+        {/* Right Column: Icon-only Telegram Channel Button */}
+        <div className="flex justify-center md:justify-end items-center order-2 md:order-3">
           <a
             href={TELEGRAM_URL}
             target="_blank"

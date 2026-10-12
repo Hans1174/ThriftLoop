@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { 
-  ChevronRight, ChevronLeft, Check, X, Megaphone, 
-  Sparkles, Tag, ShieldCheck, Truck, RefreshCw 
-} from 'lucide-react';
+import { ChevronRight, ChevronLeft, Check, X, Megaphone, Sparkles, Tag } from 'lucide-react';
 import { useCart } from './context/CartContext';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
@@ -217,41 +214,6 @@ export default function Landing() {
               }`}
             />
           ))}
-        </div>
-      </section>
-
-      {/* Boutique Value Proposition Strip */}
-      <section className="border-y border-[#A8C3A0]/20 bg-white/60 py-6 px-4 sm:px-6">
-        <div className="max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-6 text-center sm:text-left">
-          <div className="flex items-center justify-center sm:justify-start gap-3.5">
-            <div className="w-10 h-10 rounded-full bg-[#2F6B4F]/10 text-[#2F6B4F] flex items-center justify-center shrink-0">
-              <ShieldCheck size={20} />
-            </div>
-            <div>
-              <h4 className="font-serif font-bold text-xs sm:text-sm text-[#23313A]">100% Curated & Authenticated</h4>
-              <p className="text-[11px] text-[#A8C3A0] font-medium">True vintage archives inspected for authentic tags</p>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-center sm:justify-start gap-3.5">
-            <div className="w-10 h-10 rounded-full bg-[#2F6B4F]/10 text-[#2F6B4F] flex items-center justify-center shrink-0">
-              <Truck size={20} />
-            </div>
-            <div>
-              <h4 className="font-serif font-bold text-xs sm:text-sm text-[#23313A]">Fast Nationwide Dispatch</h4>
-              <p className="text-[11px] text-[#A8C3A0] font-medium">J&T Express & same-day Metro deliveries</p>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-center sm:justify-start gap-3.5">
-            <div className="w-10 h-10 rounded-full bg-[#2F6B4F]/10 text-[#2F6B4F] flex items-center justify-center shrink-0">
-              <RefreshCw size={20} />
-            </div>
-            <div>
-              <h4 className="font-serif font-bold text-xs sm:text-sm text-[#23313A]">Circular Fashion Philosophy</h4>
-              <p className="text-[11px] text-[#A8C3A0] font-medium">Zero-landfill apparel sourcing across Japan & US</p>
-            </div>
-          </div>
         </div>
       </section>
 
