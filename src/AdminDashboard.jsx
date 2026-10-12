@@ -3,17 +3,29 @@ import {
   Package, Plus, Trash2, CheckCircle, RefreshCw, 
   ShoppingBag, DollarSign, Tag, AlertCircle, 
   X, Search, UploadCloud, Pencil, Truck, Check, MessageSquare,
-  Sparkles, ImageIcon, ShieldCheck, ArrowUpRight, Filter
+  Sparkles, ImageIcon, ShieldCheck, ArrowUpRight, Filter, Wand2
 } from 'lucide-react';
 import AdminInbox from './components/AdminInbox';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
+
+// Normalizes any old or unformatted grade into the 4 official conditions
+const normalizeCondition = (grade) => {
+  if (!grade) return 'Good';
+  const g = grade.trim().toLowerCase();
+  if (['excellent', 'class a', 'grade a', 'brand new', 'deadstock'].includes(g)) return 'Excellent';
+  if (['good', 'class b', 'grade b'].includes(g)) return 'Good';
+  if (['used but not abused', 'class c', 'grade c', 'used'].includes(g)) return 'Used but not abused';
+  if (['flawed', 'class d', 'grade d', 'flaw'].includes(g)) return 'Flawed';
+  return 'Good';
+};
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('inventory'); // 'inventory' | 'orders' | 'messages'
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [notification, setNotification] = useState(null);
 
   // Authenticated Admin User
@@ -113,6 +125,25 @@ export default function AdminDashboard() {
     fetchData();
   }, []);
 
+  // One-click migration for legacy database items
+  const handleBulkMigrateConditions = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/inventory/migrate-conditions`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to sync conditions.');
+
+      await fetchData();
+      showToast(data.message || 'All items migrated to new condition taxonomy!');
+    } catch (err) {
+      showToast(err.message || 'Could not migrate conditions.', 'error');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const handleFileProcess = (file) => {
     if (!file || !file.type.startsWith('image/')) {
       showToast('Please select a valid image file (PNG, JPG, WEBP).', 'error');
@@ -176,7 +207,8 @@ export default function AdminDashboard() {
       name: item.name || '',
       brand: item.brand || '',
       category_name: item.category_name || 'Tops',
-      condition_grade: item.condition_grade || 'Excellent',
+      // Automatically maps old Class A / Class C strings to valid select options
+      condition_grade: normalizeCondition(item.condition_grade),
       size: item.size || 'M',
       price: item.price || '',
       image_url: item.image_url || '',
@@ -273,22 +305,22 @@ export default function AdminDashboard() {
     }
   };
 
-  // Helper condition badge renderer
-  const renderConditionBadge = (condition) => {
-    const cond = (condition || '').toLowerCase();
+  // Condition badge with automatic legacy fallback styling
+  const renderConditionBadge = (rawCondition) => {
+    const condition = normalizeCondition(rawCondition);
     let badgeStyle = 'bg-emerald-50 text-emerald-800 border-emerald-200';
 
-    if (cond.includes('good')) {
+    if (condition === 'Good') {
       badgeStyle = 'bg-blue-50 text-blue-800 border-blue-200';
-    } else if (cond.includes('used')) {
+    } else if (condition === 'Used but not abused') {
       badgeStyle = 'bg-amber-50 text-amber-800 border-amber-200';
-    } else if (cond.includes('flawed')) {
+    } else if (condition === 'Flawed') {
       badgeStyle = 'bg-rose-50 text-rose-800 border-rose-200';
     }
 
     return (
       <span className={`inline-block px-2.5 py-0.5 rounded-md text-[10px] font-bold border tracking-tight ${badgeStyle}`}>
-        {condition || 'Good'}
+        {condition}
       </span>
     );
   };
@@ -354,20 +386,32 @@ export default function AdminDashboard() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={handleBulkMigrateConditions}
+              disabled={syncing}
+              className="flex items-center justify-center gap-1.5 bg-[#F6F1E8] hover:bg-[#A8C3A0]/25 text-[#23313A] text-xs font-bold px-3.5 py-2.5 rounded-xl border border-[#A8C3A0]/30 transition-all cursor-pointer"
+              title="Sync any older Class A / Class C items to the new taxonomy"
+            >
+              <Wand2 size={14} className={syncing ? 'animate-spin text-[#2F6B4F]' : 'text-[#2F6B4F]'} />
+              <span>{syncing ? 'Syncing...' : 'Sync Conditions'}</span>
+            </button>
+
             <button
               type="button"
               onClick={fetchData}
               disabled={loading}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-[#F6F1E8] hover:bg-[#A8C3A0]/25 text-[#23313A] text-xs font-bold px-4 py-2.5 rounded-xl border border-[#A8C3A0]/30 transition-all cursor-pointer"
+              className="flex items-center justify-center gap-1.5 bg-[#F6F1E8] hover:bg-[#A8C3A0]/25 text-[#23313A] text-xs font-bold px-3.5 py-2.5 rounded-xl border border-[#A8C3A0]/30 transition-all cursor-pointer"
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
               <span>Refresh</span>
             </button>
+
             <button
               type="button"
               onClick={handleOpenCreateModal}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-[#2F6B4F] hover:bg-[#23313A] text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer"
+              className="flex items-center justify-center gap-2 bg-[#2F6B4F] hover:bg-[#23313A] text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer"
             >
               <Plus size={15} />
               <span>Add Products</span>
