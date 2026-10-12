@@ -54,24 +54,21 @@ export default function Landing() {
     return { currentPrice: rawPrice, originalPrice: rawPrice, discountPercent: 0, isDiscounted: false };
   };
 
-  const fallbackFinds = [
-    { product_id: 1, name: 'Vintage Floral Midi Dress', brand: 'Laura Ashley', price: 450, original_price: 550, size: 'M', condition_grade: 'Grade A', image_url: 'https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=500' },
-    { product_id: 2, name: 'Classic Washed Denim Jacket', brand: "Levi's", price: 750, original_price: 750, size: 'L', condition_grade: 'Deadstock', image_url: 'https://images.unsplash.com/photo-1576995853123-5a10305d93c0?q=80&w=500' },
-    { product_id: 3, name: '90s Single-Stitch Band Tee', brand: 'Brockum', price: 295, original_price: 350, size: 'XL', condition_grade: 'Grade A', image_url: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=500' },
-    { product_id: 4, name: 'Relaxed Utility Cargo Pants', brand: 'Carhartt', price: 400, original_price: 400, size: '32', condition_grade: 'Grade B', image_url: 'https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?q=80&w=500' },
-  ];
-
   useEffect(() => {
     fetch(`${API_URL}/api/products`)
       .then((res) => res.json())
       .then((data) => {
         const catalog = Array.isArray(data) ? data : (data.products || []);
-        const activeItems = catalog.filter((item) => item.status !== 'sold').slice(0, 4);
-        setNewArrivals(activeItems.length > 0 ? activeItems : fallbackFinds);
+        // Only retain active, unsold archive inventory
+        const activeItems = catalog
+          .filter((item) => item.status !== 'sold' && item.status !== 'archived')
+          .slice(0, 4);
+        setNewArrivals(activeItems);
         setLoadingItems(false);
       })
-      .catch(() => {
-        setNewArrivals(fallbackFinds);
+      .catch((err) => {
+        console.warn('Could not fetch active arrivals:', err);
+        setNewArrivals([]);
         setLoadingItems(false);
       });
   }, []);
@@ -252,73 +249,101 @@ export default function Landing() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5 md:gap-6">
-          {newArrivals.map((item) => {
-            const id = item.product_id || item.id;
-            const isAdded = addedId === id;
-            const { currentPrice, originalPrice, discountPercent, isDiscounted } = calculatePricing(item);
-
-            return (
-              <div
-                key={id}
-                className="bg-white border border-[#A8C3A0]/30 rounded-2xl overflow-hidden shadow-xs flex flex-col justify-between group hover:border-[#2F6B4F]/40 transition-all"
+        {loadingItems ? (
+          <div className="py-12 text-center text-xs text-[#A8C3A0] font-semibold">
+            Loading latest rack drops...
+          </div>
+        ) : newArrivals.length === 0 ? (
+          <div className="bg-white border border-[#A8C3A0]/30 rounded-3xl p-8 sm:p-12 text-center space-y-3">
+            <span className="inline-block text-[10px] uppercase font-bold tracking-widest text-[#E67E5F] bg-[#E67E5F]/10 px-3 py-1 rounded-full">
+              Rack Sold Out
+            </span>
+            <h3 className="font-serif text-xl sm:text-2xl font-bold text-[#23313A]">
+              All current archive pieces have been claimed
+            </h3>
+            <p className="text-xs text-[#23313A]/70 max-w-md mx-auto leading-relaxed">
+              Every garment at ThriftLoop is strictly 1-of-1. Check back soon or join our Telegram channel to catch the next curated drop the moment it goes live.
+            </p>
+            <div className="pt-2">
+              <a
+                href="https://t.me/thriftloop_archive"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 bg-[#2F6B4F] hover:bg-[#23313A] text-white font-bold text-xs px-6 py-3 rounded-xl transition-all shadow-xs"
               >
-                <Link to={`/product/${id}`} className="block relative">
-                  <div className="h-44 sm:h-56 md:h-64 w-full bg-[#F6F1E8]/50 overflow-hidden relative border-b border-[#A8C3A0]/10">
-                    <span className="absolute top-2 left-2 z-10 bg-[#23313A] text-white text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
-                      {item.brand || 'Vintage'}
-                    </span>
+                Join Next Drop on Telegram
+              </a>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5 md:gap-6">
+            {newArrivals.map((item) => {
+              const id = item.product_id || item.id;
+              const isAdded = addedId === id;
+              const { currentPrice, originalPrice, discountPercent, isDiscounted } = calculatePricing(item);
 
-                    {isDiscounted && (
-                      <span className="absolute bottom-2 left-2 z-10 bg-[#E67E5F] text-white text-[8px] sm:text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs flex items-center gap-0.5">
-                        <Tag size={9} /> -{discountPercent}%
+              return (
+                <div
+                  key={id}
+                  className="bg-white border border-[#A8C3A0]/30 rounded-2xl overflow-hidden shadow-xs flex flex-col justify-between group hover:border-[#2F6B4F]/40 transition-all"
+                >
+                  <Link to={`/product/${id}`} className="block relative">
+                    <div className="h-44 sm:h-56 md:h-64 w-full bg-[#F6F1E8]/50 overflow-hidden relative border-b border-[#A8C3A0]/10">
+                      <span className="absolute top-2 left-2 z-10 bg-[#23313A] text-white text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
+                        {item.brand || 'Vintage'}
                       </span>
-                    )}
 
-                    <span className="absolute top-2 right-2 z-10 bg-[#2F6B4F] text-white text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded">
-                      {item.size}
-                    </span>
-
-                    <img
-                      src={item.image_url || item.img || 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=500'}
-                      alt={item.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
-                  </div>
-
-                  <div className="p-3 sm:p-4 bg-white">
-                    <span className="text-[9px] sm:text-[10px] font-bold text-[#A8C3A0] uppercase block truncate">
-                      {item.condition_grade || 'Grade A'}
-                    </span>
-                    <h3 className="font-serif font-bold text-xs sm:text-sm text-[#23313A] line-clamp-1 group-hover:text-[#2F6B4F] mt-0.5">
-                      {item.name}
-                    </h3>
-
-                    <div className="flex items-center gap-1.5 mt-1">
-                      <span className="text-[#2F6B4F] font-bold text-xs sm:text-sm">
-                        ₱{currentPrice.toFixed(2)}
-                      </span>
                       {isDiscounted && (
-                        <span className="text-[10px] text-[#23313A]/40 line-through">
-                          ₱{originalPrice.toFixed(2)}
+                        <span className="absolute bottom-2 left-2 z-10 bg-[#E67E5F] text-white text-[8px] sm:text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs flex items-center gap-0.5">
+                          <Tag size={9} /> -{discountPercent}%
                         </span>
                       )}
-                    </div>
-                  </div>
-                </Link>
 
-                <div className="px-3 pb-3 sm:px-4 sm:pb-4 bg-white">
-                  <button
-                    onClick={(e) => handleAddToCart(e, item)}
-                    className="w-full bg-[#2F6B4F] hover:bg-[#23313A] text-white font-bold py-2 rounded-xl text-[11px] sm:text-xs transition-colors flex items-center justify-center gap-1 active:scale-95 cursor-pointer"
-                  >
-                    {isAdded ? <><Check size={13} /> Added</> : 'Add to Cart'}
-                  </button>
+                      <span className="absolute top-2 right-2 z-10 bg-[#2F6B4F] text-white text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded">
+                        {item.size}
+                      </span>
+
+                      <img
+                        src={item.image_url || item.img || 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=500'}
+                        alt={item.name}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                    </div>
+
+                    <div className="p-3 sm:p-4 bg-white">
+                      <span className="text-[9px] sm:text-[10px] font-bold text-[#A8C3A0] uppercase block truncate">
+                        {item.condition_grade || 'Grade A'}
+                      </span>
+                      <h3 className="font-serif font-bold text-xs sm:text-sm text-[#23313A] line-clamp-1 group-hover:text-[#2F6B4F] mt-0.5">
+                        {item.name}
+                      </h3>
+
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className="text-[#2F6B4F] font-bold text-xs sm:text-sm">
+                          ₱{currentPrice.toFixed(2)}
+                        </span>
+                        {isDiscounted && (
+                          <span className="text-[10px] text-[#23313A]/40 line-through">
+                            ₱{originalPrice.toFixed(2)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </Link>
+
+                  <div className="px-3 pb-3 sm:px-4 sm:pb-4 bg-white">
+                    <button
+                      onClick={(e) => handleAddToCart(e, item)}
+                      className="w-full bg-[#2F6B4F] hover:bg-[#23313A] text-white font-bold py-2 rounded-xl text-[11px] sm:text-xs transition-colors flex items-center justify-center gap-1 active:scale-95 cursor-pointer"
+                    >
+                      {isAdded ? <><Check size={13} /> Added</> : 'Add to Cart'}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </section>
 
     </div>

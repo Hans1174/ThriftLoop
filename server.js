@@ -772,7 +772,18 @@ app.post('/api/messages/conversations', async (req, res) => {
         .eq('role', 'admin')
         .limit(1)
         .maybeSingle();
-      targetSellerId = adminUser?.user_id || 1;
+
+      if (adminUser?.user_id) {
+        targetSellerId = adminUser.user_id;
+      } else {
+        const { data: storeUser } = await supabase
+          .from('users')
+          .select('user_id')
+          .neq('user_id', buyer_id)
+          .limit(1)
+          .maybeSingle();
+        targetSellerId = storeUser?.user_id || buyer_id;
+      }
     }
 
     let query = supabase
@@ -804,7 +815,8 @@ app.post('/api/messages/conversations', async (req, res) => {
 
     if (createErr) throw createErr;
     res.status(201).json(newConvo);
-  } catch {
+  } catch (err) {
+    console.error('❌ Conversation init error:', err.message);
     res.status(500).json({ error: 'Could not initialize messaging thread.' });
   }
 });
@@ -840,11 +852,19 @@ app.get('/api/messages/:conversationId', async (req, res) => {
   try {
     const { data: messages, error } = await supabase
       .from('messages')
-      .select('*, sender:users(user_id, full_name, role)')
+      .select('*, sender:users!sender_id(user_id, full_name, role)')
       .eq('conversation_id', req.params.conversationId)
       .order('created_at', { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      const { data: rawMessages } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', req.params.conversationId)
+        .order('created_at', { ascending: true });
+      return res.json(rawMessages || []);
+    }
+
     res.json(messages || []);
   } catch {
     res.status(500).json({ error: 'Failed to retrieve messages.' });
@@ -858,18 +878,53 @@ app.post('/api/messages', async (req, res) => {
   }
 
   try {
+    let resolvedReceiverId = receiver_id;
+    if (!resolvedReceiverId) {
+      const { data: convo } = await supabase
+        .from('conversations')
+        .select('buyer_id, seller_id')
+        .eq('conversation_id', conversation_id)
+        .maybeSingle();
+      if (convo) {
+        resolvedReceiverId = String(convo.buyer_id) === String(sender_id) ? convo.seller_id : convo.buyer_id;
+      }
+    }
+
     const { data: newMsg, error: msgErr } = await supabase
       .from('messages')
       .insert([{
         conversation_id,
         sender_id,
-        receiver_id: receiver_id || null,
+        receiver_id: resolvedReceiverId || null,
         message_text: message_text.trim(),
       }])
-      .select('*, sender:users(user_id, full_name, role)')
+      .select('*, sender:users!sender_id(user_id, full_name, role)')
       .single();
 
-    if (msgErr) throw msgErr;
+    if (msgErr) {
+      const { data: fallbackMsg, error: fallbackErr } = await supabase
+        .from('messages')
+        .insert([{
+          conversation_id,
+          sender_id,
+          receiver_id: resolvedReceiverId || null,
+          message_text: message_text.trim(),
+        }])
+        .select('*')
+        .single();
+
+      if (fallbackErr) throw fallbackErr;
+
+      await supabase
+        .from('conversations')
+        .update({
+          last_message: message_text.trim(),
+          last_message_at: new Date().toISOString(),
+        })
+        .eq('conversation_id', conversation_id);
+
+      return res.status(201).json(fallbackMsg);
+    }
 
     await supabase
       .from('conversations')
@@ -880,8 +935,9 @@ app.post('/api/messages', async (req, res) => {
       .eq('conversation_id', conversation_id);
 
     res.status(201).json(newMsg);
-  } catch {
-    res.status(500).json({ error: 'Message failed to send.' });
+  } catch (err) {
+    console.error('❌ Message delivery error:', err.message || err);
+    res.status(500).json({ error: err.message || 'Message failed to send.' });
   }
 });
 
@@ -1081,7 +1137,6 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
     }
 
     if (isPaid && order_id) {
-      // 1. Update pending order to processing and retrieve full record
       const { data: updatedOrder } = await supabase
         .from('orders')
         .update({ status: 'processing' })
@@ -1099,7 +1154,6 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
         console.warn('⚠️ Payment status update notice:', e.message);
       }
 
-      // 2. Dispatch ThriftLoop official confirmation email upon payment verification
       if (updatedOrder && updatedOrder.email) {
         sendEmailNotification({
           to: updatedOrder.email,
@@ -1239,7 +1293,6 @@ app.post('/api/orders', async (req, res) => {
 
     await supabase.from('products').update({ status: 'sold' }).in('product_id', productIds);
 
-    // Dispatch ThriftLoop Order Confirmation Email for COD
     sendEmailNotification({
       to: registeredEmail,
       userId: validUserId,
@@ -1382,7 +1435,6 @@ app.patch('/api/admin/orders/:id', async (req, res) => {
       }
     }
 
-    // Dispatch ThriftLoop Shipment Status Notification Email
     if (order && status) {
       sendEmailNotification({
         to: order.email || order.users?.email,
