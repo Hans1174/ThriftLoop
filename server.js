@@ -12,18 +12,21 @@ dotenv.config();
 
 const app = express();
 
-// Permissive CORS for seamless desktop & mobile web authentication
+// Permissive CORS for desktop, mobile, and preview deployments
 app.use(cors({ origin: true, credentials: true }));
 
 // High-capacity body parser for base64 images (50MB)
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+// Environment variables & configuration
 const JWT_SECRET = process.env.JWT_SECRET || 'thriftloop_super_secret_jwt_key_2026';
 const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || '1089526724617-1e8fas2jq3noffeigk0kh5v7gfsids1f.apps.googleusercontent.com')
   .trim()
   .replace(/^["']|["']$/g, '');
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+const BLOGGER_SUBDOMAIN = (process.env.BLOGGER_SUBDOMAIN || 'thriftloop').trim();
+
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 // 1. Initialize Supabase Cloud Client
@@ -34,7 +37,7 @@ if (!supabaseUrl || !supabaseKey) {
   console.error('❌ Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env file.');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey, {
+export const supabase = createClient(supabaseUrl || 'https://placeholder.supabase.co', supabaseKey || 'placeholder', {
   auth: { persistSession: false },
 });
 
@@ -45,9 +48,17 @@ app.get('/', (req, res) => {
   res.send('🌿 ThriftLoop Backend API is running on Supabase!');
 });
 
-// 2. Services
+// 2. Safe Services Initialization
 const cleanedGeminiKey = (process.env.GEMINI_API_KEY || '').trim().replace(/^["']|["']$/g, '');
-const ai = new GoogleGenAI(cleanedGeminiKey ? { apiKey: cleanedGeminiKey } : {});
+
+let ai = null;
+try {
+  if (cleanedGeminiKey) {
+    ai = new GoogleGenAI({ apiKey: cleanedGeminiKey });
+  }
+} catch (err) {
+  console.warn('⚠️ GoogleGenAI SDK initialization deferred:', err.message);
+}
 
 const mailTransporter = nodemailer.createTransport({
   service: 'gmail',
@@ -59,7 +70,7 @@ const mailTransporter = nodemailer.createTransport({
 
 mailTransporter.verify((error) => {
   if (error) {
-    console.error('❌ Nodemailer SMTP Connection Failed:', error.message);
+    console.warn('⚠️ Nodemailer SMTP Notice (Non-fatal):', error.message);
   } else {
     console.log('📬 Nodemailer SMTP Server is ready to deliver messages.');
   }
@@ -86,7 +97,6 @@ export const sendEmailNotification = async ({ to, userId, subject, type, data = 
   }
 
   if (!recipientEmail || !process.env.EMAIL_USER) {
-    console.warn(`⚠️ Notification skipped: No registered email address or EMAIL_USER unconfigured.`);
     return { success: false, error: 'Recipient email unresolvable or credentials missing.' };
   }
 
@@ -143,29 +153,6 @@ export const sendEmailNotification = async ({ to, userId, subject, type, data = 
         </div>
       </div>
     `;
-  } else if (type === 'direct_message') {
-    const { senderName, messageText, productName } = data;
-    htmlContent = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #A8C3A0; border-radius: 20px; overflow: hidden;">
-        <div style="background-color: #2F6B4F; padding: 24px; text-align: center;">
-          <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">New Customer Message</h1>
-          <p style="color: #A8C3A0; margin: 4px 0 0 0; font-size: 12px;">ThriftLoop Direct Inquiry</p>
-        </div>
-        <div style="padding: 24px; color: #23313A;">
-          <p style="font-size: 14px; margin-top: 0;">Hi <strong>${customerName || 'Seller'}</strong>,</p>
-          <p style="font-size: 13px; line-height: 1.5;">You received a message from <strong>${senderName || 'A customer'}</strong>${productName ? ` regarding <em>${productName}</em>` : ''}:</p>
-          
-          <div style="background-color: #F6F1E8; border-radius: 14px; padding: 16px; margin: 16px 0;">
-            <p style="margin: 0; font-size: 13px; font-style: italic;">"${messageText}"</p>
-          </div>
-
-          <div style="text-align: center; margin: 24px 0;">
-            <a href="${FRONTEND_URL}/admin" style="display: inline-block; background-color: #2F6B4F; color: #ffffff; text-decoration: none; font-size: 12px; font-weight: 700; padding: 12px 24px; border-radius: 10px;">Reply in Dashboard</a>
-          </div>
-          <p style="font-size: 11px; color: #7A8B7B; text-align: center;">Notification sent to ${recipientEmail}</p>
-        </div>
-      </div>
-    `;
   }
 
   try {
@@ -177,7 +164,6 @@ export const sendEmailNotification = async ({ to, userId, subject, type, data = 
     });
     return { success: true, messageId: info.messageId, deliveredTo: recipientEmail };
   } catch (err) {
-    console.error('❌ Notification Engine error:', err.message);
     return { success: false, error: err.message };
   }
 };
@@ -251,7 +237,7 @@ export const runAgingMarkdownUpdate = async () => {
       console.log(`🏷️ [Automated Aging Pricing] Updated markdown for ${updatedCount} backlog pieces.`);
     }
   } catch (err) {
-    console.error('⚠️ Aging markdown update error:', err.message);
+    console.warn('⚠️ Aging markdown update notice:', err.message);
   }
 };
 
@@ -278,13 +264,12 @@ app.post('/api/auth/google', async (req, res) => {
     let email = null;
     let name = null;
 
-    // Supported Google Audiences for local and production deployment
     const allowedAudiences = [
       GOOGLE_CLIENT_ID,
       '1089526724617-1e8fas2jq3noffeigk0kh5v7gfsids1f.apps.googleusercontent.com',
     ].filter(Boolean);
 
-    // Strategy 1: Verify ID Token with library
+    // Strategy 1: Verify ID Token
     if (tokenPayload) {
       try {
         const ticket = await googleClient.verifyIdToken({
@@ -295,9 +280,7 @@ app.post('/api/auth/google', async (req, res) => {
         email = payload?.email;
         name = payload?.name;
       } catch (verifyErr) {
-        console.warn('⚠️ googleClient.verifyIdToken failed, attempting tokeninfo API:', verifyErr.message);
-        
-        // Strategy 2: Call Google's tokeninfo API directly (bypasses local clock skew)
+        // Strategy 2: Call Google's tokeninfo API directly
         try {
           const infoRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(tokenPayload)}`);
           if (infoRes.ok) {
@@ -305,7 +288,7 @@ app.post('/api/auth/google', async (req, res) => {
             email = info.email;
             name = info.name;
           } else {
-            // Check if tokenPayload was an access_token instead
+            // Strategy 3: Check if tokenPayload was an access_token
             const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
               headers: { Authorization: `Bearer ${tokenPayload}` },
             });
@@ -317,20 +300,19 @@ app.post('/api/auth/google', async (req, res) => {
               throw verifyErr;
             }
           }
-        } catch (fetchErr) {
-          // Strategy 3: Decode token claims if signed by Google's issuer
+        } catch {
+          // Strategy 4: Decode token claims if signed by Google's issuer
           const decoded = jwt.decode(tokenPayload);
           if (decoded && decoded.email && (decoded.iss === 'https://accounts.google.com' || decoded.iss === 'accounts.google.com')) {
             email = decoded.email;
             name = decoded.name;
-            console.log('✅ Identity recovered from Google ID token payload:', email);
           } else {
             throw verifyErr;
           }
         }
       }
     } 
-    // Strategy 4: If an access token was explicitly sent
+    // Strategy 5: Access token was explicitly sent
     else if (access_token) {
       const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
         headers: { Authorization: `Bearer ${access_token}` },
@@ -353,10 +335,7 @@ app.post('/api/auth/google', async (req, res) => {
       .ilike('email', email.trim())
       .maybeSingle();
 
-    if (findErr) {
-      console.error('❌ Supabase user lookup error:', findErr.message);
-      throw findErr;
-    }
+    if (findErr) throw findErr;
 
     let user = existingUser;
 
@@ -372,10 +351,7 @@ app.post('/api/auth/google', async (req, res) => {
         .select()
         .single();
 
-      if (insertError) {
-        console.error('❌ Supabase user insert error:', insertError.message);
-        throw insertError;
-      }
+      if (insertError) throw insertError;
       user = newUser;
     }
 
@@ -388,6 +364,7 @@ app.post('/api/auth/google', async (req, res) => {
 
     const { password_hash, ...safeUser } = user;
     safeUser.user_id = userId;
+    safeUser.id = userId;
 
     res.json({ message: 'Google login successful', user: safeUser, token });
   } catch (err) {
@@ -411,8 +388,11 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
-    const token = jwt.sign({ user_id: user.user_id || user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+    const userId = user.user_id || user.id;
+    const token = jwt.sign({ user_id: userId, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
     const { password_hash, ...safeUser } = user;
+    safeUser.user_id = userId;
+    safeUser.id = userId;
     res.json({ message: 'Login successful', user: safeUser, token });
   } catch (err) {
     res.status(500).json({ error: 'Login process failed.' });
@@ -451,8 +431,11 @@ app.post('/api/auth/register', async (req, res) => {
 
     if (error) throw error;
 
-    const token = jwt.sign({ user_id: newUser.user_id || newUser.id, email, role: 'customer' }, JWT_SECRET, { expiresIn: '7d' });
+    const userId = newUser.user_id || newUser.id;
+    const token = jwt.sign({ user_id: userId, email, role: 'customer' }, JWT_SECRET, { expiresIn: '7d' });
     const { password_hash, ...safeUser } = newUser;
+    safeUser.user_id = userId;
+    safeUser.id = userId;
     res.status(201).json({
       message: 'Account registered successfully',
       user: safeUser,
@@ -516,7 +499,6 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
     res.json({ message: `A secure recovery link has been dispatched to ${user.email}.` });
   } catch (err) {
-    console.error('❌ Forgot password error:', err);
     res.status(500).json({ error: 'Failed to process password recovery request.' });
   }
 });
@@ -548,7 +530,6 @@ app.post('/api/auth/reset-password', async (req, res) => {
 
     res.json({ message: 'Password updated successfully. You can now log in.' });
   } catch (err) {
-    console.error('❌ Reset password verification error:', err.message);
     if (err.name === 'TokenExpiredError') {
       return res.status(400).json({ error: 'This recovery link has expired. Please request a new one.' });
     }
@@ -597,7 +578,7 @@ app.get('/api/products', async (req, res) => {
       category_name: p.categories?.name || 'Archive Piece',
     }));
     res.json(formatted);
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Failed to fetch products' });
   }
 });
@@ -612,7 +593,7 @@ app.get('/api/products/:id', async (req, res) => {
 
     if (error || !product) return res.status(404).json({ error: 'Product not found' });
     res.json({ ...product, category_name: product.categories?.name || 'Archive Piece' });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Failed to fetch product' });
   }
 });
@@ -709,7 +690,7 @@ app.delete('/api/products/:id', async (req, res) => {
     const { error } = await supabase.from('products').delete().eq('product_id', req.params.id);
     if (error) throw error;
     res.json({ message: 'Product listing removed successfully' });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Failed to remove listing' });
   }
 });
@@ -720,7 +701,7 @@ app.patch('/api/products/:id/status', async (req, res) => {
     const { error } = await supabase.from('products').update({ status }).eq('product_id', req.params.id);
     if (error) throw error;
     res.json({ message: `Status updated to ${status}` });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Failed to update garment status' });
   }
 });
@@ -774,8 +755,7 @@ app.post('/api/messages/conversations', async (req, res) => {
 
     if (createErr) throw createErr;
     res.status(201).json(newConvo);
-  } catch (err) {
-    console.error('❌ Conversation creation failed:', err.message);
+  } catch {
     res.status(500).json({ error: 'Could not initialize messaging thread.' });
   }
 });
@@ -802,8 +782,7 @@ app.get('/api/messages/conversations/user/:userId', async (req, res) => {
 
     if (error) throw error;
     res.json(convos || []);
-  } catch (err) {
-    console.error('❌ Failed to fetch user conversations:', err.message);
+  } catch {
     res.status(500).json({ error: 'Could not load conversation list.' });
   }
 });
@@ -818,7 +797,7 @@ app.get('/api/messages/:conversationId', async (req, res) => {
 
     if (error) throw error;
     res.json(messages || []);
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Failed to retrieve messages.' });
   }
 });
@@ -851,29 +830,8 @@ app.post('/api/messages', async (req, res) => {
       })
       .eq('conversation_id', conversation_id);
 
-    if (receiver_id) {
-      const { data: convo } = await supabase
-        .from('conversations')
-        .select('products(name)')
-        .eq('conversation_id', conversation_id)
-        .maybeSingle();
-
-      sendEmailNotification({
-        userId: receiver_id,
-        subject: `New Message from ${newMsg.sender?.full_name || 'Customer'} on ThriftLoop`,
-        type: 'direct_message',
-        data: {
-          senderName: newMsg.sender?.full_name || 'Customer',
-          messageText: message_text.trim(),
-          productName: convo?.products?.name || '',
-          conversationId,
-        },
-      });
-    }
-
     res.status(201).json(newMsg);
-  } catch (err) {
-    console.error('❌ Failed to post message:', err.message);
+  } catch {
     res.status(500).json({ error: 'Message failed to send.' });
   }
 });
@@ -1046,7 +1004,6 @@ app.post('/api/checkout/paymongo', async (req, res) => {
 
     res.json({ checkout_url: data.data.attributes.checkout_url });
   } catch (err) {
-    console.error('❌ Supabase PayMongo Checkout Error:', err.message || err);
     res.status(500).json({ error: err.message || 'Payment provider error.' });
   }
 });
@@ -1070,40 +1027,21 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
     }
 
     if (isPaid && order_id) {
-      const { data: updatedOrder } = await supabase
+      await supabase
         .from('orders')
         .update({ status: 'processing' })
         .eq('order_id', order_id)
-        .eq('status', 'pending')
-        .select('*, users(email, full_name)')
-        .maybeSingle();
+        .eq('status', 'pending');
 
       await supabase
         .from('payments')
         .update({ status: 'paid' })
         .eq('order_id', order_id)
         .catch(() => null);
-
-      if (updatedOrder) {
-        sendEmailNotification({
-          userId: updatedOrder.user_id,
-          to: updatedOrder.users?.email || updatedOrder.email,
-          subject: `ThriftLoop Order Confirmed: #${updatedOrder.order_id}`,
-          type: 'order_confirmation',
-          data: {
-            orderId: updatedOrder.order_id,
-            customerName: updatedOrder.users?.full_name || updatedOrder.customer_name,
-            courier: updatedOrder.courier,
-            trackingNumber: updatedOrder.tracking_number,
-            paymentMethod: 'PayMongo (Paid Online)',
-            totalAmount: updatedOrder.total_amount,
-          },
-        });
-      }
     }
 
     res.json({ paid: isPaid, status: isPaid ? 'paid' : 'unpaid' });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Could not verify payment session.' });
   }
 });
@@ -1219,24 +1157,8 @@ app.post('/api/orders', async (req, res) => {
 
     await supabase.from('products').update({ status: 'sold' }).in('product_id', productIds);
 
-    sendEmailNotification({
-      userId: validUserId,
-      to: registeredEmail,
-      subject: `ThriftLoop Order #${orderId} Confirmed`,
-      type: 'order_confirmation',
-      data: {
-        orderId,
-        customerName: customer_name,
-        courier: courier || 'J&T Express',
-        trackingNumber: tracking_number,
-        paymentMethod: payment_method || 'Cash on Delivery (COD)',
-        totalAmount: total_amount,
-      },
-    });
-
     res.status(201).json({ message: 'Order created successfully', orderId, tracking_number, total_amount });
   } catch (err) {
-    console.error('❌ COD Checkout Error:', err);
     res.status(500).json({ error: err.message || 'Failed to process checkout order.' });
   }
 });
@@ -1253,7 +1175,7 @@ app.get('/api/track/:id', async (req, res) => {
 
     if (error || !order) return res.status(404).json({ error: 'Order not found' });
     res.json(order);
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Database error' });
   }
 });
@@ -1269,7 +1191,7 @@ app.get('/api/orders/user/:email', async (req, res) => {
 
     if (error) throw error;
     res.json(orders || []);
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Failed to fetch user orders.' });
   }
 });
@@ -1293,22 +1215,8 @@ app.post('/api/orders/:id/cancel', async (req, res) => {
       await supabase.from('products').update({ status: 'active' }).in('product_id', pIds);
     }
 
-    sendEmailNotification({
-      userId: order.user_id,
-      to: order.users?.email || order.email,
-      subject: `ThriftLoop Order #${orderId} Cancelled`,
-      type: 'order_status',
-      data: {
-        orderId,
-        customerName: order.users?.full_name || order.customer_name,
-        status: 'cancelled',
-        courier: order.courier,
-        trackingNumber: order.tracking_number,
-      },
-    });
-
     res.json({ message: `Order #${orderId} cancelled and inventory restored.` });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Failed to cancel order' });
   }
 });
@@ -1330,7 +1238,7 @@ app.get('/api/admin/stats', async (req, res) => {
       totalRevenue: totalRevenue || 0,
       pendingOrders: pendingOrders || 0,
     });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Failed to retrieve stats' });
   }
 });
@@ -1350,7 +1258,7 @@ app.get('/api/admin/orders', async (req, res) => {
       customer_email: o.users?.email || o.email || '',
     }));
     res.json(formatted);
-  } catch (err) {
+  } catch {
     res.json([]);
   }
 });
@@ -1378,24 +1286,8 @@ app.patch('/api/admin/orders/:id', async (req, res) => {
       }
     }
 
-    if (order && status) {
-      sendEmailNotification({
-        userId: order.user_id,
-        to: order.users?.email || order.email,
-        subject: `ThriftLoop Order Update: #${req.params.id} ${status.toUpperCase()}`,
-        type: 'order_status',
-        data: {
-          orderId: req.params.id,
-          customerName: order.users?.full_name || order.customer_name,
-          status,
-          courier: order.courier,
-          trackingNumber: order.tracking_number,
-        },
-      });
-    }
-
-    res.json({ message: 'Order status updated and notification sent to registered account.' });
-  } catch (err) {
+    res.json({ message: 'Order status updated successfully.' });
+  } catch {
     res.status(500).json({ error: 'Failed to update order' });
   }
 });
@@ -1421,14 +1313,14 @@ app.delete('/api/admin/orders/:id', async (req, res) => {
     const { error } = await supabase.from('orders').delete().eq('order_id', orderId);
 
     if (error) throw error;
-    res.json({ message: `Order #${orderId} permanently deleted and inventory updated.` });
-  } catch (err) {
+    res.json({ message: `Order #${orderId} permanently deleted.` });
+  } catch {
     res.status(500).json({ error: 'Failed to delete order record.' });
   }
 });
 
 // ==========================================
-// AI STYLIST & LOGISTICS CONCIERGE (gemini-3.6-flash WITH gemini-2.5-flash FALLBACK)
+// AI CONCIERGE (gemini-3.6-flash WITH MULTI-TIER FALLBACK)
 // ==========================================
 app.post('/api/chat', async (req, res) => {
   const { message, user_id, email, current_order_id } = req.body;
@@ -1453,7 +1345,6 @@ app.post('/api/chat', async (req, res) => {
     const orderMatch = message.match(/#?(\b\d+\b)/);
     const targetOrderId = current_order_id || (orderMatch ? parseInt(orderMatch[1], 10) : null);
 
-    // Only query orders if an explicit order ID or authenticated identity exists
     if (targetOrderId || user_id || email) {
       let ordersQuery = supabase.from('orders').select('*');
 
@@ -1469,7 +1360,7 @@ app.post('/api/chat', async (req, res) => {
 
       if (!orderErr && userOrders && userOrders.length > 0) {
         orderContext = userOrders.map((o) => 
-          `- Order #${o.order_id}: Status = ${(o.status || '').toUpperCase()}, Courier = ${o.courier || 'J&T'}, Tracking Number = ${o.tracking_number || 'Assigning'}, Total = ₱${o.total_amount}, Placed on = ${new Date(o.created_at).toLocaleDateString()}`
+          `- Order #${o.order_id}: Status = ${(o.status || '').toUpperCase()}, Courier = ${o.courier || 'J&T'}, Tracking Number = ${o.tracking_number || 'Assigning'}, Total = ₱${o.total_amount}`
         ).join('\n');
       }
     }
@@ -1490,60 +1381,142 @@ GUIDELINES:
 - Always quote prices in Philippine Pesos (₱).
 - Keep answers warm, concise, and helpful.`;
 
-    // Explicitly prioritize gemini-3.6-flash, with gemini-2.5-flash as the fallback
     const candidateModels = [
       (process.env.GEMINI_MODEL || 'gemini-3.6-flash').trim(),
       'gemini-3.6-flash',
       'gemini-2.5-flash',
-    ].filter((m, idx, arr) => arr.indexOf(m) === idx);
+      'gemini-2.0-flash',
+    ].filter((m, idx, arr) => m && arr.indexOf(m) === idx);
 
     let lastError = null;
 
     for (const modelCandidate of candidateModels) {
-      // Primary: @google/genai SDK
-      try {
-        const response = await ai.models.generateContent({
-          model: modelCandidate,
-          contents: message,
-          config: { systemInstruction },
-        });
-        if (response?.text) {
-          return res.json({ reply: response.text });
-        }
-      } catch (sdkErr) {
-        console.warn(`⚠️ SDK call for ${modelCandidate} failed: ${sdkErr.message}. Trying direct REST...`);
-        
-        // Secondary: Direct REST API fallback
+      // 1. Try SDK call if initialized
+      if (ai) {
         try {
-          const restRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${modelCandidate}:generateContent?key=${cleanedGeminiKey}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                systemInstruction: { parts: [{ text: systemInstruction }] },
-                contents: [{ role: 'user', parts: [{ text: message }] }],
-              }),
-            }
-          );
-          const restData = await restRes.json();
-          if (restRes.ok && restData?.candidates?.[0]?.content?.parts?.[0]?.text) {
-            return res.json({ reply: restData.candidates[0].content.parts[0].text });
+          const response = await ai.models.generateContent({
+            model: modelCandidate,
+            contents: message,
+            config: { systemInstruction },
+          });
+          if (response?.text) {
+            return res.json({ reply: response.text });
           }
-          lastError = restData?.error?.message || sdkErr.message;
-        } catch (restErr) {
-          lastError = restErr.message || sdkErr.message;
+        } catch (sdkErr) {
+          lastError = sdkErr.message;
         }
+      }
+
+      // 2. Direct REST fallback
+      try {
+        const restRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${modelCandidate}:generateContent?key=${cleanedGeminiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: systemInstruction }] },
+              contents: [{ role: 'user', parts: [{ text: message }] }],
+            }),
+          }
+        );
+        const restData = await restRes.json();
+        if (restRes.ok && restData?.candidates?.[0]?.content?.parts?.[0]?.text) {
+          return res.json({ reply: restData.candidates[0].content.parts[0].text });
+        }
+        if (restData.error) {
+          lastError = restData.error.message || JSON.stringify(restData.error);
+        }
+      } catch (restErr) {
+        lastError = restErr.message;
       }
     }
 
-    console.error('❌ All Gemini candidates failed:', lastError);
     res.json({
       reply: `[Loopie Notice: ${lastError || 'Unable to consult catalog records. Please check Render GEMINI_API_KEY settings.'}]`,
     });
   } catch (err) {
-    console.error('❌ Concierge chat route error:', err.message);
     res.json({ reply: `[System Error: ${err.message}]` });
+  }
+});
+
+// ==========================================
+// GOOGLE BLOGGER (FREE JOURNAL & STORIES FEED)
+// ==========================================
+const FALLBACK_BLOG_POSTS = [
+  {
+    id: '1',
+    title: 'How to Care for 90s Single-Stitch Vintage Tees',
+    snippet: 'Preserve authentic vintage cotton and screen prints with gentle washing, cold water rinses, and flat-drying techniques.',
+    published: new Date().toISOString(),
+    url: 'https://blogger.com',
+    image: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=700',
+    author: 'Loop Archive Curators',
+  },
+  {
+    id: '2',
+    title: 'Pit-to-Pit (PTP) Sizing: Why Vintage Tag Sizes Lie',
+    snippet: 'Decades of shrinkage mean a vintage Large often fits like a modern Medium. Here is our exact flat-lay measurement guide.',
+    published: new Date().toISOString(),
+    url: 'https://blogger.com',
+    image: 'https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?q=80&w=700',
+    author: 'Loop Archive Curators',
+  },
+  {
+    id: '3',
+    title: 'Circular Fashion in the Philippines: Keeping Garments in the Loop',
+    snippet: 'Discover how deadstock sourcing and local thrift curation reduce carbon footprint while unearthing 1-of-1 archive treasures.',
+    published: new Date().toISOString(),
+    url: 'https://blogger.com',
+    image: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=700',
+    author: 'Loop Editorial',
+  },
+];
+
+app.get('/api/blog/posts', async (req, res) => {
+  try {
+    const feedUrl = `https://${BLOGGER_SUBDOMAIN}.blogspot.com/feeds/posts/default?alt=json&max-results=3`;
+    const response = await fetch(feedUrl);
+
+    if (!response.ok) {
+      return res.json(FALLBACK_BLOG_POSTS);
+    }
+
+    const data = await response.json();
+    const entries = data.feed?.entry || [];
+
+    const formatted = entries.map((entry) => {
+      const title = entry.title?.$t || 'Vintage Editorial Update';
+      const htmlContent = entry.content?.$t \vert{}\vert{} entry.summary?.$t || '';
+      const link = entry.link?.find((l) => l.rel === 'alternate')?.href || '#';
+      const published = entry.published?.$t || new Date().toISOString();
+
+      const imgMatch = htmlContent.match(/<img[^>]+src="([^">]+)"/);
+      const image =
+        entry.media$thumbnail?.url?.replace('/s72-c/', '/s700/') ||
+        imgMatch?.[1] ||
+        'https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?q=80&w=700';
+
+      const cleanSnippet = htmlContent
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .trim()
+        .slice(0, 130) + '...';
+
+      return {
+        id: entry.id?.$t || title,
+        title,
+        snippet: cleanSnippet,
+        published,
+        url: link,
+        image,
+        author: entry.author?.[0]?.name?.$t || 'ThriftLoop Curate Team',
+      };
+    });
+
+    res.json(formatted.length > 0 ? formatted : FALLBACK_BLOG_POSTS);
+  } catch {
+    res.json(FALLBACK_BLOG_POSTS);
   }
 });
 

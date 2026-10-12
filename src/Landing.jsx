@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ChevronRight, ChevronLeft, Check, X, Megaphone, Sparkles, Tag } from 'lucide-react';
 import { useCart } from './context/CartContext';
+import BlogSection from './components/BlogSection';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
 
@@ -322,6 +323,9 @@ export default function Landing() {
           })}
         </div>
       </section>
+
+      {/* Google Blogger / Curated Journal Feed */}
+      <BlogSection />
 
     </div>
   );
