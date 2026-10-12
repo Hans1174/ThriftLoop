@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { useCart } from './context/CartContext';
 
+const BACKEND_URL = API_URL || import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
+
 const BACKUP_PRODUCTS = [
   { product_id: 1, name: 'Vintage Floral Midi Dress', category_name: 'Dresses', price: 450, size: 'M', condition_grade: 'Grade A', image_url: 'https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=500&auto=format&fit=crop' },
   { product_id: 2, name: 'Classic Washed Denim Jacket', category_name: 'Outerwear', price: 750, size: 'L', condition_grade: 'Deadstock', image_url: 'https://images.unsplash.com/photo-1576995853123-5a10305d93c0?q=80&w=500&auto=format&fit=crop' },
@@ -45,9 +47,70 @@ export default function Navbar({ onOpenLogin }) {
   const [allProducts, setAllProducts] = useState(BACKUP_PRODUCTS);
   const [searchResults, setSearchResults] = useState([]);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
+
+  // Sync auth state changes across tabs and modals
+  useEffect(() => {
+    const handleAuthSync = () => {
+      try {
+        const saved = localStorage.getItem('thriftloop_user');
+        setCurrentUser(saved ? JSON.parse(saved) : null);
+      } catch {
+        setCurrentUser(null);
+      }
+    };
+    window.addEventListener('auth-change', handleAuthSync);
+    window.addEventListener('storage', handleAuthSync);
+    return () => {
+      window.removeEventListener('auth-change', handleAuthSync);
+      window.removeEventListener('storage', handleAuthSync);
+    };
+  }, []);
+
+  // Poll for incoming unread seller/buyer messages
+  useEffect(() => {
+    const userId = currentUser?.user_id || currentUser?.id;
+    if (!userId) {
+      setHasUnreadMessages(false);
+      return;
+    }
+
+    const checkUnreadMessages = async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/messages/unread-status/${userId}`);
+        const data = await res.json();
+
+        if (data?.latestIncomingAt) {
+          const lastReadTime = localStorage.getItem(`thriftloop_last_read_msg_${userId}`);
+          if (!lastReadTime || new Date(data.latestIncomingAt) > new Date(lastReadTime)) {
+            if (location.pathname !== '/messages') {
+              setHasUnreadMessages(true);
+              return;
+            }
+          }
+        }
+        setHasUnreadMessages(false);
+      } catch {
+        // Silent catch for network retries
+      }
+    };
+
+    checkUnreadMessages();
+    const interval = setInterval(checkUnreadMessages, 6000);
+    return () => clearInterval(interval);
+  }, [currentUser, location.pathname]);
+
+  // Clear unread indicator when viewing the messages page
+  useEffect(() => {
+    const userId = currentUser?.user_id || currentUser?.id;
+    if (location.pathname === '/messages' && userId) {
+      setHasUnreadMessages(false);
+      localStorage.setItem(`thriftloop_last_read_msg_${userId}`, new Date().toISOString());
+    }
+  }, [location.pathname, currentUser]);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/products`)
+    fetch(`${BACKEND_URL}/api/products`)
       .then((res) => res.json())
       .then((data) => {
         const list = Array.isArray(data) ? data : (data.products || data.data || []);
@@ -149,6 +212,11 @@ export default function Navbar({ onOpenLogin }) {
 
   const handleMessagesClick = () => {
     setIsMobileMenuOpen(false);
+    const userId = currentUser?.user_id || currentUser?.id;
+    if (userId) {
+      setHasUnreadMessages(false);
+      localStorage.setItem(`thriftloop_last_read_msg_${userId}`, new Date().toISOString());
+    }
     if (!currentUser) handleTriggerLogin();
     else navigate('/messages');
   };
@@ -200,7 +268,7 @@ export default function Navbar({ onOpenLogin }) {
         {/* Actions Toolbar */}
         <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           
-          {/* Desktop Search Bar (Hidden on Mobile) */}
+          {/* Desktop Search Bar */}
           <div className="relative hidden md:block" ref={searchContainerRef}>
             <form onSubmit={handleSearchSubmit} className="relative">
               <Search size={14} className="absolute left-3 top-2.5 text-[#A8C3A0]" />
@@ -253,7 +321,7 @@ export default function Navbar({ onOpenLogin }) {
             )}
           </div>
 
-          {/* Mobile Search Toggle Icon Button */}
+          {/* Mobile Search Toggle */}
           <button
             type="button"
             onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
@@ -263,11 +331,11 @@ export default function Navbar({ onOpenLogin }) {
             {isMobileSearchOpen ? <X size={20} /> : <Search size={20} />}
           </button>
 
-          {/* Messages Button (Beside Cart) */}
+          {/* Messages Button with Live Unread Dot */}
           <button 
             type="button"
             onClick={handleMessagesClick} 
-            className={`p-2 rounded-xl transition-colors cursor-pointer shrink-0 ${
+            className={`relative p-2 rounded-xl transition-colors cursor-pointer shrink-0 ${
               location.pathname === '/messages' 
                 ? 'text-[#2F6B4F] bg-[#2F6B4F]/10' 
                 : 'text-[#A8C3A0] hover:text-[#23313A] hover:bg-[#F6F1E8]'
@@ -275,6 +343,9 @@ export default function Navbar({ onOpenLogin }) {
             title="Inquiries"
           >
             <MessageSquare size={20} />
+            {hasUnreadMessages && (
+              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-[#E67E5F] rounded-full ring-2 ring-white animate-pulse" />
+            )}
           </button>
 
           {/* Cart Icon */}
@@ -292,7 +363,7 @@ export default function Navbar({ onOpenLogin }) {
             )}
           </button>
 
-          {/* Desktop User Profile Button (Hidden on Mobile) */}
+          {/* Desktop User Profile Dropdown */}
           <div className="hidden md:block">
             {currentUser ? (
               <div className="relative" ref={dropdownRef}>
@@ -311,22 +382,35 @@ export default function Navbar({ onOpenLogin }) {
                 </button>
 
                 {isProfileOpen && (
-                  <div className="absolute right-0 mt-2 w-52 bg-white border border-[#A8C3A0]/30 rounded-2xl shadow-xl py-2 z-50 text-xs">
+                  <div className="absolute right-0 mt-2 w-52 bg-white border border-[#A8C3A0]/30 rounded-2xl shadow-xl py-2 z-50 text-xs animate-in fade-in zoom-in-95 duration-150">
                     <div className="px-4 py-2 border-b border-[#A8C3A0]/20">
                       <p className="font-bold text-[#23313A] truncate">{currentUser.full_name}</p>
                       <p className="text-[10px] text-[#A8C3A0] truncate">{currentUser.email}</p>
                     </div>
+
                     <Link to="/account" className="flex items-center gap-2 px-4 py-2 hover:bg-[#F6F1E8] font-bold text-[#23313A]">
                       <Settings size={14} /> My Account
                     </Link>
+
                     <Link to="/orders" className="flex items-center gap-2 px-4 py-2 hover:bg-[#F6F1E8] font-bold text-[#23313A]">
                       <Package size={14} /> Orders
                     </Link>
+
+                    <Link to="/messages" onClick={handleMessagesClick} className="flex items-center justify-between px-4 py-2 hover:bg-[#F6F1E8] font-bold text-[#23313A]">
+                      <span className="flex items-center gap-2">
+                        <MessageSquare size={14} /> Messages
+                      </span>
+                      {hasUnreadMessages && (
+                        <span className="w-2 h-2 rounded-full bg-[#E67E5F] animate-pulse" />
+                      )}
+                    </Link>
+
                     {isAdmin && (
                       <Link to="/admin" className="flex items-center gap-2 px-4 py-2 hover:bg-[#F6F1E8] font-bold text-[#2F6B4F]">
                         <Shield size={14} /> Admin Dashboard
                       </Link>
                     )}
+
                     <button onClick={handleLogout} className="w-full flex items-center gap-2 px-4 py-2 text-[#E67E5F] hover:bg-red-50 font-bold text-left cursor-pointer">
                       <LogOut size={14} /> Sign Out
                     </button>
@@ -345,7 +429,7 @@ export default function Navbar({ onOpenLogin }) {
             )}
           </div>
 
-          {/* Mobile Hamburger Toggle Button */}
+          {/* Mobile Hamburger Button */}
           <button
             type="button"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -358,7 +442,7 @@ export default function Navbar({ onOpenLogin }) {
         </div>
       </div>
 
-      {/* Mobile Expanding Search Drawer */}
+      {/* Mobile Search Bar Drawer */}
       {isMobileSearchOpen && (
         <div className="md:hidden px-4 pb-3 pt-1 border-t border-[#A8C3A0]/20 bg-white">
           <form onSubmit={handleSearchSubmit} className="relative">
@@ -380,7 +464,7 @@ export default function Navbar({ onOpenLogin }) {
         </div>
       )}
 
-      {/* Mobile Drawer Navigation (Contains Login) */}
+      {/* Mobile Navigation Drawer */}
       {isMobileMenuOpen && (
         <div className="md:hidden bg-white border-t border-[#A8C3A0]/20 px-5 py-4 space-y-4 animate-in slide-in-from-top-2">
           <nav className="flex flex-col space-y-2.5 text-xs font-bold text-[#23313A]">
@@ -395,6 +479,12 @@ export default function Navbar({ onOpenLogin }) {
             </Link>
             {currentUser && (
               <>
+                <Link to="/messages" onClick={handleMessagesClick} className="py-2 border-b border-[#F6F1E8] flex items-center justify-between">
+                  <span>Messages</span>
+                  {hasUnreadMessages && (
+                    <span className="w-2 h-2 rounded-full bg-[#E67E5F] animate-pulse" />
+                  )}
+                </Link>
                 <Link to="/account" onClick={() => setIsMobileMenuOpen(false)} className="py-2 border-b border-[#F6F1E8]">
                   My Account
                 </Link>
