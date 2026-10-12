@@ -1,11 +1,19 @@
 import { API_URL } from './config';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { 
   Search, Truck, Package, MapPin, ArrowLeft, 
   Clock, Copy, Check, ShieldCheck, AlertCircle, 
   Loader2, CheckCircle2, Navigation, ExternalLink, Compass 
 } from 'lucide-react';
+
+// Coordinate landmarks for Cavite / Metro Manila logistics corridor
+const LOGISTICS_HUBS = {
+  hub: { lat: 14.3294, lng: 120.9367, name: 'ThriftLoop Central Archive Hub (Dasmariñas)' },
+  sorting: { lat: 14.3450, lng: 120.9380, name: 'J&T Express Regional Sorting Hub' },
+  transit: { lat: 14.3210, lng: 120.9150, name: 'Active Highway Transit • Governor\'s Drive Delivery Unit' },
+  destinationDefault: { lat: 14.3050, lng: 120.8980, name: 'Customer Delivery Destination (General Trias)' }
+};
 
 export default function TrackOrder() {
   const { id } = useParams();
@@ -15,18 +23,23 @@ export default function TrackOrder() {
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [mapReady, setMapReady] = useState(false);
+
+  const mapContainerRef = useRef(null);
+  const mapInstanceRef = useRef(null);
 
   // Active tracking order state
   const [trackingData, setTrackingData] = useState({
-    order_id: id && id !== '0' ? id : '4',
+    order_id: id && id !== '0' ? id : '8',
     tracking_number: 'JNT-89241029',
     courier: 'J&T Express',
-    status: 'shipped', // 'pending' | 'processing' | 'shipped' | 'delivered'
+    status: 'shipped',
     shipping_address: 'B9 L20 Beryl St. TEP, PH2 Tierra Nevada',
     city: 'General Trias',
     province: 'Cavite',
+    postal_code: '4107',
     customer_name: 'Hans Castro',
-    total_amount: 830,
+    total_amount: 330,
   });
 
   const fetchLiveOrder = async (orderId) => {
@@ -44,21 +57,14 @@ export default function TrackOrder() {
 
       setTrackingData(data);
     } catch (err) {
-      if (String(orderId) === '4') {
-        setTrackingData({
-          order_id: '4',
-          tracking_number: 'JNT-89241029',
-          courier: 'J&T Express',
-          status: 'shipped',
-          shipping_address: 'B9 L20 Beryl St. TEP, PH2 Tierra Nevada',
-          city: 'General Trias',
-          province: 'Cavite',
-          customer_name: 'Hans Castro',
-          total_amount: 830,
-        });
-      } else {
-        setError(err.message || 'No tracking information found for this ID.');
-      }
+      setError(
+        `Order #${orderId} was not found. Please verify your order number (e.g. #8) or try again.`
+      );
+      // Keep demo fallback active so map telemetry is always previewable
+      setTrackingData((prev) => ({
+        ...prev,
+        order_id: orderId,
+      }));
     } finally {
       setLoading(false);
     }
@@ -85,7 +91,6 @@ export default function TrackOrder() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Milestone mapping
   const milestones = [
     { title: 'Order Confirmed', detail: 'Vintage pieces reserved & authenticated', key: 'pending' },
     { title: 'Packed & Dispatched', detail: 'Package received by courier sorting hub', key: 'processing' },
@@ -99,13 +104,24 @@ export default function TrackOrder() {
       case 'processing': return 1;
       case 'shipped': return 2;
       case 'delivered': return 3;
-      default: return 0;
+      default: return 2;
     }
   };
 
   const currentStep = getStepIndex(trackingData?.status);
 
-  // Logistics Route Coordinates & Address Formatter
+  // Dynamically resolve coordinates based on customer city
+  const getDestinationCoords = () => {
+    const city = (trackingData?.city || '').toLowerCase();
+    const province = (trackingData?.province || '').toLowerCase();
+
+    if (city.includes('dasmariñas') || city.includes('dasma')) return [14.3294, 120.9367];
+    if (city.includes('imus')) return [14.4297, 120.9367];
+    if (city.includes('bacoor')) return [14.4600, 120.9400];
+    if (city.includes('manila') || province.includes('metro manila')) return [14.5995, 120.9842];
+    return [LOGISTICS_HUBS.destinationDefault.lat, LOGISTICS_HUBS.destinationDefault.lng];
+  };
+
   const originAddress = 'General Trias, Cavite, Philippines';
   const destinationAddress = [
     trackingData?.shipping_address,
@@ -113,12 +129,6 @@ export default function TrackOrder() {
     trackingData?.province,
     'Philippines'
   ].filter(Boolean).join(', ');
-
-  const googleMapsKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-
-  const mapEmbedUrl = googleMapsKey
-    ? `https://www.google.com/maps/embed/v1/directions?key=${googleMapsKey}&origin=${encodeURIComponent(originAddress)}&destination=${encodeURIComponent(destinationAddress)}&mode=driving`
-    : `https://maps.google.com/maps?q=${encodeURIComponent(destinationAddress)}&t=&z=14&ie=UTF8&iwloc=&output=embed`;
 
   const externalMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originAddress)}&destination=${encodeURIComponent(destinationAddress)}&travelmode=driving`;
 
@@ -159,6 +169,156 @@ export default function TrackOrder() {
 
   const checkpoint = getLogisticsCheckpoint(trackingData?.status);
 
+  // 1. Dynamically Load Leaflet CDN without npm dependencies
+  useEffect(() => {
+    if (window.L) {
+      setMapReady(true);
+      return;
+    }
+
+    if (!document.getElementById('leaflet-css')) {
+      const link = document.createElement('link');
+      link.id = 'leaflet-css';
+      link.rel = 'stylesheet';
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(link);
+    }
+
+    if (!document.getElementById('leaflet-js')) {
+      const script = document.createElement('script');
+      script.id = 'leaflet-js';
+      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      script.async = true;
+      script.onload = () => setMapReady(true);
+      document.body.appendChild(script);
+    } else {
+      const poll = setInterval(() => {
+        if (window.L) {
+          clearInterval(poll);
+          setMapReady(true);
+        }
+      }, 100);
+      return () => clearInterval(poll);
+    }
+  }, []);
+
+  // 2. Render Functional Interactive Map Placemarkers
+  useEffect(() => {
+    if (!mapReady || !mapContainerRef.current || !window.L) return;
+
+    const L = window.L;
+
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.remove();
+      mapInstanceRef.current = null;
+    }
+
+    const originCoords = [LOGISTICS_HUBS.hub.lat, LOGISTICS_HUBS.hub.lng];
+    const destCoords = getDestinationCoords();
+
+    // Determine current courier vehicle position along route based on status
+    let courierCoords = originCoords;
+    if (currentStep === 1) courierCoords = [LOGISTICS_HUBS.sorting.lat, LOGISTICS_HUBS.sorting.lng];
+    if (currentStep === 2) courierCoords = [LOGISTICS_HUBS.transit.lat, LOGISTICS_HUBS.transit.lng];
+    if (currentStep === 3) courierCoords = destCoords;
+
+    const map = L.map(mapContainerRef.current, {
+      center: courierCoords,
+      zoom: 13,
+      zoomControl: true,
+      attributionControl: false,
+    });
+    mapInstanceRef.current = map;
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+    }).addTo(map);
+
+    // Placemarker 1: ThriftLoop Origin Hub
+    const hubIcon = L.divIcon({
+      className: 'custom-hub-pin',
+      html: `
+        <div style="background-color:#2F6B4F; color:#ffffff; width:34px; height:34px; border-radius:50%; border:3px solid #ffffff; box-shadow:0 3px 8px rgba(0,0,0,0.3); display:flex; align-items:center; justify-content:center; font-size:16px;">
+          🏬
+        </div>
+      `,
+      iconSize: [34, 34],
+      iconAnchor: [17, 17],
+    });
+
+    const hubMarker = L.marker(originCoords, { icon: hubIcon }).addTo(map);
+    hubMarker.bindPopup(`
+      <div style="font-family:sans-serif; font-size:12px; padding:2px;">
+        <strong style="color:#2F6B4F;">🏬 ThriftLoop Central Archive</strong>
+        <p style="margin:3px 0 0 0; color:#555;">Fulfillment Origin • Tamper-sealed & Dispatched</p>
+      </div>
+    `);
+
+    // Placemarker 2: Active Courier Van with Live Radar Pulse
+    const courierIcon = L.divIcon({
+      className: 'custom-courier-pin',
+      html: `
+        <div style="position:relative; width:44px; height:44px; display:flex; align-items:center; justify-content:center;">
+          <div style="position:absolute; inset:0; border-radius:50%; background:#E67E5F; opacity:0.4; transform:scale(1.3); animation:pulse 1.8s infinite ease-out;"></div>
+          <div style="background-color:#E67E5F; color:#ffffff; width:36px; height:36px; border-radius:50%; border:3px solid #ffffff; box-shadow:0 4px 10px rgba(0,0,0,0.35); display:flex; align-items:center; justify-content:center; font-size:16px; z-index:2;">
+            🚚
+          </div>
+        </div>
+      `,
+      iconSize: [44, 44],
+      iconAnchor: [22, 22],
+    });
+
+    const courierMarker = L.marker(courierCoords, { icon: courierIcon }).addTo(map);
+    courierMarker.bindPopup(`
+      <div style="font-family:sans-serif; font-size:12px; padding:2px;">
+        <strong style="color:#E67E5F;">📍 CURRENT PACKAGE LOCATION</strong>
+        <p style="margin:3px 0 0 0; font-weight:bold; color:#23313A;">${trackingData?.courier || 'J&T Express'} Delivery Unit</p>
+        <p style="margin:2px 0 0 0; color:#666;">Milestone: ${(trackingData?.status || 'In Transit').toUpperCase()}</p>
+        <p style="margin:2px 0 0 0; color:#2F6B4F; font-weight:bold;">ETA: ${checkpoint.eta}</p>
+      </div>
+    `).openPopup();
+
+    // Placemarker 3: Customer Destination
+    const destIcon = L.divIcon({
+      className: 'custom-dest-pin',
+      html: `
+        <div style="background-color:#23313A; color:#ffffff; width:34px; height:34px; border-radius:50%; border:3px solid #ffffff; box-shadow:0 3px 8px rgba(0,0,0,0.3); display:flex; align-items:center; justify-content:center; font-size:16px;">
+          📍
+        </div>
+      `,
+      iconSize: [34, 34],
+      iconAnchor: [17, 34],
+    });
+
+    const destMarker = L.marker(destCoords, { icon: destIcon }).addTo(map);
+    destMarker.bindPopup(`
+      <div style="font-family:sans-serif; font-size:12px; padding:2px;">
+        <strong style="color:#23313A;">🏡 Delivery Destination</strong>
+        <p style="margin:3px 0 0 0; color:#555;">${trackingData?.customer_name || 'Customer'}</p>
+        <p style="margin:2px 0 0 0; color:#777; font-size:11px;">${destinationAddress}</p>
+      </div>
+    `);
+
+    // Placemarker 4: Transit Route Connecting Polyline
+    L.polyline([originCoords, courierCoords, destCoords], {
+      color: '#2F6B4F',
+      weight: 4,
+      dashArray: '8, 8',
+      opacity: 0.8,
+    }).addTo(map);
+
+    const group = L.featureGroup([hubMarker, courierMarker, destMarker]);
+    map.fitBounds(group.getBounds().pad(0.3));
+
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, [mapReady, trackingData, currentStep]);
+
   return (
     <div className="min-h-screen bg-[#F6F1E8] text-[#23313A] font-sans pb-16 py-8 sm:py-12 px-4 sm:px-6">
       <main className="max-w-4xl mx-auto space-y-8">
@@ -194,7 +354,7 @@ export default function TrackOrder() {
             <Search size={15} className="absolute left-3.5 top-3.5 text-[#A8C3A0]" />
             <input
               type="text"
-              placeholder="Enter Order ID (e.g. 4) or Tracking Number..."
+              placeholder="Enter Order ID (e.g. 8) or Tracking Number..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               className="w-full bg-white border border-[#A8C3A0]/40 rounded-2xl pl-10 pr-4 py-2.5 text-xs focus:outline-none focus:border-[#2F6B4F] text-[#23313A] shadow-xs"
@@ -311,7 +471,7 @@ export default function TrackOrder() {
               </div>
             </div>
 
-            {/* Google Maps Visual Logistics Route */}
+            {/* Functional Placemarker Map Section */}
             <div className="border-t border-[#A8C3A0]/20 pt-6 space-y-4">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                 <div>
@@ -358,18 +518,22 @@ export default function TrackOrder() {
                 </div>
               </div>
 
-              {/* Embedded Map Canvas */}
+              {/* Interactive Map Canvas with Custom Placemarkers */}
               <div className="w-full h-80 rounded-2xl overflow-hidden border border-[#A8C3A0]/30 shadow-xs relative bg-[#F6F1E8]">
-                <iframe
-                  title="Parcel Transit Route"
-                  width="100%"
-                  height="100%"
-                  style={{ border: 0 }}
-                  loading="lazy"
-                  allowFullScreen
-                  referrerPolicy="no-referrer-when-downgrade"
-                  src={mapEmbedUrl}
-                />
+                <div ref={mapContainerRef} className="w-full h-full" />
+                
+                {/* Map Placemarker Legend */}
+                <div className="absolute bottom-2 left-2 z-[400] bg-white/95 backdrop-blur-sm border border-[#A8C3A0]/30 px-3 py-1.5 rounded-xl shadow-xs flex items-center gap-3 text-[10px] font-bold text-[#23313A]">
+                  <span className="flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#2F6B4F]"></span> Hub
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#E67E5F] animate-pulse"></span> Package (Active)
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#23313A]"></span> Destination
+                  </span>
+                </div>
               </div>
             </div>
 
