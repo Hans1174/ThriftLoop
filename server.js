@@ -25,8 +25,9 @@ const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || '1089526724617-1e8fas2
   .trim()
   .replace(/^["']|["']$/g, '');
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
-const BLOGGER_SUBDOMAIN = (process.env.BLOGGER_SUBDOMAIN || 'thriftloop').trim();
-const BLOGGER_POST_EMAIL = (process.env.BLOGGER_POST_EMAIL || '').trim();
+
+const TELEGRAM_BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '8731460008:AAFplJYYvY_s0_D1R7gjmqQ0_CFCGhzquqQ').trim();
+const TELEGRAM_CHANNEL = (process.env.TELEGRAM_CHANNEL || '').trim();
 
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
@@ -61,11 +62,14 @@ try {
   console.warn('⚠️ GoogleGenAI SDK initialization deferred:', err.message);
 }
 
+// Explicit port 587 configuration to prevent IPv6 port 465 timeout
 const mailTransporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false, // upgrades via STARTTLS
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_APP_PASSWORD,
+    pass: (process.env.EMAIL_APP_PASSWORD || '').replace(/\s+/g, ''),
   },
 });
 
@@ -184,37 +188,51 @@ app.post('/api/notifications/email', async (req, res) => {
 });
 
 // ==========================================
-// AUTOMATED BLOGGER AUTO-PUBLISH HELPER
+// AUTOMATED TELEGRAM DROP POSTING ENGINE
 // ==========================================
-const autoPublishToBlogger = async (product) => {
-  if (!BLOGGER_POST_EMAIL || !process.env.EMAIL_USER) return;
+const postToTelegram = async (product) => {
+  const token = (process.env.TELEGRAM_BOT_TOKEN || TELEGRAM_BOT_TOKEN).trim();
+  const channel = (process.env.TELEGRAM_CHANNEL || TELEGRAM_CHANNEL).trim();
 
-  const articleTitle = `New Archive Drop: ${product.name} (${product.size || 'OS'})`;
-  const articleBody = `
-    <div style="font-family: sans-serif; max-width: 650px;">
-      <p>A new 1-of-1 vintage garment has just been cataloged into the ThriftLoop archive.</p>
-      ${product.image_url ? `<p><img src="${product.image_url}" alt="${product.name}" style="max-width: 100%; border-radius: 12px;" /></p>` : ''}
-      <ul>
-        <li><strong>Brand:</strong> ${product.brand || 'Vintage Archive'}</li>
-        <li><strong>Size:</strong> ${product.size || 'OS'} (Chest/PTP: ${product.chest_width || 'N/A'}, Length: ${product.length || 'N/A'})</li>
-        <li><strong>Condition Grade:</strong> ${product.condition_grade || 'Grade A'}</li>
-        <li><strong>Archive Price:</strong> ₱${Number(product.price).toFixed(2)}</li>
-      </ul>
-      <p>${product.description || ''}</p>
-      <p><a href="${FRONTEND_URL}/product/${product.product_id}" style="color: #2F6B4F; font-weight: bold;">View Piece on ThriftLoop →</a></p>
-    </div>
-  `;
+  if (!token || !channel) {
+    console.warn('⚠️ [Telegram Integration] Skipped: TELEGRAM_BOT_TOKEN or TELEGRAM_CHANNEL not configured.');
+    return;
+  }
+
+  const caption = 
+`🔥 *NEW ARCHIVE DROP*
+*${product.name}*
+
+🏷️ *Brand:* ${product.brand || 'Vintage Archive'}
+📏 *Size:* ${product.size || 'OS'} (${product.condition_grade || 'Grade A'})
+💰 *Price:* ₱${Number(product.price).toFixed(2)}
+
+${product.description ? `_${product.description}_\n\n` : ''}🛍️ [View Piece on ThriftLoop](${FRONTEND_URL}/product/${product.product_id})`;
 
   try {
-    await mailTransporter.sendMail({
-      from: `"ThriftLoop Auto-Curate" <${process.env.EMAIL_USER}>`,
-      to: BLOGGER_POST_EMAIL,
-      subject: articleTitle,
-      html: articleBody,
+    const hasImage = product.image_url && product.image_url.startsWith('http');
+    const endpoint = hasImage
+      ? `https://api.telegram.org/bot${token}/sendPhoto`
+      : `https://api.telegram.org/bot${token}/sendMessage`;
+
+    const payload = hasImage
+      ? { chat_id: channel, photo: product.image_url, caption, parse_mode: 'Markdown' }
+      : { chat_id: channel, text: caption, parse_mode: 'Markdown' };
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     });
-    console.log(`📰 [Blogger Integration] Successfully auto-published "${product.name}" to Google Blog.`);
+
+    const data = await response.json();
+    if (data.ok) {
+      console.log(`📢 [Telegram Integration] Successfully published drop "${product.name}" to channel ${channel}`);
+    } else {
+      console.warn(`⚠️ [Telegram Integration] Telegram API response:`, data.description);
+    }
   } catch (err) {
-    console.warn('⚠️ [Blogger Integration] Auto-publish notice:', err.message);
+    console.warn('⚠️ [Telegram Integration] Failed to post to Telegram:', err.message);
   }
 };
 
@@ -305,7 +323,6 @@ app.post('/api/auth/google', async (req, res) => {
       '1089526724617-1e8fas2jq3noffeigk0kh5v7gfsids1f.apps.googleusercontent.com',
     ].filter(Boolean);
 
-    // Strategy 1: Verify ID Token
     if (tokenPayload) {
       try {
         const ticket = await googleClient.verifyIdToken({
@@ -316,7 +333,6 @@ app.post('/api/auth/google', async (req, res) => {
         email = payload?.email;
         name = payload?.name;
       } catch (verifyErr) {
-        // Strategy 2: Call Google's tokeninfo API directly
         try {
           const infoRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(tokenPayload)}`);
           if (infoRes.ok) {
@@ -324,7 +340,6 @@ app.post('/api/auth/google', async (req, res) => {
             email = info.email;
             name = info.name;
           } else {
-            // Strategy 3: Check if tokenPayload was an access_token
             const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
               headers: { Authorization: `Bearer ${tokenPayload}` },
             });
@@ -337,7 +352,6 @@ app.post('/api/auth/google', async (req, res) => {
             }
           }
         } catch {
-          // Strategy 4: Decode token claims if signed by Google's issuer
           const decoded = jwt.decode(tokenPayload);
           if (decoded && decoded.email && (decoded.iss === 'https://accounts.google.com' || decoded.iss === 'accounts.google.com')) {
             email = decoded.email;
@@ -348,9 +362,7 @@ app.post('/api/auth/google', async (req, res) => {
           }
         }
       }
-    } 
-    // Strategy 5: Access token was explicitly sent
-    else if (access_token) {
+    } else if (access_token) {
       const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
         headers: { Authorization: `Bearer ${access_token}` },
       });
@@ -675,8 +687,8 @@ app.post('/api/products', async (req, res) => {
 
     if (error) throw error;
 
-    // Auto-publish to Blogger in the background if configured
-    autoPublishToBlogger(product).catch(() => null);
+    // Auto-broadcast new drop to Telegram channel
+    postToTelegram(product).catch(() => null);
 
     res.status(201).json({ message: 'Product listed successfully', productId: product.product_id });
   } catch (err) {
@@ -1432,7 +1444,6 @@ GUIDELINES:
     let lastError = null;
 
     for (const modelCandidate of candidateModels) {
-      // 1. Try SDK call if initialized
       if (ai) {
         try {
           const response = await ai.models.generateContent({
@@ -1448,7 +1459,6 @@ GUIDELINES:
         }
       }
 
-      // 2. Direct REST fallback
       try {
         const restRes = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${modelCandidate}:generateContent?key=${cleanedGeminiKey}`,
@@ -1481,84 +1491,9 @@ GUIDELINES:
   }
 });
 
-// ==========================================
-// GOOGLE BLOGGER (FREE JOURNAL & STORIES FEED)
-// ==========================================
-const FALLBACK_BLOG_POSTS = [
-  {
-    id: '1',
-    title: 'How to Care for 90s Single-Stitch Vintage Tees',
-    snippet: 'Preserve authentic vintage cotton and screen prints with gentle washing, cold water rinses, and flat-drying techniques.',
-    published: new Date().toISOString(),
-    url: 'https://blogger.com',
-    image: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=700',
-    author: 'Loop Archive Curators',
-  },
-  {
-    id: '2',
-    title: 'Pit-to-Pit (PTP) Sizing: Why Vintage Tag Sizes Lie',
-    snippet: 'Decades of shrinkage mean a vintage Large often fits like a modern Medium. Here is our exact flat-lay measurement guide.',
-    published: new Date().toISOString(),
-    url: 'https://blogger.com',
-    image: 'https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?q=80&w=700',
-    author: 'Loop Archive Curators',
-  },
-  {
-    id: '3',
-    title: 'Circular Fashion in the Philippines: Keeping Garments in the Loop',
-    snippet: 'Discover how deadstock sourcing and local thrift curation reduce carbon footprint while unearthing 1-of-1 archive treasures.',
-    published: new Date().toISOString(),
-    url: 'https://blogger.com',
-    image: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=700',
-    author: 'Loop Editorial',
-  },
-];
-
-app.get('/api/blog/posts', async (req, res) => {
-  try {
-    const feedUrl = `https://${BLOGGER_SUBDOMAIN}.blogspot.com/feeds/posts/default?alt=json&max-results=3`;
-    const response = await fetch(feedUrl);
-
-    if (!response.ok) {
-      return res.json(FALLBACK_BLOG_POSTS);
-    }
-
-    const data = await response.json();
-    const entries = data.feed?.entry || [];
-
-    const formatted = entries.map((entry) => {
-      const title = entry.title?.$t || 'Vintage Editorial Update';
-      const htmlContent = entry.content?.$t \vert{}\vert{} entry.summary?.$t || '';
-      const link = entry.link?.find((l) => l.rel === 'alternate')?.href || '#';
-      const published = entry.published?.$t || new Date().toISOString();
-
-      const imgMatch = htmlContent.match(/<img[^>]+src="([^">]+)"/);
-      const image =
-        entry.media$thumbnail?.url?.replace('/s72-c/', '/s700/') ||
-        imgMatch?.[1] ||
-        'https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?q=80&w=700';
-
-      const cleanSnippet = htmlContent
-        .replace(/<[^>]+>/g, '')
-        .replace(/&nbsp;/g, ' ')
-        .trim()
-        .slice(0, 130) + '...';
-
-      return {
-        id: entry.id?.$t || title,
-        title,
-        snippet: cleanSnippet,
-        published,
-        url: link,
-        image,
-        author: entry.author?.[0]?.name?.$t || 'ThriftLoop Curate Team',
-      };
-    });
-
-    res.json(formatted.length > 0 ? formatted : FALLBACK_BLOG_POSTS);
-  } catch {
-    res.json(FALLBACK_BLOG_POSTS);
-  }
+// Safe stub route for frontend compatibility
+app.get('/api/blog/posts', (req, res) => {
+  res.json([]);
 });
 
 // --- GLOBAL ERROR HANDLER ---
