@@ -152,7 +152,7 @@ export default function Landing() {
         </div>
       )}
 
-      {/* Ghost-Proof Hero Carousel */}
+      {/* Hero Carousel */}
       <section className="relative w-full h-[460px] sm:h-[540px] md:h-[600px] lg:h-[650px] overflow-hidden group">
         {heroSlides.map((slide, index) => {
           const isActive = currentSlide === index;
@@ -192,7 +192,6 @@ export default function Landing() {
           );
         })}
 
-        {/* Carousel Chevrons: Hidden on mobile, shown on desktop hover */}
         <button 
           onClick={prevSlide}
           className="hidden md:flex absolute left-4 top-1/2 -translate-y-1/2 z-20 bg-white/10 hover:bg-white/30 backdrop-blur-md text-white p-3 rounded-full opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
@@ -206,7 +205,6 @@ export default function Landing() {
           <ChevronRight size={22} />
         </button>
 
-        {/* Indicators */}
         <div className="absolute bottom-6 sm:bottom-8 left-5 sm:left-10 md:left-16 lg:left-24 z-20 flex gap-2">
           {heroSlides.map((_, index) => (
             <button
@@ -241,7 +239,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* New Arrivals (Adaptive Grid) */}
+      {/* New Arrivals */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
         <div className="flex justify-between items-end mb-6">
           <div>
@@ -324,10 +322,9 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Telegram VIP Drops Community Broadcast Section */}
+      {/* Telegram VIP Drops Community Section */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
         <div className="bg-[#2F6B4F] text-white rounded-3xl p-6 sm:p-10 md:p-12 relative overflow-hidden shadow-lg border border-[#A8C3A0]/30">
-          {/* Subtle Decorative Elements */}
           <div className="absolute -top-16 -right-16 w-64 h-64 bg-white/5 rounded-full blur-2xl pointer-events-none"></div>
           <div className="absolute -bottom-16 -left-16 w-64 h-64 bg-[#E67E5F]/10 rounded-full blur-2xl pointer-events-none"></div>
 
