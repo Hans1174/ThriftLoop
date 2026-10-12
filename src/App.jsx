@@ -11,7 +11,7 @@ import Shop from './Shop';
 import ProductDetail from './ProductDetail';
 import Cart from './Cart';
 import Checkout from './Checkout';
-import OrderConfirmation from './OrderConfirmation';
+import Confirmation from './Confirmation';
 import TrackOrder from './TrackOrder';
 import MyAccount from './MyAccount';
 import Register from './Register';
@@ -52,8 +52,8 @@ export default function App() {
                 <Route path="/cart" element={<Cart />} />
                 <Route path="/checkout" element={<Checkout />} />
                 <Route path="/orders" element={<MyOrders />} />
-                <Route path="/confirmation" element={<OrderConfirmation />} />
-                <Route path="/order-success" element={<OrderConfirmation />} />
+                <Route path="/confirmation" element={<Confirmation />} />
+                <Route path="/order-success" element={<Confirmation />} />
                 <Route path="/track" element={<TrackOrder />} />
                 <Route path="/track/:id" element={<TrackOrder />} />
                 <Route path="/account" element={<MyAccount />} />
