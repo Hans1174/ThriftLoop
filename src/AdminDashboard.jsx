@@ -305,16 +305,16 @@ export default function AdminDashboard() {
     const cond = (condition || '').toLowerCase();
     let badgeStyle = 'bg-emerald-50 text-emerald-800 border-emerald-200';
 
-    if (cond.includes('good') || cond.includes('class b')) {
+    if (cond.includes('good')) {
       badgeStyle = 'bg-blue-50 text-blue-800 border-blue-200';
-    } else if (cond.includes('used') || cond.includes('class c')) {
+    } else if (cond.includes('used')) {
       badgeStyle = 'bg-amber-50 text-amber-800 border-amber-200';
-    } else if (cond.includes('flawed') || cond.includes('class d')) {
+    } else if (cond.includes('flawed')) {
       badgeStyle = 'bg-rose-50 text-rose-800 border-rose-200';
     }
 
     return (
-      <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold border truncate ${badgeStyle}`}>
+      <span className={`inline-block px-2.5 py-0.5 rounded-md text-[10px] font-bold border tracking-tight ${badgeStyle}`}>
         {condition || 'Good'}
       </span>
     );
@@ -489,9 +489,9 @@ export default function AdminDashboard() {
           </button>
         </div>
 
-        {/* Tab 1: Product Card Grid (Replaces Table) */}
+        {/* Tab 1: Product Card Box Grid */}
         {activeTab === 'inventory' && (
-          <div className="space-y-5">
+          <div className="space-y-6">
             
             {/* Filter Toolbar Card */}
             <div className="bg-white border border-[#A8C3A0]/30 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
@@ -534,7 +534,7 @@ export default function AdminDashboard() {
               </p>
             </div>
 
-            {/* Individual Product Cards Grid */}
+            {/* Individual Product Card Boxes */}
             {filteredProducts.length === 0 ? (
               <div className="bg-white border border-[#A8C3A0]/30 rounded-3xl p-12 text-center text-[#A8C3A0] space-y-2">
                 <Package size={36} className="mx-auto text-[#2F6B4F] opacity-50" />
@@ -542,7 +542,7 @@ export default function AdminDashboard() {
                 <p className="text-xs">Try clearing the search query or changing category and status filters.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
                 {filteredProducts.map((item) => {
                   const id = item.product_id || item.id;
                   const isSold = item.status === 'sold';
@@ -550,34 +550,34 @@ export default function AdminDashboard() {
                   return (
                     <div
                       key={id}
-                      className="bg-white border border-[#A8C3A0]/30 rounded-2xl sm:rounded-3xl overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between group"
+                      className="bg-white border border-[#A8C3A0]/35 rounded-3xl overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
                     >
-                      {/* Top Image Canvas with Informational Overlays */}
-                      <div className="relative h-52 sm:h-56 w-full bg-[#F6F1E8] overflow-hidden border-b border-[#A8C3A0]/20 flex items-center justify-center">
+                      {/* Photo Box with Overlays */}
+                      <div className="relative h-56 sm:h-60 w-full bg-[#F6F1E8] overflow-hidden border-b border-[#A8C3A0]/20 flex items-center justify-center p-3">
                         <img
                           src={item.image_url || 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=400'}
                           alt={item.name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          className="w-full h-full object-contain drop-shadow-xs"
                         />
 
-                        {/* Top Badges */}
-                        <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
-                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shadow-xs ${
+                        {/* Top Status & ID Pills */}
+                        <div className="absolute top-3 left-3">
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider shadow-xs ${
                             isSold ? 'bg-[#E67E5F] text-white' : 'bg-[#2F6B4F] text-white'
                           }`}>
                             {isSold ? 'Sold' : 'Available'}
                           </span>
                         </div>
 
-                        <div className="absolute top-2.5 right-2.5">
-                          <span className="bg-[#23313A]/85 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-xs">
+                        <div className="absolute top-3 right-3">
+                          <span className="bg-[#23313A]/80 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-xs">
                             ID #{id}
                           </span>
                         </div>
 
-                        {/* Brand Pill */}
-                        <div className="absolute bottom-2.5 left-2.5">
-                          <span className="bg-white/95 backdrop-blur-xs text-[#23313A] border border-[#A8C3A0]/30 text-[10px] font-bold px-2.5 py-0.5 rounded-md shadow-xs">
+                        {/* Brand Tag */}
+                        <div className="absolute bottom-3 left-3">
+                          <span className="bg-white/95 backdrop-blur-xs text-[#23313A] border border-[#A8C3A0]/30 text-[10px] font-bold px-2.5 py-1 rounded-lg shadow-xs">
                             {item.brand || 'Vintage Archive'}
                           </span>
                         </div>
@@ -585,8 +585,8 @@ export default function AdminDashboard() {
 
                       {/* Content Section */}
                       <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-3">
-                        <div>
-                          <div className="flex items-center justify-between text-[11px] text-[#A8C3A0] font-semibold mb-1">
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between text-[11px] text-[#A8C3A0] font-semibold">
                             <span>{item.category_name || 'Vintage'}</span>
                             <span className="font-bold text-[#23313A] bg-[#F6F1E8] px-2 py-0.5 rounded-md text-[10px]">
                               Size {item.size}
@@ -594,37 +594,35 @@ export default function AdminDashboard() {
                           </div>
 
                           <h3 
-                            className="font-serif font-bold text-sm sm:text-base text-[#23313A] line-clamp-1 group-hover:text-[#2F6B4F] transition-colors"
+                            className="font-serif font-bold text-sm sm:text-base text-[#23313A] line-clamp-1"
                             title={item.name}
                           >
                             {item.name}
                           </h3>
 
-                          <div className="mt-2">
+                          <div>
                             {renderConditionBadge(item.condition_grade)}
                           </div>
                         </div>
 
-                        {/* Valuation & Price */}
-                        <div className="pt-2 border-t border-[#A8C3A0]/15 flex items-center justify-between">
-                          <div>
-                            <span className="text-[9px] uppercase font-bold text-[#A8C3A0] block">Listing Price</span>
-                            <span className="font-bold text-base sm:text-lg text-[#2F6B4F]">
-                              ₱{parseFloat(item.price || 0).toFixed(2)}
-                            </span>
-                          </div>
+                        {/* Price Tag */}
+                        <div className="pt-2 border-t border-[#A8C3A0]/15 flex items-baseline justify-between">
+                          <span className="text-[10px] uppercase font-bold text-[#A8C3A0]">Price</span>
+                          <span className="font-bold text-base sm:text-lg text-[#2F6B4F]">
+                            ₱{parseFloat(item.price || 0).toFixed(2)}
+                          </span>
                         </div>
                       </div>
 
-                      {/* Unified Touch-Optimized Actions Footer */}
-                      <div className="px-4 pb-4 sm:px-5 sm:pb-5 pt-1 flex items-center gap-2 border-t border-[#A8C3A0]/10 bg-[#F6F1E8]/20">
+                      {/* Card Action Footer */}
+                      <div className="p-3 sm:p-4 border-t border-[#A8C3A0]/20 bg-[#F6F1E8]/30 flex items-center gap-2">
                         <button
                           type="button"
                           onClick={() => handleToggleStatus(item)}
-                          className={`flex-1 py-2 sm:py-2.5 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95 text-center shadow-xs ${
+                          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-xs text-center ${
                             isSold
                               ? 'bg-[#2F6B4F] text-white hover:bg-[#23313A]'
-                              : 'bg-white text-[#E67E5F] border border-[#E67E5F]/35 hover:bg-[#E67E5F] hover:text-white'
+                              : 'bg-white text-[#E67E5F] border border-[#E67E5F]/40 hover:bg-[#E67E5F] hover:text-white'
                           }`}
                         >
                           {isSold ? 'Mark Available' : 'Mark Sold'}
@@ -633,7 +631,7 @@ export default function AdminDashboard() {
                         <button
                           type="button"
                           onClick={() => handleOpenEditModal(item)}
-                          className="p-2 sm:p-2.5 rounded-xl text-[#23313A] bg-white hover:bg-[#F6F1E8] hover:text-[#2F6B4F] border border-[#A8C3A0]/30 transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
+                          className="p-2 rounded-xl text-[#23313A] bg-white hover:bg-[#F6F1E8] hover:text-[#2F6B4F] border border-[#A8C3A0]/30 transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
                           title="Edit Piece"
                         >
                           <Pencil size={15} />
@@ -642,7 +640,7 @@ export default function AdminDashboard() {
                         <button
                           type="button"
                           onClick={() => handleDeleteProduct(id)}
-                          className="p-2 sm:p-2.5 rounded-xl text-[#E67E5F] bg-white hover:bg-[#E67E5F] hover:text-white border border-[#E67E5F]/30 transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
+                          className="p-2 rounded-xl text-[#E67E5F] bg-white hover:bg-[#E67E5F] hover:text-white border border-[#E67E5F]/30 transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
                           title="Delete Piece"
                         >
                           <Trash2 size={15} />
