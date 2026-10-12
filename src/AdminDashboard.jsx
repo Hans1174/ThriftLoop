@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Package, Plus, Trash2, CheckCircle, RefreshCw, 
   ShoppingBag, DollarSign, Tag, AlertCircle, 
-  X, Search, UploadCloud, Pencil, Truck, Check, MessageSquare
+  X, Search, UploadCloud, Pencil, Truck, Check, MessageSquare,
+  Sparkles, ImageIcon
 } from 'lucide-react';
 import AdminInbox from './components/AdminInbox';
 
@@ -26,28 +27,28 @@ export default function AdminDashboard() {
 
   // Modal State (Create & Edit)
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState(null); // null = Create, object = Edit
+  const [editingItem, setEditingItem] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [imageMode, setImageMode] = useState('file'); // 'file' | 'url'
   const [previewUrl, setPreviewUrl] = useState('');
   const fileInputRef = useRef(null);
 
-  // Backdrop guard: ensures click started AND ended on backdrop before closing
+  // Backdrop guard
   const backdropMouseDownRef = useRef(false);
+
+  const categories = ['Tops', 'Bottoms', 'Outerwear', 'Dresses', 'Shoes', 'Accessories'];
+  const conditions = ['Excellent', 'Good', 'Used but not abused', 'Flawed'];
 
   const [form, setForm] = useState({
     name: '',
     brand: '',
     category_name: 'Tops',
-    condition_grade: 'Class A',
+    condition_grade: 'Excellent',
     size: 'M',
     price: '',
     image_url: '',
     description: '',
   });
-
-  const categories = ['Tops', 'Bottoms', 'Outerwear', 'Dresses', 'Shoes', 'Accessories'];
-  const conditions = ['Brand New', 'Class A', 'Class B', 'Class C'];
 
   const getSizeOptions = (category) => {
     switch (category) {
@@ -161,7 +162,7 @@ export default function AdminDashboard() {
       name: '',
       brand: '',
       category_name: 'Tops',
-      condition_grade: 'Class A',
+      condition_grade: 'Excellent',
       size: 'M',
       price: '',
       image_url: '',
@@ -177,7 +178,7 @@ export default function AdminDashboard() {
       name: item.name || '',
       brand: item.brand || '',
       category_name: item.category_name || 'Tops',
-      condition_grade: item.condition_grade || 'Class A',
+      condition_grade: item.condition_grade || 'Excellent',
       size: item.size || 'M',
       price: item.price || '',
       image_url: item.image_url || '',
@@ -547,7 +548,7 @@ export default function AdminDashboard() {
                           <td className="py-3 px-4">
                             <span className="font-bold text-[#23313A]">{item.size}</span>
                             <span className="block text-[10px] text-[#A8C3A0] font-medium">
-                              {item.condition_grade}
+                              {item.condition_grade || 'Excellent'}
                             </span>
                           </td>
                           <td className="py-3 px-4 font-bold text-[#2F6B4F]">
@@ -686,10 +687,10 @@ export default function AdminDashboard() {
 
       </div>
 
-      {/* Modal with Protected Backdrop */}
+      {/* Spacious Executive Modal (max-w-4xl 2-Column Responsive Layout) */}
       {isModalOpen && (
         <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) {
               backdropMouseDownRef.current = true;
@@ -709,280 +710,314 @@ export default function AdminDashboard() {
 
           {/* Modal Dialog Card */}
           <div 
-            className="relative z-10 bg-white border border-[#A8C3A0]/30 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl max-h-[90vh] overflow-y-auto my-auto"
+            className="relative z-10 bg-white border border-[#A8C3A0]/30 rounded-3xl p-6 sm:p-8 md:p-10 max-w-4xl w-full shadow-2xl max-h-[92vh] overflow-y-auto my-auto animate-in fade-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onMouseUp={(e) => e.stopPropagation()}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => e.preventDefault()}
           >
-            <div className="flex items-center justify-between pb-4 border-b border-[#A8C3A0]/20 mb-5">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-4 sm:pb-5 border-b border-[#A8C3A0]/20 mb-6">
               <div>
-                <h3 className="font-serif font-bold text-xl text-[#23313A]">
+                <span className="text-[10px] uppercase font-bold text-[#A8C3A0] tracking-wider flex items-center gap-1">
+                  <Sparkles size={11} className="text-[#E67E5F]" /> 1-of-1 Catalog Curator
+                </span>
+                <h3 className="font-serif font-bold text-2xl sm:text-3xl text-[#23313A] mt-0.5">
                   {editingItem ? 'Edit Vintage Listing' : 'Add 1-of-1 Vintage Listing'}
                 </h3>
-                <p className="text-[11px] text-[#A8C3A0] font-medium">
+                <p className="text-xs text-[#23313A]/60 font-medium mt-1">
                   {editingItem 
                     ? `Updating archive piece #${editingItem.product_id || editingItem.id}` 
-                    : 'Upload photos, specify sizes, and publish drops to ThriftLoop.'}
+                    : 'Upload photos, select condition, specify measurements, and publish drops to ThriftLoop.'}
                 </p>
               </div>
               <button 
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="text-[#A8C3A0] hover:text-[#23313A] p-1 rounded-full cursor-pointer"
+                className="text-[#A8C3A0] hover:text-[#23313A] p-2 rounded-full hover:bg-[#F6F1E8] transition-colors cursor-pointer"
+                title="Close"
               >
-                <X size={18} />
+                <X size={20} />
               </button>
             </div>
 
-            <form onSubmit={handleSubmitProduct} className="space-y-4 text-xs">
+            {/* Modal Form: 2-Column Desktop Grid */}
+            <form onSubmit={handleSubmitProduct} className="text-xs space-y-6">
               
-              {/* Image Section */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="font-bold text-[#23313A] uppercase tracking-wider text-[10px]">
-                    Garment Photo
-                  </label>
-                  <div className="flex items-center gap-2 text-[10px] font-bold">
-                    <button
-                      type="button"
-                      onClick={() => setImageMode('file')}
-                      className={`px-2 py-0.5 rounded-md cursor-pointer transition-colors ${
-                        imageMode === 'file' ? 'bg-[#2F6B4F] text-white' : 'text-[#A8C3A0] hover:text-[#23313A]'
-                      }`}
-                    >
-                      Upload File
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setImageMode('url')}
-                      className={`px-2 py-0.5 rounded-md cursor-pointer transition-colors ${
-                        imageMode === 'url' ? 'bg-[#2F6B4F] text-white' : 'text-[#A8C3A0] hover:text-[#23313A]'
-                      }`}
-                    >
-                      Paste URL
-                    </button>
-                  </div>
-                </div>
-
-                {imageMode === 'file' ? (
-                  <div>
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files[0]) {
-                          handleFileProcess(e.target.files[0]);
-                        }
-                      }}
-                    />
-
-                    {previewUrl ? (
-                      <div className="relative w-full h-44 rounded-2xl overflow-hidden border border-[#2F6B4F]/40 bg-[#F6F1E8] group">
-                        <img 
-                          src={previewUrl} 
-                          alt="Preview" 
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
-                          <button
-                            type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                            className="bg-white text-[#23313A] text-xs font-bold px-3.5 py-1.5 rounded-xl cursor-pointer shadow-sm hover:bg-[#F6F1E8]"
-                          >
-                            Change Photo
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setPreviewUrl('');
-                              setForm((prev) => ({ ...prev, image_url: '' }));
-                            }}
-                            className="bg-[#E67E5F] text-white text-xs font-bold p-2 rounded-xl cursor-pointer shadow-sm"
-                            title="Remove photo"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                        }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                        }}
-                        onClick={() => fileInputRef.current?.click()}
-                        className="w-full h-36 border-2 border-dashed border-[#A8C3A0]/60 hover:border-[#2F6B4F] bg-[#F6F1E8]/30 rounded-2xl flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors p-4 text-center group"
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-6 md:gap-8 items-start">
+                
+                {/* Left Column (5 cols): Garment Media & Description */}
+                <div className="md:col-span-5 space-y-4">
+                  
+                  {/* Photo Mode Toolbar */}
+                  <div className="flex items-center justify-between">
+                    <label className="font-bold text-[#23313A] uppercase tracking-wider text-[10px]">
+                      Garment Photo
+                    </label>
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold bg-[#F6F1E8] p-1 rounded-lg border border-[#A8C3A0]/30">
+                      <button
+                        type="button"
+                        onClick={() => setImageMode('file')}
+                        className={`px-2.5 py-1 rounded-md cursor-pointer transition-colors ${
+                          imageMode === 'file' ? 'bg-[#2F6B4F] text-white shadow-xs' : 'text-[#23313A]/70 hover:text-[#23313A]'
+                        }`}
                       >
-                        <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-[#2F6B4F] shadow-xs group-hover:scale-110 transition-transform">
-                          <UploadCloud size={20} />
-                        </div>
-                        <div>
-                          <p className="font-bold text-xs text-[#23313A]">Click to browse or drag & drop photo</p>
-                          <p className="text-[10px] text-[#A8C3A0] mt-0.5">Supports JPG, PNG, WEBP</p>
-                        </div>
-                      </div>
-                    )}
+                        Upload File
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setImageMode('url')}
+                        className={`px-2.5 py-1 rounded-md cursor-pointer transition-colors ${
+                          imageMode === 'url' ? 'bg-[#2F6B4F] text-white shadow-xs' : 'text-[#23313A]/70 hover:text-[#23313A]'
+                        }`}
+                      >
+                        Paste URL
+                      </button>
+                    </div>
                   </div>
-                ) : (
+
+                  {/* Photo Canvas */}
+                  {imageMode === 'file' ? (
+                    <div>
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            handleFileProcess(e.target.files[0]);
+                          }
+                        }}
+                      />
+
+                      {previewUrl ? (
+                        <div className="relative w-full h-64 sm:h-72 rounded-2xl overflow-hidden border border-[#2F6B4F]/40 bg-[#F6F1E8] group shadow-inner">
+                          <img 
+                            src={previewUrl} 
+                            alt="Preview" 
+                            className="w-full h-full object-contain p-2"
+                          />
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => fileInputRef.current?.click()}
+                              className="bg-white text-[#23313A] text-xs font-bold px-4 py-2 rounded-xl cursor-pointer shadow-sm hover:bg-[#F6F1E8] transition-colors"
+                            >
+                              Change Photo
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPreviewUrl('');
+                                setForm((prev) => ({ ...prev, image_url: '' }));
+                              }}
+                              className="bg-[#E67E5F] text-white text-xs font-bold p-2 rounded-xl cursor-pointer shadow-sm hover:bg-[#d67053] transition-colors"
+                              title="Remove photo"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onClick={() => fileInputRef.current?.click()}
+                          className="w-full h-64 sm:h-72 border-2 border-dashed border-[#A8C3A0]/60 hover:border-[#2F6B4F] bg-[#F6F1E8]/30 rounded-2xl flex flex-col items-center justify-center gap-3 cursor-pointer transition-all p-6 text-center group hover:bg-[#F6F1E8]/60"
+                        >
+                          <div className="w-14 h-14 rounded-2xl bg-white flex items-center justify-center text-[#2F6B4F] shadow-xs group-hover:scale-110 transition-transform border border-[#A8C3A0]/30">
+                            <UploadCloud size={26} />
+                          </div>
+                          <div>
+                            <p className="font-bold text-xs sm:text-sm text-[#23313A]">Click to browse or drag & drop</p>
+                            <p className="text-[10px] text-[#A8C3A0] mt-0.5">High-res JPG, PNG, WEBP auto-compressed</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <input
+                        type="url"
+                        placeholder="https://images.unsplash.com/photo-..."
+                        value={form.image_url}
+                        onChange={(e) => {
+                          setForm({ ...form, image_url: e.target.value });
+                          setPreviewUrl(e.target.value);
+                        }}
+                        className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] text-[#23313A] text-xs"
+                      />
+                      {previewUrl ? (
+                        <div className="relative w-full h-56 sm:h-64 rounded-2xl overflow-hidden border border-[#A8C3A0]/30 bg-[#F6F1E8]">
+                          <img 
+                            src={previewUrl} 
+                            alt="URL Preview" 
+                            className="w-full h-full object-contain p-2"
+                            onError={() => setPreviewUrl('')}
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-full h-40 border border-dashed border-[#A8C3A0]/40 rounded-2xl flex flex-col items-center justify-center gap-1.5 text-[#A8C3A0]">
+                          <ImageIcon size={22} />
+                          <span className="text-[10px]">Image preview will appear here</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Description & Measurements */}
                   <div>
-                    <input
-                      type="url"
-                      placeholder="https://images.unsplash.com/photo-..."
-                      value={form.image_url}
-                      onChange={(e) => {
-                        setForm({ ...form, image_url: e.target.value });
-                        setPreviewUrl(e.target.value);
-                      }}
-                      className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
+                    <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
+                      Description & Flat-Lay Notes
+                    </label>
+                    <textarea
+                      rows="4"
+                      placeholder="Specify single-stitch hem details, wash distressing, pit-to-pit flat lay notes, and tag provenance..."
+                      value={form.description}
+                      onChange={(e) => setForm({ ...form, description: e.target.value })}
+                      className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl p-3 focus:outline-none focus:border-[#2F6B4F] text-[#23313A] leading-relaxed resize-none text-xs"
                     />
-                    {previewUrl && (
-                      <div className="mt-2 relative w-full h-32 rounded-xl overflow-hidden border border-[#A8C3A0]/30 bg-[#F6F1E8]">
-                        <img 
-                          src={previewUrl} 
-                          alt="URL Preview" 
-                          className="w-full h-full object-cover"
-                          onError={() => setPreviewUrl('')}
-                        />
-                      </div>
-                    )}
                   </div>
-                )}
-              </div>
 
-              {/* Garment Name & Brand */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
-                    Garment Name
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Plaid Chuck Taylor All-Star"
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
-                  />
                 </div>
 
-                <div>
-                  <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
-                    Brand / Label
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Converse, Carhartt, Nike"
-                    value={form.brand}
-                    onChange={(e) => setForm({ ...form, brand: e.target.value })}
-                    className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
-                  />
+                {/* Right Column (7 cols): Garment Specs & Attributes */}
+                <div className="md:col-span-7 space-y-4">
+                  
+                  {/* Name */}
+                  <div>
+                    <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
+                      Garment Name
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. 90s Vintage Single-Stitch Band Tee"
+                      value={form.name}
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] text-[#23313A] font-bold"
+                    />
+                  </div>
+
+                  {/* Brand & Price in 2 Columns */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
+                        Brand / Label
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Brockum, Levi's, Carhartt"
+                        value={form.brand}
+                        onChange={(e) => setForm({ ...form, brand: e.target.value })}
+                        className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
+                        Price (PHP ₱)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        required
+                        placeholder="450.00"
+                        value={form.price}
+                        onChange={(e) => setForm({ ...form, price: e.target.value })}
+                        className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] text-[#23313A] font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Category & Size in 2 Columns */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
+                        Category
+                      </label>
+                      <select
+                        value={form.category_name}
+                        onChange={(e) => handleCategoryChange(e.target.value)}
+                        className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 font-bold focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
+                      >
+                        {categories.map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
+                        {form.category_name === 'Shoes' ? 'Shoe Size' : 'Size'}
+                      </label>
+                      <select
+                        value={form.size}
+                        onChange={(e) => setForm({ ...form, size: e.target.value })}
+                        className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 font-bold focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
+                      >
+                        {getSizeOptions(form.category_name).map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Updated Condition Selection (Excellent, Good, Used but not abused, Flawed) */}
+                  <div>
+                    <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
+                      Garment Condition
+                    </label>
+                    <select
+                      value={form.condition_grade}
+                      onChange={(e) => setForm({ ...form, condition_grade: e.target.value })}
+                      className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 font-bold focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
+                    >
+                      {conditions.map((g) => (
+                        <option key={g} value={g}>{g}</option>
+                      ))}
+                    </select>
+
+                    <div className="mt-2 p-3 bg-[#F6F1E8]/40 border border-[#A8C3A0]/20 rounded-xl text-[11px] text-[#23313A]/70 leading-relaxed">
+                      {form.condition_grade === 'Excellent' && '✨ Flawless archive piece with crisp fabric and no visible signs of wear.'}
+                      {form.condition_grade === 'Good' && '👌 Well-preserved vintage piece with gentle, natural character and firm structure.'}
+                      {form.condition_grade === 'Used but not abused' && '🧥 Authentic pre-loved vintage garment. Broken in comfortably with no tears or heavy stains.'}
+                      {form.condition_grade === 'Flawed' && '⚠️ Contains visible distressing, minor fraying, or vintage sun-fading noted in the description.'}
+                    </div>
+                  </div>
+
+                  {/* Modal Action Buttons */}
+                  <div className="pt-4 border-t border-[#A8C3A0]/20 flex items-center justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setIsModalOpen(false)}
+                      className="px-5 py-3 text-xs font-bold text-[#23313A]/70 hover:text-black transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="bg-[#2F6B4F] hover:bg-[#23313A] text-white text-xs font-bold px-7 py-3 rounded-xl transition-all shadow-md cursor-pointer disabled:opacity-50 active:scale-95"
+                    >
+                      {submitting 
+                        ? (editingItem ? 'Saving Changes...' : 'Listing Piece...') 
+                        : (editingItem ? 'Save Changes' : 'Publish to Shop')}
+                    </button>
+                  </div>
+
                 </div>
+
               </div>
 
-              {/* Category, Dynamic Size, Condition */}
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
-                    Category
-                  </label>
-                  <select
-                    value={form.category_name}
-                    onChange={(e) => handleCategoryChange(e.target.value)}
-                    className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3 py-2.5 font-bold focus:outline-none focus:border-[#2F6B4F]"
-                  >
-                    {categories.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
-                    {form.category_name === 'Shoes' ? 'Shoe Size' : 'Size'}
-                  </label>
-                  <select
-                    value={form.size}
-                    onChange={(e) => setForm({ ...form, size: e.target.value })}
-                    className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3 py-2.5 font-bold focus:outline-none focus:border-[#2F6B4F]"
-                  >
-                    {getSizeOptions(form.category_name).map((s) => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
-                    Condition
-                  </label>
-                  <select
-                    value={form.condition_grade}
-                    onChange={(e) => setForm({ ...form, condition_grade: e.target.value })}
-                    className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3 py-2.5 font-bold focus:outline-none focus:border-[#2F6B4F]"
-                  >
-                    {conditions.map((g) => (
-                      <option key={g} value={g}>{g}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Price */}
-              <div>
-                <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
-                  Price (PHP ₱)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  required
-                  placeholder="450.00"
-                  value={form.price}
-                  onChange={(e) => setForm({ ...form, price: e.target.value })}
-                  className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
-                />
-              </div>
-
-              {/* Description */}
-              <div>
-                <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
-                  Description & Measurements
-                </label>
-                <textarea
-                  rows="3"
-                  placeholder="Authentic vintage piece. Detailed condition notes, distressing, and sole wear."
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl p-3 focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
-                ></textarea>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#A8C3A0]/20">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2.5 text-xs font-bold text-[#23313A]/70 hover:text-black cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="bg-[#2F6B4F] hover:bg-[#23313A] text-white text-xs font-bold px-6 py-2.5 rounded-xl transition-all shadow-xs cursor-pointer disabled:opacity-50"
-                >
-                  {submitting 
-                    ? (editingItem ? 'Saving Changes...' : 'Listing Piece...') 
-                    : (editingItem ? 'Save Changes' : 'Publish to Shop')}
-                </button>
-              </div>
             </form>
           </div>
         </div>
