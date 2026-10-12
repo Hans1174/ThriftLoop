@@ -1,17 +1,16 @@
-import { API_URL } from './config';
 import React, { useEffect, useState, useRef } from 'react';
 import { useSearchParams, useLocation, Link } from 'react-router-dom';
 import { 
   CheckCircle2, Package, Truck, ArrowRight, 
   MapPin, Printer, Loader2, AlertCircle, ShoppingBag, 
-  Tag, Calendar, Clock, DollarSign
+  Tag
 } from 'lucide-react';
 import { useCart } from './context/CartContext';
+import { API_URL } from './config';
 
-// Safe environment fallback
 const BACKEND_URL = API_URL || import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
 
-export default function Confirmation() {
+export default function OrderConfirmation() {
   const [searchParams] = useSearchParams();
   const location = useLocation();
 
@@ -24,16 +23,16 @@ export default function Confirmation() {
 
   const verifiedRef = useRef(false);
 
+  // Extract order reference from URL query params or router state
   const sessionId = searchParams.get('session_id');
   const orderIdFromQuery = searchParams.get('order_id');
   const stateData = location.state || {};
-  const targetOrderId = stateData.orderId || orderIdFromQuery;
+  const targetOrderId = orderIdFromQuery || stateData.orderId || stateData.order_id;
 
   useEffect(() => {
-    // Clear the cart on successful checkout
+    // Clear shopping cart on successful checkout completion
     clearCart();
 
-    // If no order ID could be determined from state or query params
     if (!targetOrderId && !sessionId) {
       setError('No active order reference was found.');
       setLoading(false);
@@ -41,7 +40,7 @@ export default function Confirmation() {
     }
 
     const loadOrder = async () => {
-      // 1. If returning from PayMongo session, verify payment first
+      // 1. Verify PayMongo session if returning from live gateway
       if (sessionId && sessionId !== '{CHECKOUT_SESSION_ID}' && !verifiedRef.current) {
         verifiedRef.current = true;
         try {
@@ -51,7 +50,7 @@ export default function Confirmation() {
         }
       }
 
-      // 2. Fetch full order record from backend
+      // 2. Fetch live order details from Supabase via backend API
       if (targetOrderId) {
         try {
           const res = await fetch(`${BACKEND_URL}/api/track/${targetOrderId}`);
@@ -62,15 +61,15 @@ export default function Confirmation() {
             return;
           }
         } catch (err) {
-          console.warn('Backend order fetch failed, falling back to router state:', err);
+          console.warn('Live order fetch failed, attempting state fallback:', err);
         }
       }
 
-      // 3. Fallback to router state if backend fetch is unreachable
-      if (stateData.orderId) {
+      // 3. Fallback to router state if API request failed
+      if (stateData.orderId || stateData.order_id) {
         setOrder({
-          order_id: stateData.orderId,
-          total_amount: stateData.total,
+          order_id: stateData.orderId || stateData.order_id,
+          total_amount: stateData.total ?? stateData.totalAmount,
           payment_method: stateData.paymentMethod || 'Cash on Delivery (COD)',
           courier: stateData.courier || 'J&T Express',
           tracking_number: stateData.tracking_number || `JNT-${Date.now().toString().slice(-8)}`,
@@ -95,9 +94,9 @@ export default function Confirmation() {
     return (
       <div className="min-h-[75vh] bg-[#F6F1E8] flex flex-col items-center justify-center p-6 text-center">
         <Loader2 size={36} className="text-[#2F6B4F] animate-spin mb-3" />
-        <h2 className="font-serif text-xl font-bold text-[#23313A]">Confirming Order Details...</h2>
+        <h2 className="font-serif text-xl font-bold text-[#23313A]">Retrieving Order Details...</h2>
         <p className="text-xs text-[#A8C3A0] mt-1 font-semibold">
-          Securing your 1-of-1 vintage archive pieces.
+          Confirming payment and securing your vintage archive pieces.
         </p>
       </div>
     );
@@ -126,7 +125,6 @@ export default function Confirmation() {
   const courier = order?.courier || 'J&T Express';
   const trackingNumber = order?.tracking_number || 'Assigning courier tracking...';
 
-  // Realistic ETA calculation
   const deliveryEta = courier === 'Lalamove'
     ? 'Same-Day Metro Delivery'
     : new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', {
@@ -142,7 +140,6 @@ export default function Confirmation() {
         {/* Receipt Card */}
         <div className="bg-white border border-[#A8C3A0]/30 rounded-3xl p-6 sm:p-10 shadow-sm relative overflow-hidden">
           
-          {/* Top Decorative Header Accent */}
           <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-[#2F6B4F] via-[#A8C3A0] to-[#E67E5F]"></div>
 
           {/* Header Status */}
@@ -167,7 +164,7 @@ export default function Confirmation() {
             </p>
           </div>
 
-          {/* Order Summary Metadata */}
+          {/* Metadata Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-6 border-b border-[#A8C3A0]/20 text-xs">
             <div>
               <span className="text-[10px] uppercase font-bold text-[#A8C3A0] block">Order Ref</span>
@@ -175,7 +172,7 @@ export default function Confirmation() {
             </div>
             <div>
               <span className="text-[10px] uppercase font-bold text-[#A8C3A0] block">Payment Method</span>
-              <span className="font-bold text-[#23313A] truncate block">{order?.payment_method || 'Cash on Delivery (COD)'}</span>
+              <span className="font-bold text-[#23313A] truncate block">{order?.payment_method || 'PayMongo'}</span>
             </div>
             <div>
               <span className="text-[10px] uppercase font-bold text-[#A8C3A0] block">Courier</span>
@@ -190,7 +187,7 @@ export default function Confirmation() {
             </div>
           </div>
 
-          {/* Tracking Number Banner (Objectives 2 & 4) */}
+          {/* Live Courier Tracking Banner */}
           <div className="my-6 bg-[#F6F1E8]/70 border border-[#A8C3A0]/40 rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-white border border-[#A8C3A0]/30 flex items-center justify-center text-[#2F6B4F] shrink-0">
@@ -288,7 +285,7 @@ export default function Confirmation() {
             </div>
           </div>
 
-          {/* CTAs */}
+          {/* Action CTAs */}
           <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
             <button
               onClick={() => window.print()}
