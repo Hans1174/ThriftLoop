@@ -12,14 +12,10 @@ dotenv.config();
 
 const app = express();
 
-// Permissive CORS for desktop, mobile, and preview deployments[cite: 26]
 app.use(cors({ origin: true, credentials: true }));
-
-// High-capacity body parser for base64 images (50MB)[cite: 26]
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Environment variables & configuration[cite: 26]
 const JWT_SECRET = process.env.JWT_SECRET || 'thriftloop_super_secret_jwt_key_2026';
 const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || '1089526724617-1e8fas2jq3noffeigk0kh5v7gfsids1f.apps.googleusercontent.com')
   .trim()
@@ -30,7 +26,6 @@ const TELEGRAM_CHANNEL = (process.env.TELEGRAM_CHANNEL || '').trim();
 
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
-// 1. Initialize Supabase Cloud Client[cite: 26]
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -44,12 +39,10 @@ export const supabase = createClient(supabaseUrl || 'https://placeholder.supabas
 
 console.log('✅ Connected to Supabase Cloud PostgreSQL');
 
-// Root status route[cite: 26]
 app.get('/', (req, res) => {
   res.send('🌿 ThriftLoop Backend API is running on Supabase!');
 });
 
-// 2. Safe Services Initialization[cite: 26]
 const cleanedGeminiKey = (process.env.GEMINI_API_KEY || '').trim().replace(/^["']|["']$/g, '');
 
 let ai = null;
@@ -61,11 +54,10 @@ try {
   console.warn('⚠️ GoogleGenAI SDK initialization deferred:', err.message);
 }
 
-// Explicit port 587 configuration to prevent IPv6 port 465 timeout[cite: 26]
 const mailTransporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 587,
-  secure: false, // upgrades via STARTTLS
+  secure: false,
   auth: {
     user: process.env.EMAIL_USER,
     pass: (process.env.EMAIL_APP_PASSWORD || '').replace(/\s+/g, ''),
@@ -283,7 +275,6 @@ ${safeDesc}🛍️ <a href="${FRONTEND_URL}/product/${product.product_id}">View 
   }
 };
 
-// 3. Voucher Rules[cite: 26]
 const ACTIVE_VOUCHERS = {
   VINTAGE20: { code: 'VINTAGE20', type: 'percent', value: 20, minSpend: 0, description: 'Flash Drop: 20% off all archive pieces' },
   LOOP100: { code: 'LOOP100', type: 'fixed', value: 100, minSpend: 600, description: '₱100 off on orders ₱600 and above' },
@@ -291,7 +282,7 @@ const ACTIVE_VOUCHERS = {
 };
 
 // ==========================================
-// AUTOMATED AGING PRICING[cite: 26]
+// AUTOMATED AGING PRICING
 // ==========================================
 export const runAgingMarkdownUpdate = async () => {
   try {
@@ -351,7 +342,7 @@ app.post('/api/admin/inventory/apply-markdowns', async (req, res) => {
 });
 
 // ==========================================
-// AUTHENTICATION[cite: 26]
+// AUTHENTICATION
 // ==========================================
 app.post('/api/auth/google', async (req, res) => {
   const { credential, access_token, token: genericToken } = req.body;
@@ -542,7 +533,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// --- FORGOT & RESET PASSWORD FLOW ---[cite: 26]
+// --- FORGOT & RESET PASSWORD FLOW ---
 app.post('/api/auth/forgot-password', async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'Please provide your registered email address.' });
@@ -632,7 +623,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
   }
 });
 
-// --- VOUCHER VALIDATION ---[cite: 26]
+// --- VOUCHER VALIDATION ---
 app.post('/api/vouchers/validate', (req, res) => {
   const { code, subtotal } = req.body;
   if (!code) return res.status(400).json({ error: 'Please provide a voucher code.' });
@@ -656,7 +647,7 @@ app.post('/api/vouchers/validate', (req, res) => {
   });
 });
 
-// --- CATALOG & INVENTORY ROUTES ---[cite: 26]
+// --- CATALOG & INVENTORY ROUTES ---
 app.get('/api/products', async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -1018,7 +1009,7 @@ app.get('/api/messages/unread-status/:userId', async (req, res) => {
 });
 
 // ==========================================
-// CHECKOUT & ORDERS CRUD[cite: 26]
+// CHECKOUT & ORDERS CRUD (WITH ADMIN ROLE GUARD)
 // ==========================================
 
 app.post('/api/checkout/paymongo', async (req, res) => {
@@ -1031,7 +1022,7 @@ app.post('/api/checkout/paymongo', async (req, res) => {
   const productList = items || cart_items || [];
 
   if (customer?.email === 'admin@thriftloop.com') {
-    return res.status(403).json({ error: 'Admin accounts cannot place customer orders.' });
+    return res.status(403).json({ error: 'Administrator accounts cannot place customer orders.' });
   }
   if (!productList || productList.length === 0) {
     return res.status(400).json({ error: 'Your cart is empty.' });
@@ -1066,11 +1057,16 @@ app.post('/api/checkout/paymongo', async (req, res) => {
     if (registeredEmail) {
       const { data: user } = await supabase
         .from('users')
-        .select('user_id, email, full_name')
+        .select('user_id, email, full_name, role')
         .ilike('email', registeredEmail)
         .maybeSingle();
 
       if (user) {
+        if (user.role === 'admin' || user.email === 'admin@thriftloop.com') {
+          return res.status(403).json({
+            error: 'Administrator accounts cannot place customer orders. Please use a regular customer account.',
+          });
+        }
         validUserId = user.user_id;
         registeredEmail = user.email;
       }
@@ -1193,7 +1189,7 @@ app.post('/api/checkout/paymongo', async (req, res) => {
   }
 });
 
-// --- VERIFY PAYMONGO PAYMENT & DISPATCH OFFICIAL CONFIRMATION RECEIPT ---[cite: 26]
+// --- VERIFY PAYMONGO PAYMENT & DISPATCH OFFICIAL CONFIRMATION RECEIPT ---
 app.get('/api/checkout/verify/:sessionId', async (req, res) => {
   const { sessionId } = req.params;
   const { order_id } = req.query;
@@ -1254,7 +1250,7 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
   }
 });
 
-// --- CASH ON DELIVERY (COD) ROUTE & DISPATCH CONFIRMATION RECEIPT ---[cite: 26]
+// --- CASH ON DELIVERY (COD) ROUTE & DISPATCH CONFIRMATION RECEIPT (WITH ADMIN ROLE GUARD) ---
 app.post('/api/orders', async (req, res) => {
   const { 
     user_id, customer_name, email, phone, shipping_address, city, province, 
@@ -1264,7 +1260,7 @@ app.post('/api/orders', async (req, res) => {
   const productList = cart_items || items || [];
 
   if (email === 'admin@thriftloop.com') {
-    return res.status(403).json({ error: 'Admin accounts cannot place customer orders.' });
+    return res.status(403).json({ error: 'Administrator accounts cannot place customer orders.' });
   }
   if (!customer_name || !email || !shipping_address || productList.length === 0) {
     return res.status(400).json({ error: 'Missing required order or shipping details.' });
@@ -1298,21 +1294,31 @@ app.post('/api/orders', async (req, res) => {
     if (validUserId) {
       const { data: registeredUser } = await supabase
         .from('users')
-        .select('user_id, email, full_name')
+        .select('user_id, email, full_name, role')
         .eq('user_id', validUserId)
         .maybeSingle();
 
-      if (registeredUser?.email) {
+      if (registeredUser) {
+        if (registeredUser.role === 'admin' || registeredUser.email === 'admin@thriftloop.com') {
+          return res.status(403).json({
+            error: 'Administrator accounts cannot place customer orders. Please use a regular customer account.',
+          });
+        }
         registeredEmail = registeredUser.email;
       }
     } else if (registeredEmail) {
       const { data: userByEmail } = await supabase
         .from('users')
-        .select('user_id, email, full_name')
+        .select('user_id, email, full_name, role')
         .ilike('email', registeredEmail)
         .maybeSingle();
 
       if (userByEmail) {
+        if (userByEmail.role === 'admin' || userByEmail.email === 'admin@thriftloop.com') {
+          return res.status(403).json({
+            error: 'Administrator accounts cannot place customer orders. Please use a regular customer account.',
+          });
+        }
         validUserId = userByEmail.user_id;
         registeredEmail = userByEmail.email;
       }
@@ -1390,7 +1396,7 @@ app.post('/api/orders', async (req, res) => {
   }
 });
 
-// --- TRACKING & USER ORDERS ---[cite: 26]
+// --- TRACKING & USER ORDERS ---
 app.get('/api/track/:id', async (req, res) => {
   try {
     const { data: order, error } = await supabase
@@ -1447,7 +1453,7 @@ app.post('/api/orders/:id/cancel', async (req, res) => {
   }
 });
 
-// --- ADMIN MANAGEMENT & SHIPMENT STATUS DISPATCH ---[cite: 26]
+// --- ADMIN MANAGEMENT & SHIPMENT STATUS DISPATCH ---
 app.get('/api/admin/stats', async (req, res) => {
   try {
     const { count: activeCount } = await supabase.from('products').select('*', { count: 'exact', head: true }).eq('status', 'active');
@@ -1565,7 +1571,7 @@ app.delete('/api/admin/orders/:id', async (req, res) => {
 });
 
 // ==========================================
-// AI CONCIERGE[cite: 26]
+// AI CONCIERGE
 // ==========================================
 app.post('/api/chat', async (req, res) => {
   const { message, user_id, email, current_order_id } = req.body;
@@ -1683,12 +1689,10 @@ GUIDELINES:
   }
 });
 
-// Safe stub route for frontend compatibility[cite: 26]
 app.get('/api/blog/posts', (req, res) => {
   res.json([]);
 });
 
-// --- GLOBAL ERROR HANDLER ---[cite: 26]
 app.use((err, req, res, next) => {
   console.error('❌ Server Middleware Error:', err.message);
   res.status(err.status || 500).json({

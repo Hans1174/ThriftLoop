@@ -80,6 +80,31 @@ export default function Checkout() {
     payment_method: 'paymongo',
   });
 
+  // Admin Account Checkout Barrier
+  if (currentUser?.role === 'admin' || currentUser?.email === 'admin@thriftloop.com') {
+    return (
+      <div className="min-h-[75vh] bg-[#F6F1E8] flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-16 h-16 rounded-3xl bg-[#E67E5F]/15 text-[#E67E5F] flex items-center justify-center mb-4 border border-[#E67E5F]/30">
+          <ShieldCheck size={32} />
+        </div>
+        <h2 className="font-serif text-2xl font-bold text-[#23313A] mb-2">
+          Admin Checkout Prohibited
+        </h2>
+        <p className="text-xs text-[#23313A]/70 max-w-md mb-6 leading-relaxed font-medium">
+          You are currently logged in with an Administrator profile ({currentUser.email}). Admins are restricted from placing customer orders to prevent conflicts with store inventory and payment records.
+        </p>
+        <div className="flex gap-3">
+          <Link 
+            to="/admin" 
+            className="bg-[#2F6B4F] hover:bg-[#23313A] text-white text-xs font-bold px-6 py-3 rounded-xl transition-all shadow-xs"
+          >
+            Return to Admin Console
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   // 2. Pricing, Voucher & Dynamic Shipping Calculation
   const subtotal = cartItems.reduce(
     (sum, item) => sum + Number(item.price || 0) * (item.quantity || 1), 
@@ -277,7 +302,7 @@ export default function Checkout() {
           </span>
         </div>
 
-        {/* Mobile Accordion Order Summary (Shopify Style) */}
+        {/* Mobile Accordion Order Summary */}
         <div className="lg:hidden mb-5 bg-white border border-[#A8C3A0]/30 rounded-2xl p-4 shadow-xs">
           <button
             type="button"
@@ -590,7 +615,7 @@ export default function Checkout() {
 
           </div>
 
-          {/* Right Column: Order Summary (Desktop Sticky / Mobile Bottom) */}
+          {/* Right Column: Order Summary */}
           <div className="lg:col-span-5">
             <div className="bg-white border border-[#A8C3A0]/30 rounded-2xl sm:rounded-3xl p-5 sm:p-7 shadow-xs lg:sticky lg:top-24 space-y-4">
               <h2 className="font-serif text-lg sm:text-xl font-bold text-[#23313A] pb-2 border-b border-[#A8C3A0]/20 flex items-center justify-between">
@@ -600,7 +625,6 @@ export default function Checkout() {
                 </span>
               </h2>
 
-              {/* Items List (Visible on desktop; mobile has accordion above, but kept clean here too) */}
               <div className="hidden lg:block max-h-56 overflow-y-auto divide-y divide-[#A8C3A0]/15 pr-1">
                 {cartItems.map((item, idx) => (
                   <div key={item.product_id || item.id || idx} className="py-2.5 flex items-center gap-3">
