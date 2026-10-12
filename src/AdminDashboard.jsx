@@ -314,7 +314,7 @@ export default function AdminDashboard() {
     }
 
     return (
-      <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold border mt-0.5 ${badgeStyle}`}>
+      <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold border truncate ${badgeStyle}`}>
         {condition || 'Good'}
       </span>
     );
@@ -489,12 +489,12 @@ export default function AdminDashboard() {
           </button>
         </div>
 
-        {/* Tab 1: Inventory Table */}
+        {/* Tab 1: Product Card Grid (Replaces Table) */}
         {activeTab === 'inventory' && (
-          <div className="bg-white border border-[#A8C3A0]/30 rounded-3xl overflow-hidden shadow-xs">
+          <div className="space-y-5">
             
-            {/* Filter Toolbar */}
-            <div className="p-4 sm:p-5 border-b border-[#A8C3A0]/20 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+            {/* Filter Toolbar Card */}
+            <div className="bg-white border border-[#A8C3A0]/30 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
               <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
                 <div className="relative w-full sm:w-64">
                   <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#A8C3A0]" />
@@ -530,116 +530,131 @@ export default function AdminDashboard() {
               </div>
 
               <p className="text-[11px] text-[#A8C3A0] font-semibold">
-                Showing {filteredProducts.length} of {products.length} listings
+                Showing {filteredProducts.length} of {products.length} archive pieces
               </p>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="bg-[#F6F1E8]/50 border-b border-[#A8C3A0]/20 text-[#23313A]/70 uppercase tracking-wider text-[10px]">
-                    <th className="py-3.5 px-4 font-bold">Item Details</th>
-                    <th className="py-3.5 px-4 font-bold">Brand</th>
-                    <th className="py-3.5 px-4 font-bold">Category</th>
-                    <th className="py-3.5 px-4 font-bold">Size & Condition</th>
-                    <th className="py-3.5 px-4 font-bold">Price</th>
-                    <th className="py-3.5 px-4 font-bold">Status</th>
-                    <th className="py-3.5 px-4 font-bold text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#A8C3A0]/15">
-                  {filteredProducts.length === 0 ? (
-                    <tr>
-                      <td colSpan="7" className="py-12 text-center text-[#A8C3A0] font-medium">
-                        No products match your active filters.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredProducts.map((item) => {
-                      const id = item.product_id || item.id;
-                      const isSold = item.status === 'sold';
+            {/* Individual Product Cards Grid */}
+            {filteredProducts.length === 0 ? (
+              <div className="bg-white border border-[#A8C3A0]/30 rounded-3xl p-12 text-center text-[#A8C3A0] space-y-2">
+                <Package size={36} className="mx-auto text-[#2F6B4F] opacity-50" />
+                <p className="font-bold text-sm text-[#23313A]">No garments match your active filters</p>
+                <p className="text-xs">Try clearing the search query or changing category and status filters.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">
+                {filteredProducts.map((item) => {
+                  const id = item.product_id || item.id;
+                  const isSold = item.status === 'sold';
 
-                      return (
-                        <tr key={id} className="hover:bg-[#F6F1E8]/30 transition-colors">
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-3">
-                              <img
-                                src={item.image_url || 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=100'}
-                                alt={item.name}
-                                className="w-12 h-12 object-cover rounded-xl border border-[#A8C3A0]/30 shrink-0 bg-[#F6F1E8]"
-                              />
-                              <div>
-                                <p className="font-bold text-[#23313A] line-clamp-1">{item.name}</p>
-                                <span className="text-[10px] text-[#A8C3A0]">ID: #{id}</span>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className="bg-[#F6F1E8] text-[#23313A] font-bold px-2 py-0.5 rounded text-[10px] border border-[#A8C3A0]/30">
-                              {item.brand || 'Vintage Archive'}
+                  return (
+                    <div
+                      key={id}
+                      className="bg-white border border-[#A8C3A0]/30 rounded-2xl sm:rounded-3xl overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between group"
+                    >
+                      {/* Top Image Canvas with Informational Overlays */}
+                      <div className="relative h-52 sm:h-56 w-full bg-[#F6F1E8] overflow-hidden border-b border-[#A8C3A0]/20 flex items-center justify-center">
+                        <img
+                          src={item.image_url || 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=400'}
+                          alt={item.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+
+                        {/* Top Badges */}
+                        <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shadow-xs ${
+                            isSold ? 'bg-[#E67E5F] text-white' : 'bg-[#2F6B4F] text-white'
+                          }`}>
+                            {isSold ? 'Sold' : 'Available'}
+                          </span>
+                        </div>
+
+                        <div className="absolute top-2.5 right-2.5">
+                          <span className="bg-[#23313A]/85 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-xs">
+                            ID #{id}
+                          </span>
+                        </div>
+
+                        {/* Brand Pill */}
+                        <div className="absolute bottom-2.5 left-2.5">
+                          <span className="bg-white/95 backdrop-blur-xs text-[#23313A] border border-[#A8C3A0]/30 text-[10px] font-bold px-2.5 py-0.5 rounded-md shadow-xs">
+                            {item.brand || 'Vintage Archive'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Content Section */}
+                      <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-3">
+                        <div>
+                          <div className="flex items-center justify-between text-[11px] text-[#A8C3A0] font-semibold mb-1">
+                            <span>{item.category_name || 'Vintage'}</span>
+                            <span className="font-bold text-[#23313A] bg-[#F6F1E8] px-2 py-0.5 rounded-md text-[10px]">
+                              Size {item.size}
                             </span>
-                          </td>
-                          <td className="py-3 px-4 font-semibold text-[#23313A]/80">
-                            {item.category_name || 'Vintage'}
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className="font-bold text-[#23313A] block">{item.size}</span>
+                          </div>
+
+                          <h3 
+                            className="font-serif font-bold text-sm sm:text-base text-[#23313A] line-clamp-1 group-hover:text-[#2F6B4F] transition-colors"
+                            title={item.name}
+                          >
+                            {item.name}
+                          </h3>
+
+                          <div className="mt-2">
                             {renderConditionBadge(item.condition_grade)}
-                          </td>
-                          <td className="py-3 px-4 font-bold text-[#2F6B4F] text-sm">
-                            ₱{parseFloat(item.price || 0).toFixed(2)}
-                          </td>
-                          <td className="py-3 px-4">
-                            <span
-                              className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                                isSold
-                                  ? 'bg-[#E67E5F]/15 text-[#E67E5F]'
-                                  : 'bg-[#2F6B4F]/15 text-[#2F6B4F]'
-                              }`}
-                            >
-                              {isSold ? 'Sold' : 'Available'}
+                          </div>
+                        </div>
+
+                        {/* Valuation & Price */}
+                        <div className="pt-2 border-t border-[#A8C3A0]/15 flex items-center justify-between">
+                          <div>
+                            <span className="text-[9px] uppercase font-bold text-[#A8C3A0] block">Listing Price</span>
+                            <span className="font-bold text-base sm:text-lg text-[#2F6B4F]">
+                              ₱{parseFloat(item.price || 0).toFixed(2)}
                             </span>
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            <div className="inline-flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenEditModal(item)}
-                                className="p-1.5 rounded-lg text-[#23313A] hover:bg-[#F6F1E8] hover:text-[#2F6B4F] transition-colors cursor-pointer border border-[#A8C3A0]/30"
-                                title="Edit Specifications"
-                              >
-                                <Pencil size={14} />
-                              </button>
+                          </div>
+                        </div>
+                      </div>
 
-                              <button
-                                type="button"
-                                onClick={() => handleToggleStatus(item)}
-                                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
-                                  isSold
-                                    ? 'bg-white border-[#2F6B4F] text-[#2F6B4F] hover:bg-[#2F6B4F] hover:text-white'
-                                    : 'bg-white border-[#E67E5F] text-[#E67E5F] hover:bg-[#E67E5F] hover:text-white'
-                                }`}
-                              >
-                                {isSold ? 'Available' : 'Sold'}
-                              </button>
+                      {/* Unified Touch-Optimized Actions Footer */}
+                      <div className="px-4 pb-4 sm:px-5 sm:pb-5 pt-1 flex items-center gap-2 border-t border-[#A8C3A0]/10 bg-[#F6F1E8]/20">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleStatus(item)}
+                          className={`flex-1 py-2 sm:py-2.5 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95 text-center shadow-xs ${
+                            isSold
+                              ? 'bg-[#2F6B4F] text-white hover:bg-[#23313A]'
+                              : 'bg-white text-[#E67E5F] border border-[#E67E5F]/35 hover:bg-[#E67E5F] hover:text-white'
+                          }`}
+                        >
+                          {isSold ? 'Mark Available' : 'Mark Sold'}
+                        </button>
 
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteProduct(id)}
-                                className="p-1.5 rounded-lg text-[#E67E5F] hover:bg-red-50 transition-colors cursor-pointer"
-                                title="Delete Piece"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditModal(item)}
+                          className="p-2 sm:p-2.5 rounded-xl text-[#23313A] bg-white hover:bg-[#F6F1E8] hover:text-[#2F6B4F] border border-[#A8C3A0]/30 transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
+                          title="Edit Piece"
+                        >
+                          <Pencil size={15} />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteProduct(id)}
+                          className="p-2 sm:p-2.5 rounded-xl text-[#E67E5F] bg-white hover:bg-[#E67E5F] hover:text-white border border-[#E67E5F]/30 transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
+                          title="Delete Piece"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
           </div>
         )}
 
