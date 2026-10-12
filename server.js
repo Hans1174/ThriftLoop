@@ -25,8 +25,7 @@ const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || '1089526724617-1e8fas2
   .trim()
   .replace(/^["']|["']$/g, '');
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
-
-const TELEGRAM_BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '8731460008:AAFplJYYvY_s0_D1R7gjmqQ0_CFCGhzquqQ').trim();
+const TELEGRAM_BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
 const TELEGRAM_CHANNEL = (process.env.TELEGRAM_CHANNEL || '').trim();
 
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
