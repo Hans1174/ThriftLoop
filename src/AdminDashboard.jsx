@@ -3,7 +3,7 @@ import {
   Package, Plus, Trash2, CheckCircle, RefreshCw, 
   ShoppingBag, DollarSign, Tag, AlertCircle, 
   X, Search, UploadCloud, Pencil, Truck, Check, MessageSquare,
-  Sparkles, ImageIcon
+  Sparkles, ImageIcon, ShieldCheck, ArrowUpRight, Filter
 } from 'lucide-react';
 import AdminInbox from './components/AdminInbox';
 
@@ -32,8 +32,6 @@ export default function AdminDashboard() {
   const [imageMode, setImageMode] = useState('file'); // 'file' | 'url'
   const [previewUrl, setPreviewUrl] = useState('');
   const fileInputRef = useRef(null);
-
-  // Backdrop guard
   const backdropMouseDownRef = useRef(false);
 
   const categories = ['Tops', 'Bottoms', 'Outerwear', 'Dresses', 'Shoes', 'Accessories'];
@@ -302,6 +300,26 @@ export default function AdminDashboard() {
     }
   };
 
+  // Helper condition badge renderer
+  const renderConditionBadge = (condition) => {
+    const cond = (condition || '').toLowerCase();
+    let badgeStyle = 'bg-emerald-50 text-emerald-800 border-emerald-200';
+
+    if (cond.includes('good') || cond.includes('class b')) {
+      badgeStyle = 'bg-blue-50 text-blue-800 border-blue-200';
+    } else if (cond.includes('used') || cond.includes('class c')) {
+      badgeStyle = 'bg-amber-50 text-amber-800 border-amber-200';
+    } else if (cond.includes('flawed') || cond.includes('class d')) {
+      badgeStyle = 'bg-rose-50 text-rose-800 border-rose-200';
+    }
+
+    return (
+      <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold border mt-0.5 ${badgeStyle}`}>
+        {condition || 'Good'}
+      </span>
+    );
+  };
+
   // Metrics
   const totalStock = products.length;
   const soldCount = products.filter((p) => p.status === 'sold').length;
@@ -331,12 +349,12 @@ export default function AdminDashboard() {
   });
 
   return (
-    <div className="min-h-screen bg-[#F6F1E8] text-[#23313A] font-sans py-8 sm:py-10 px-4 sm:px-8">
-      <div className="max-w-7xl mx-auto space-y-8">
+    <div className="min-h-screen bg-[#F6F1E8] text-[#23313A] font-sans py-6 sm:py-10 px-4 sm:px-8">
+      <div className="max-w-7xl mx-auto space-y-6 sm:space-y-8">
         
         {/* Toast Alert */}
         {notification && (
-          <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-2xl shadow-lg border text-xs font-bold flex items-center gap-2 animate-in fade-in slide-in-from-bottom-3 ${
+          <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-2xl shadow-xl border text-xs font-bold flex items-center gap-2 animate-in fade-in slide-in-from-bottom-3 ${
             notification.type === 'error'
               ? 'bg-[#E67E5F] text-white border-[#E67E5F]'
               : 'bg-[#2F6B4F] text-white border-[#2F6B4F]'
@@ -346,21 +364,29 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white border border-[#A8C3A0]/30 rounded-3xl p-6 sm:p-8 shadow-xs">
+        {/* Executive Header Banner */}
+        <div className="bg-white border border-[#A8C3A0]/30 rounded-3xl p-6 sm:p-8 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="font-serif text-3xl font-bold text-[#23313A] mt-1">Admin Dashboard</h1>
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[10px] uppercase font-bold text-[#A8C3A0] tracking-wider">
+                Store Operations & Live Inventory
+              </span>
+            </div>
+            <h1 className="font-serif text-2xl sm:text-3xl font-bold text-[#23313A] mt-1">
+              Admin Console
+            </h1>
             <p className="text-xs text-[#23313A]/60 font-medium">
-              Manage one-of-a-kind vintage drops, fulfill customer orders, and answer buyer inquiries.
+              Curate archive pieces, process customer fulfillments, and handle direct buyer messages.
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 w-full sm:w-auto">
             <button
               type="button"
               onClick={fetchData}
               disabled={loading}
-              className="flex items-center gap-1.5 bg-[#F6F1E8] hover:bg-[#A8C3A0]/20 text-[#23313A] text-xs font-bold px-4 py-2.5 rounded-xl border border-[#A8C3A0]/30 transition-all cursor-pointer"
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-[#F6F1E8] hover:bg-[#A8C3A0]/25 text-[#23313A] text-xs font-bold px-4 py-2.5 rounded-xl border border-[#A8C3A0]/30 transition-all cursor-pointer"
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
               <span>Refresh</span>
@@ -368,7 +394,7 @@ export default function AdminDashboard() {
             <button
               type="button"
               onClick={handleOpenCreateModal}
-              className="flex items-center gap-2 bg-[#2F6B4F] hover:bg-[#23313A] text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer"
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-[#2F6B4F] hover:bg-[#23313A] text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer"
             >
               <Plus size={15} />
               <span>Add Products</span>
@@ -377,50 +403,60 @@ export default function AdminDashboard() {
         </div>
 
         {/* Analytics Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white border border-[#A8C3A0]/30 p-5 rounded-2xl shadow-xs">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className="bg-white border border-[#A8C3A0]/30 p-5 rounded-2xl shadow-xs space-y-1">
             <div className="flex items-center justify-between text-[#A8C3A0]">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Live Inventory</span>
-              <Package size={18} className="text-[#2F6B4F]" />
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">Live Inventory</span>
+              <div className="w-8 h-8 rounded-lg bg-[#2F6B4F]/10 text-[#2F6B4F] flex items-center justify-center">
+                <Package size={16} />
+              </div>
             </div>
-            <p className="text-2xl font-serif font-bold text-[#23313A] mt-2">{availableCount}</p>
-            <span className="text-[10px] font-semibold text-[#2F6B4F]">Ready for checkout</span>
+            <p className="text-2xl sm:text-3xl font-bold text-[#23313A]">{availableCount}</p>
+            <span className="text-[10px] font-semibold text-[#2F6B4F] block">Ready for checkout</span>
           </div>
 
-          <div className="bg-white border border-[#A8C3A0]/30 p-5 rounded-2xl shadow-xs">
+          <div className="bg-white border border-[#A8C3A0]/30 p-5 rounded-2xl shadow-xs space-y-1">
             <div className="flex items-center justify-between text-[#A8C3A0]">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Sold Pieces</span>
-              <CheckCircle size={18} className="text-[#E67E5F]" />
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">Sold Pieces</span>
+              <div className="w-8 h-8 rounded-lg bg-[#E67E5F]/10 text-[#E67E5F] flex items-center justify-center">
+                <CheckCircle size={16} />
+              </div>
             </div>
-            <p className="text-2xl font-serif font-bold text-[#23313A] mt-2">{soldCount}</p>
-            <span className="text-[10px] font-semibold text-[#E67E5F]">Claimed archive items</span>
+            <p className="text-2xl sm:text-3xl font-bold text-[#23313A]">{soldCount}</p>
+            <span className="text-[10px] font-semibold text-[#E67E5F] block">Claimed archive items</span>
           </div>
 
-          <div className="bg-white border border-[#A8C3A0]/30 p-5 rounded-2xl shadow-xs">
+          <div className="bg-white border border-[#A8C3A0]/30 p-5 rounded-2xl shadow-xs space-y-1">
             <div className="flex items-center justify-between text-[#A8C3A0]">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Active Valuation</span>
-              <DollarSign size={18} className="text-[#2F6B4F]" />
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">Active Valuation</span>
+              <div className="w-8 h-8 rounded-lg bg-[#2F6B4F]/10 text-[#2F6B4F] flex items-center justify-center">
+                <DollarSign size={16} />
+              </div>
             </div>
-            <p className="text-2xl font-serif font-bold text-[#23313A] mt-2">
+            <p className="text-2xl sm:text-3xl font-bold text-[#23313A]">
               ₱{totalValuation.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </p>
+            <span className="text-[10px] font-semibold text-[#A8C3A0] block">Unsold catalog value</span>
           </div>
 
-          <div className="bg-white border border-[#A8C3A0]/30 p-5 rounded-2xl shadow-xs">
+          <div className="bg-white border border-[#A8C3A0]/30 p-5 rounded-2xl shadow-xs space-y-1">
             <div className="flex items-center justify-between text-[#A8C3A0]">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Total Orders</span>
-              <ShoppingBag size={18} className="text-[#23313A]" />
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">Total Orders</span>
+              <div className="w-8 h-8 rounded-lg bg-[#23313A]/10 text-[#23313A] flex items-center justify-center">
+                <ShoppingBag size={16} />
+              </div>
             </div>
-            <p className="text-2xl font-serif font-bold text-[#23313A] mt-2">{orders.length}</p>
+            <p className="text-2xl sm:text-3xl font-bold text-[#23313A]">{orders.length}</p>
+            <span className="text-[10px] font-semibold text-[#A8C3A0] block">PayMongo & COD placed</span>
           </div>
         </div>
 
         {/* View Switcher Tabs */}
-        <div className="flex flex-wrap items-center gap-3 border-b border-[#A8C3A0]/30 pb-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 border-b border-[#A8C3A0]/30 pb-3">
           <button
             type="button"
             onClick={() => setActiveTab('inventory')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               activeTab === 'inventory'
                 ? 'bg-[#2F6B4F] text-white shadow-xs'
                 : 'bg-white text-[#23313A] hover:bg-[#F6F1E8]'
@@ -431,7 +467,7 @@ export default function AdminDashboard() {
           <button
             type="button"
             onClick={() => setActiveTab('orders')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               activeTab === 'orders'
                 ? 'bg-[#2F6B4F] text-white shadow-xs'
                 : 'bg-white text-[#23313A] hover:bg-[#F6F1E8]'
@@ -442,25 +478,26 @@ export default function AdminDashboard() {
           <button
             type="button"
             onClick={() => setActiveTab('messages')}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               activeTab === 'messages'
                 ? 'bg-[#2F6B4F] text-white shadow-xs'
                 : 'bg-white text-[#23313A] hover:bg-[#F6F1E8]'
             }`}
           >
             <MessageSquare size={14} />
-            <span>Messages / Inbox</span>
+            <span>Buyer Messages / Inbox</span>
           </button>
         </div>
 
         {/* Tab 1: Inventory Table */}
         {activeTab === 'inventory' && (
           <div className="bg-white border border-[#A8C3A0]/30 rounded-3xl overflow-hidden shadow-xs">
+            
             {/* Filter Toolbar */}
             <div className="p-4 sm:p-5 border-b border-[#A8C3A0]/20 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
               <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
                 <div className="relative w-full sm:w-64">
-                  <Search size={14} className="absolute left-3.5 top-3 text-[#A8C3A0]" />
+                  <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#A8C3A0]" />
                   <input
                     type="text"
                     placeholder="Search piece, brand, category..."
@@ -501,13 +538,13 @@ export default function AdminDashboard() {
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="bg-[#F6F1E8]/50 border-b border-[#A8C3A0]/20 text-[#23313A]/70 uppercase tracking-wider text-[10px]">
-                    <th className="py-3 px-4">Item Details</th>
-                    <th className="py-3 px-4">Brand</th>
-                    <th className="py-3 px-4">Category</th>
-                    <th className="py-3 px-4">Size & Condition</th>
-                    <th className="py-3 px-4">Price</th>
-                    <th className="py-3 px-4">Status</th>
-                    <th className="py-3 px-4 text-right">Actions</th>
+                    <th className="py-3.5 px-4 font-bold">Item Details</th>
+                    <th className="py-3.5 px-4 font-bold">Brand</th>
+                    <th className="py-3.5 px-4 font-bold">Category</th>
+                    <th className="py-3.5 px-4 font-bold">Size & Condition</th>
+                    <th className="py-3.5 px-4 font-bold">Price</th>
+                    <th className="py-3.5 px-4 font-bold">Status</th>
+                    <th className="py-3.5 px-4 font-bold text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#A8C3A0]/15">
@@ -533,7 +570,7 @@ export default function AdminDashboard() {
                               />
                               <div>
                                 <p className="font-bold text-[#23313A] line-clamp-1">{item.name}</p>
-                                <p className="text-[10px] text-[#A8C3A0]">ID: #{id}</p>
+                                <span className="text-[10px] text-[#A8C3A0]">ID: #{id}</span>
                               </div>
                             </div>
                           </td>
@@ -546,12 +583,10 @@ export default function AdminDashboard() {
                             {item.category_name || 'Vintage'}
                           </td>
                           <td className="py-3 px-4">
-                            <span className="font-bold text-[#23313A]">{item.size}</span>
-                            <span className="block text-[10px] text-[#A8C3A0] font-medium">
-                              {item.condition_grade || 'Excellent'}
-                            </span>
+                            <span className="font-bold text-[#23313A] block">{item.size}</span>
+                            {renderConditionBadge(item.condition_grade)}
                           </td>
-                          <td className="py-3 px-4 font-bold text-[#2F6B4F]">
+                          <td className="py-3 px-4 font-bold text-[#2F6B4F] text-sm">
                             ₱{parseFloat(item.price || 0).toFixed(2)}
                           </td>
                           <td className="py-3 px-4">
@@ -579,7 +614,7 @@ export default function AdminDashboard() {
                               <button
                                 type="button"
                                 onClick={() => handleToggleStatus(item)}
-                                className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
+                                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
                                   isSold
                                     ? 'bg-white border-[#2F6B4F] text-[#2F6B4F] hover:bg-[#2F6B4F] hover:text-white'
                                     : 'bg-white border-[#E67E5F] text-[#E67E5F] hover:bg-[#E67E5F] hover:text-white'
@@ -624,12 +659,12 @@ export default function AdminDashboard() {
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="bg-[#F6F1E8]/50 border-b border-[#A8C3A0]/20 text-[#23313A]/70 uppercase tracking-wider text-[10px]">
-                      <th className="py-3 px-4">Order ID & Courier</th>
-                      <th className="py-3 px-4">Customer</th>
-                      <th className="py-3 px-4">Destination</th>
-                      <th className="py-3 px-4">Total</th>
-                      <th className="py-3 px-4">Payment</th>
-                      <th className="py-3 px-4">Fulfillment Status</th>
+                      <th className="py-3.5 px-4 font-bold">Order ID & Courier</th>
+                      <th className="py-3.5 px-4 font-bold">Customer</th>
+                      <th className="py-3.5 px-4 font-bold">Destination</th>
+                      <th className="py-3.5 px-4 font-bold">Total</th>
+                      <th className="py-3.5 px-4 font-bold">Payment</th>
+                      <th className="py-3.5 px-4 font-bold">Fulfillment Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#A8C3A0]/15">
@@ -687,7 +722,7 @@ export default function AdminDashboard() {
 
       </div>
 
-      {/* Spacious Executive Modal (max-w-4xl 2-Column Responsive Layout) */}
+      {/* Spacious 2-Column Product Modal */}
       {isModalOpen && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
@@ -705,10 +740,8 @@ export default function AdminDashboard() {
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => e.preventDefault()}
         >
-          {/* Visual Dark Overlay */}
           <div className="fixed inset-0 bg-[#23313A]/60 backdrop-blur-xs pointer-events-none" />
 
-          {/* Modal Dialog Card */}
           <div 
             className="relative z-10 bg-white border border-[#A8C3A0]/30 rounded-3xl p-6 sm:p-8 md:p-10 max-w-4xl w-full shadow-2xl max-h-[92vh] overflow-y-auto my-auto animate-in fade-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
@@ -717,7 +750,6 @@ export default function AdminDashboard() {
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => e.preventDefault()}
           >
-            {/* Modal Header */}
             <div className="flex items-center justify-between pb-4 sm:pb-5 border-b border-[#A8C3A0]/20 mb-6">
               <div>
                 <span className="text-[10px] uppercase font-bold text-[#A8C3A0] tracking-wider flex items-center gap-1">
@@ -742,15 +774,11 @@ export default function AdminDashboard() {
               </button>
             </div>
 
-            {/* Modal Form: 2-Column Desktop Grid */}
             <form onSubmit={handleSubmitProduct} className="text-xs space-y-6">
-              
               <div className="grid grid-cols-1 md:grid-cols-12 gap-6 md:gap-8 items-start">
                 
-                {/* Left Column (5 cols): Garment Media & Description */}
+                {/* Left Column: Photo Upload & Description */}
                 <div className="md:col-span-5 space-y-4">
-                  
-                  {/* Photo Mode Toolbar */}
                   <div className="flex items-center justify-between">
                     <label className="font-bold text-[#23313A] uppercase tracking-wider text-[10px]">
                       Garment Photo
@@ -777,7 +805,6 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
-                  {/* Photo Canvas */}
                   {imageMode === 'file' ? (
                     <div>
                       <input
@@ -873,7 +900,6 @@ export default function AdminDashboard() {
                     </div>
                   )}
 
-                  {/* Description & Measurements */}
                   <div>
                     <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
                       Description & Flat-Lay Notes
@@ -886,13 +912,10 @@ export default function AdminDashboard() {
                       className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl p-3 focus:outline-none focus:border-[#2F6B4F] text-[#23313A] leading-relaxed resize-none text-xs"
                     />
                   </div>
-
                 </div>
 
-                {/* Right Column (7 cols): Garment Specs & Attributes */}
+                {/* Right Column: Specifications */}
                 <div className="md:col-span-7 space-y-4">
-                  
-                  {/* Name */}
                   <div>
                     <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
                       Garment Name
@@ -907,7 +930,6 @@ export default function AdminDashboard() {
                     />
                   </div>
 
-                  {/* Brand & Price in 2 Columns */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     <div>
                       <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
@@ -938,7 +960,6 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
-                  {/* Category & Size in 2 Columns */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     <div>
                       <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
@@ -971,7 +992,6 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
-                  {/* Updated Condition Selection (Excellent, Good, Used but not abused, Flawed) */}
                   <div>
                     <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
                       Garment Condition
@@ -994,7 +1014,6 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
-                  {/* Modal Action Buttons */}
                   <div className="pt-4 border-t border-[#A8C3A0]/20 flex items-center justify-end gap-3">
                     <button
                       type="button"
@@ -1013,11 +1032,9 @@ export default function AdminDashboard() {
                         : (editingItem ? 'Save Changes' : 'Publish to Shop')}
                     </button>
                   </div>
-
                 </div>
 
               </div>
-
             </form>
           </div>
         </div>
