@@ -12,14 +12,14 @@ dotenv.config();
 
 const app = express();
 
-// Permissive CORS for desktop, mobile, and preview deployments
+// Permissive CORS for desktop, mobile, and preview deployments[cite: 26]
 app.use(cors({ origin: true, credentials: true }));
 
-// High-capacity body parser for base64 images (50MB)
+// High-capacity body parser for base64 images (50MB)[cite: 26]
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Environment variables & configuration
+// Environment variables & configuration[cite: 26]
 const JWT_SECRET = process.env.JWT_SECRET || 'thriftloop_super_secret_jwt_key_2026';
 const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || '1089526724617-1e8fas2jq3noffeigk0kh5v7gfsids1f.apps.googleusercontent.com')
   .trim()
@@ -30,7 +30,7 @@ const TELEGRAM_CHANNEL = (process.env.TELEGRAM_CHANNEL || '').trim();
 
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
-// 1. Initialize Supabase Cloud Client
+// 1. Initialize Supabase Cloud Client[cite: 26]
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -44,12 +44,12 @@ export const supabase = createClient(supabaseUrl || 'https://placeholder.supabas
 
 console.log('✅ Connected to Supabase Cloud PostgreSQL');
 
-// Root status route
+// Root status route[cite: 26]
 app.get('/', (req, res) => {
   res.send('🌿 ThriftLoop Backend API is running on Supabase!');
 });
 
-// 2. Safe Services Initialization
+// 2. Safe Services Initialization[cite: 26]
 const cleanedGeminiKey = (process.env.GEMINI_API_KEY || '').trim().replace(/^["']|["']$/g, '');
 
 let ai = null;
@@ -61,7 +61,7 @@ try {
   console.warn('⚠️ GoogleGenAI SDK initialization deferred:', err.message);
 }
 
-// Explicit port 587 configuration to prevent IPv6 port 465 timeout
+// Explicit port 587 configuration to prevent IPv6 port 465 timeout[cite: 26]
 const mailTransporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 587,
@@ -189,7 +189,7 @@ app.post('/api/notifications/email', async (req, res) => {
 });
 
 // ==========================================
-// AUTOMATED TELEGRAM DROP POSTING ENGINE
+// AUTOMATED TELEGRAM DROP POSTING ENGINE (PHOTO & TEXT)
 // ==========================================
 const postToTelegram = async (product) => {
   const token = (process.env.TELEGRAM_BOT_TOKEN || TELEGRAM_BOT_TOKEN).trim();
@@ -200,44 +200,90 @@ const postToTelegram = async (product) => {
     return;
   }
 
+  const escapeHtml = (str = '') =>
+    String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+  const safeName = escapeHtml(product.name);
+  const safeBrand = escapeHtml(product.brand || 'Vintage Archive');
+  const safeSize = escapeHtml(product.size || 'OS');
+  const safeGrade = escapeHtml(product.condition_grade || 'Grade A');
+  const safeDesc = product.description ? `<i>${escapeHtml(product.description)}</i>\n\n` : '';
+
   const caption = 
-`🔥 *NEW ARCHIVE DROP*
-*${product.name}*
+`🔥 <b>NEW ARCHIVE DROP</b>
+<b>${safeName}</b>
 
-🏷️ *Brand:* ${product.brand || 'Vintage Archive'}
-📏 *Size:* ${product.size || 'OS'} (${product.condition_grade || 'Grade A'})
-💰 *Price:* ₱${Number(product.price).toFixed(2)}
+🏷️ <b>Brand:</b> ${safeBrand}
+📏 <b>Size:</b> ${safeSize} (${safeGrade})
+💰 <b>Price:</b> ₱${Number(product.price).toFixed(2)}
 
-${product.description ? `_${product.description}_\n\n` : ''}🛍️ [View Piece on ThriftLoop](${FRONTEND_URL}/product/${product.product_id})`;
+${safeDesc}🛍️ <a href="${FRONTEND_URL}/product/${product.product_id}">View Piece on ThriftLoop</a>`;
 
   try {
-    const hasImage = product.image_url && product.image_url.startsWith('http');
-    const endpoint = hasImage
-      ? `https://api.telegram.org/bot${token}/sendPhoto`
-      : `https://api.telegram.org/bot${token}/sendMessage`;
+    const imageUrl = (product.image_url || '').trim();
+    const isBase64 = imageUrl.startsWith('data:image');
+    const isHttp = imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
 
-    const payload = hasImage
-      ? { chat_id: channel, photo: product.image_url, caption, parse_mode: 'Markdown' }
-      : { chat_id: channel, text: caption, parse_mode: 'Markdown' };
+    if (isBase64 || isHttp) {
+      const formData = new FormData();
+      formData.append('chat_id', channel);
+      formData.append('caption', caption);
+      formData.append('parse_mode', 'HTML');
 
-    const response = await fetch(endpoint, {
+      if (isBase64) {
+        const commaIdx = imageUrl.indexOf(',');
+        const meta = imageUrl.slice(0, commaIdx);
+        const base64Data = imageUrl.slice(commaIdx + 1);
+        const mimeMatch = meta.match(/data:(.*?);/);
+        const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+        const ext = mimeType.split('/')[1] || 'jpg';
+        const buffer = Buffer.from(base64Data, 'base64');
+        const blob = new Blob([buffer], { type: mimeType });
+
+        formData.append('photo', blob, `drop_${product.product_id || Date.now()}.${ext}`);
+      } else {
+        formData.append('photo', imageUrl);
+      }
+
+      const response = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+      if (data.ok) {
+        console.log(`📢 [Telegram Integration] Successfully published photo drop "${product.name}" to channel ${channel}`);
+        return;
+      } else {
+        console.warn(`⚠️ [Telegram Integration] sendPhoto failed: ${data.description}. Attempting text fallback...`);
+      }
+    }
+
+    const textResponse = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        chat_id: channel,
+        text: caption,
+        parse_mode: 'HTML',
+      }),
     });
 
-    const data = await response.json();
-    if (data.ok) {
-      console.log(`📢 [Telegram Integration] Successfully published drop "${product.name}" to channel ${channel}`);
+    const textData = await textResponse.json();
+    if (textData.ok) {
+      console.log(`📢 [Telegram Integration] Published text drop "${product.name}" to channel ${channel}`);
     } else {
-      console.warn(`⚠️ [Telegram Integration] Telegram API response:`, data.description);
+      console.warn(`⚠️ [Telegram Integration] Telegram API error:`, textData.description);
     }
   } catch (err) {
     console.warn('⚠️ [Telegram Integration] Failed to post to Telegram:', err.message);
   }
 };
 
-// 3. Voucher Rules
+// 3. Voucher Rules[cite: 26]
 const ACTIVE_VOUCHERS = {
   VINTAGE20: { code: 'VINTAGE20', type: 'percent', value: 20, minSpend: 0, description: 'Flash Drop: 20% off all archive pieces' },
   LOOP100: { code: 'LOOP100', type: 'fixed', value: 100, minSpend: 600, description: '₱100 off on orders ₱600 and above' },
@@ -245,7 +291,7 @@ const ACTIVE_VOUCHERS = {
 };
 
 // ==========================================
-// AUTOMATED AGING PRICING
+// AUTOMATED AGING PRICING[cite: 26]
 // ==========================================
 export const runAgingMarkdownUpdate = async () => {
   try {
@@ -305,7 +351,7 @@ app.post('/api/admin/inventory/apply-markdowns', async (req, res) => {
 });
 
 // ==========================================
-// AUTHENTICATION
+// AUTHENTICATION[cite: 26]
 // ==========================================
 app.post('/api/auth/google', async (req, res) => {
   const { credential, access_token, token: genericToken } = req.body;
@@ -496,7 +542,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// --- FORGOT & RESET PASSWORD FLOW ---
+// --- FORGOT & RESET PASSWORD FLOW ---[cite: 26]
 app.post('/api/auth/forgot-password', async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'Please provide your registered email address.' });
@@ -586,7 +632,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
   }
 });
 
-// --- VOUCHER VALIDATION ---
+// --- VOUCHER VALIDATION ---[cite: 26]
 app.post('/api/vouchers/validate', (req, res) => {
   const { code, subtotal } = req.body;
   if (!code) return res.status(400).json({ error: 'Please provide a voucher code.' });
@@ -610,7 +656,7 @@ app.post('/api/vouchers/validate', (req, res) => {
   });
 });
 
-// --- CATALOG & INVENTORY ROUTES ---
+// --- CATALOG & INVENTORY ROUTES ---[cite: 26]
 app.get('/api/products', async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -757,7 +803,7 @@ app.patch('/api/products/:id/status', async (req, res) => {
 });
 
 // ==========================================
-// BUYER-TO-SELLER DIRECT MESSAGING ROUTES
+// BUYER-TO-SELLER DIRECT MESSAGING & UNREAD NOTIFICATIONS
 // ==========================================
 app.post('/api/messages/conversations', async (req, res) => {
   const { buyer_id, seller_id, product_id } = req.body;
@@ -941,8 +987,38 @@ app.post('/api/messages', async (req, res) => {
   }
 });
 
+// Check for incoming unread messages for navbar dot notification
+app.get('/api/messages/unread-status/:userId', async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const { data: convos } = await supabase
+      .from('conversations')
+      .select('conversation_id')
+      .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`);
+
+    if (!convos || convos.length === 0) {
+      return res.json({ latestIncomingAt: null });
+    }
+
+    const convoIds = convos.map((c) => c.conversation_id);
+
+    const { data: latestMsg } = await supabase
+      .from('messages')
+      .select('created_at')
+      .in('conversation_id', convoIds)
+      .neq('sender_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    res.json({ latestIncomingAt: latestMsg?.created_at || null });
+  } catch {
+    res.json({ latestIncomingAt: null });
+  }
+});
+
 // ==========================================
-// CHECKOUT & ORDERS CRUD
+// CHECKOUT & ORDERS CRUD[cite: 26]
 // ==========================================
 
 app.post('/api/checkout/paymongo', async (req, res) => {
@@ -1117,7 +1193,7 @@ app.post('/api/checkout/paymongo', async (req, res) => {
   }
 });
 
-// --- VERIFY PAYMONGO PAYMENT & DISPATCH OFFICIAL CONFIRMATION RECEIPT ---
+// --- VERIFY PAYMONGO PAYMENT & DISPATCH OFFICIAL CONFIRMATION RECEIPT ---[cite: 26]
 app.get('/api/checkout/verify/:sessionId', async (req, res) => {
   const { sessionId } = req.params;
   const { order_id } = req.query;
@@ -1178,7 +1254,7 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
   }
 });
 
-// --- CASH ON DELIVERY (COD) ROUTE & DISPATCH CONFIRMATION RECEIPT ---
+// --- CASH ON DELIVERY (COD) ROUTE & DISPATCH CONFIRMATION RECEIPT ---[cite: 26]
 app.post('/api/orders', async (req, res) => {
   const { 
     user_id, customer_name, email, phone, shipping_address, city, province, 
@@ -1314,7 +1390,7 @@ app.post('/api/orders', async (req, res) => {
   }
 });
 
-// --- TRACKING & USER ORDERS ---
+// --- TRACKING & USER ORDERS ---[cite: 26]
 app.get('/api/track/:id', async (req, res) => {
   try {
     const { data: order, error } = await supabase
@@ -1371,7 +1447,7 @@ app.post('/api/orders/:id/cancel', async (req, res) => {
   }
 });
 
-// --- ADMIN MANAGEMENT & SHIPMENT STATUS DISPATCH ---
+// --- ADMIN MANAGEMENT & SHIPMENT STATUS DISPATCH ---[cite: 26]
 app.get('/api/admin/stats', async (req, res) => {
   try {
     const { count: activeCount } = await supabase.from('products').select('*', { count: 'exact', head: true }).eq('status', 'active');
@@ -1489,7 +1565,7 @@ app.delete('/api/admin/orders/:id', async (req, res) => {
 });
 
 // ==========================================
-// AI CONCIERGE
+// AI CONCIERGE[cite: 26]
 // ==========================================
 app.post('/api/chat', async (req, res) => {
   const { message, user_id, email, current_order_id } = req.body;
@@ -1607,12 +1683,12 @@ GUIDELINES:
   }
 });
 
-// Safe stub route for frontend compatibility
+// Safe stub route for frontend compatibility[cite: 26]
 app.get('/api/blog/posts', (req, res) => {
   res.json([]);
 });
 
-// --- GLOBAL ERROR HANDLER ---
+// --- GLOBAL ERROR HANDLER ---[cite: 26]
 app.use((err, req, res, next) => {
   console.error('❌ Server Middleware Error:', err.message);
   res.status(err.status || 500).json({
