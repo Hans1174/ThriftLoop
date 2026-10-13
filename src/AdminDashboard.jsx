@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Package, Plus, Trash2, CheckCircle, RefreshCw, 
+  Package, Plus, Trash2, CheckCircle, 
   ShoppingBag, DollarSign, Tag, AlertCircle, 
   X, Search, UploadCloud, Pencil, Truck, Check, MessageSquare,
-  Sparkles, ImageIcon, ShieldCheck, Filter, Wand2, Lock
+  Sparkles, ImageIcon, ShieldCheck, Lock
 } from 'lucide-react';
 import AdminInbox from './components/AdminInbox';
 
@@ -25,7 +25,6 @@ export default function AdminDashboard() {
   const [orders, setOrders] = useState([]);
   const [categoriesList, setCategoriesList] = useState(['Tops', 'Bottoms', 'Outerwear', 'Dresses', 'Shoes', 'Accessories']);
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
   const [notification, setNotification] = useState(null);
 
   const storedUser = localStorage.getItem('thriftloop_user');
@@ -90,8 +89,9 @@ export default function AdminDashboard() {
     }));
   };
 
-  const fetchData = async () => {
-    setLoading(true);
+  // Automated background data fetch (silent polling avoids UI flickering)
+  const fetchData = async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
     try {
       const token = localStorage.getItem('thriftloop_token');
       const headers = {
@@ -105,9 +105,10 @@ export default function AdminDashboard() {
         fetch(`${API_URL}/api/categories`).catch(() => null),
       ]);
 
-      if (!resProd.ok) throw new Error('Could not retrieve catalog inventory.');
-      const prodData = await resProd.json();
-      setProducts(Array.isArray(prodData) ? prodData : (prodData.products || []));
+      if (resProd.ok) {
+        const prodData = await resProd.json();
+        setProducts(Array.isArray(prodData) ? prodData : (prodData.products || []));
+      }
 
       if (resOrd && resOrd.ok) {
         const ordData = await resOrd.json();
@@ -117,38 +118,26 @@ export default function AdminDashboard() {
       if (resCat && resCat.ok) {
         const catData = await resCat.json();
         if (Array.isArray(catData) && catData.length > 0) {
-          const names = catData.map(c => c.name);
-          setCategoriesList(Array.from(new Set([...categoriesList, ...names])));
+          const names = catData.map((c) => c.name);
+          setCategoriesList((prev) => Array.from(new Set([...prev, ...names])));
         }
       }
     } catch (err) {
-      showToast(err.message || 'Error communicating with backend.', 'error');
+      if (!isSilent) showToast(err.message || 'Error communicating with backend.', 'error');
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   };
 
+  // Automatic real-time polling every 4 seconds
   useEffect(() => {
-    fetchData();
+    fetchData(false);
+    const syncInterval = setInterval(() => {
+      fetchData(true);
+    }, 4000);
+
+    return () => clearInterval(syncInterval);
   }, []);
-
-  const handleBulkMigrateConditions = async () => {
-    setSyncing(true);
-    try {
-      const res = await fetch(`${API_URL}/api/admin/inventory/migrate-conditions`, {
-        method: 'POST',
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to sync conditions.');
-
-      await fetchData();
-      showToast(data.message || 'All items migrated to new condition taxonomy!');
-    } catch (err) {
-      showToast(err.message || 'Could not migrate conditions.', 'error');
-    } finally {
-      setSyncing(false);
-    }
-  };
 
   const handleFileProcess = (file) => {
     if (!file || !file.type.startsWith('image/')) {
@@ -261,7 +250,7 @@ export default function AdminDashboard() {
         throw new Error(`Server returned HTTP ${res.status}. Check server.js console.`);
       }
 
-      await fetchData();
+      await fetchData(true);
       setIsModalOpen(false);
       setEditingItem(null);
       showToast(isEdit ? 'Listing specs updated!' : 'Piece published to boutique!');
@@ -321,7 +310,7 @@ export default function AdminDashboard() {
     }
   };
 
-  // Consistent neutral condition badge using font-mono
+  // Neutral, clean condition badge
   const renderConditionBadge = (rawCondition) => {
     const condition = normalizeCondition(rawCondition);
     return (
@@ -377,57 +366,23 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Executive Header Banner */}
-        <div className="bg-white border border-[#A8C3A0]/30 rounded-3xl p-6 sm:p-8 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[10px] uppercase font-mono font-bold text-[#A8C3A0] tracking-wider">
-                Store Operations & Live Inventory
-              </span>
-            </div>
-            <h1 className="font-serif text-2xl sm:text-3xl font-bold text-[#23313A] mt-1">
-              Admin Console
-            </h1>
-            <p className="text-xs font-mono text-[#23313A]/60 mt-0.5">
-              Curate archive pieces, process customer fulfillments, and handle direct buyer messages.
-            </p>
-          </div>
+        {/* Clean Header: Renamed to Admin Dashboard with no subtext & automatic live sync */}
+        <div className="bg-white border border-[#A8C3A0]/30 rounded-3xl p-6 sm:p-8 shadow-xs flex justify-between items-center gap-4">
+          <h1 className="font-serif text-2xl sm:text-3xl font-bold text-[#23313A]">
+            Admin Dashboard
+          </h1>
 
-          <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
-            <button
-              type="button"
-              onClick={handleBulkMigrateConditions}
-              disabled={syncing}
-              className="flex items-center justify-center gap-1.5 bg-[#F6F1E8] hover:bg-[#A8C3A0]/25 text-[#23313A] text-xs font-mono font-bold px-3.5 py-2.5 rounded-xl border border-[#A8C3A0]/30 transition-all cursor-pointer"
-              title="Sync any older condition entries to standard taxonomy"
-            >
-              <Wand2 size={14} className={syncing ? 'animate-spin text-[#2F6B4F]' : 'text-[#2F6B4F]'} />
-              <span>{syncing ? 'Syncing...' : 'Sync Conditions'}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={fetchData}
-              disabled={loading}
-              className="flex items-center justify-center gap-1.5 bg-[#F6F1E8] hover:bg-[#A8C3A0]/25 text-[#23313A] text-xs font-mono font-bold px-3.5 py-2.5 rounded-xl border border-[#A8C3A0]/30 transition-all cursor-pointer"
-            >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-              <span>Refresh</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleOpenCreateModal}
-              className="flex items-center justify-center gap-2 bg-[#2F6B4F] hover:bg-[#23313A] text-white text-xs font-mono font-bold px-5 py-2.5 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer"
-            >
-              <Plus size={15} />
-              <span>Add Products</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleOpenCreateModal}
+            className="flex items-center justify-center gap-2 bg-[#2F6B4F] hover:bg-[#23313A] text-white text-xs font-mono font-bold px-5 py-2.5 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer"
+          >
+            <Plus size={15} />
+            <span>Add Products</span>
+          </button>
         </div>
 
-        {/* Analytics Summary Cards */}
+        {/* Analytics Summary Cards (Clean: Subtext Removed) */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <div className="bg-white border border-[#A8C3A0]/30 p-5 rounded-2xl shadow-xs space-y-1">
             <div className="flex items-center justify-between text-[#A8C3A0]">
@@ -437,7 +392,6 @@ export default function AdminDashboard() {
               </div>
             </div>
             <p className="text-2xl sm:text-3xl font-serif font-bold text-[#23313A]">{availableCount}</p>
-            <span className="text-[10px] font-mono text-[#2F6B4F] block">Ready for checkout</span>
           </div>
 
           <div className="bg-white border border-[#A8C3A0]/30 p-5 rounded-2xl shadow-xs space-y-1">
@@ -448,7 +402,6 @@ export default function AdminDashboard() {
               </div>
             </div>
             <p className="text-2xl sm:text-3xl font-serif font-bold text-[#23313A]">{soldCount}</p>
-            <span className="text-[10px] font-mono text-[#E67E5F] block">Claimed archive items</span>
           </div>
 
           <div className="bg-white border border-[#A8C3A0]/30 p-5 rounded-2xl shadow-xs space-y-1">
@@ -461,7 +414,6 @@ export default function AdminDashboard() {
             <p className="text-2xl sm:text-3xl font-serif font-bold text-[#23313A]">
               ₱{totalValuation.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </p>
-            <span className="text-[10px] font-mono text-[#A8C3A0] block">Unsold catalog value</span>
           </div>
 
           <div className="bg-white border border-[#A8C3A0]/30 p-5 rounded-2xl shadow-xs space-y-1">
@@ -472,7 +424,6 @@ export default function AdminDashboard() {
               </div>
             </div>
             <p className="text-2xl sm:text-3xl font-serif font-bold text-[#23313A]">{orders.length}</p>
-            <span className="text-[10px] font-mono text-[#A8C3A0] block">PayMongo & COD placed</span>
           </div>
         </div>
 
@@ -586,14 +537,14 @@ export default function AdminDashboard() {
                           className="w-full h-full object-contain drop-shadow-xs"
                         />
 
-                        {/* Top ID Pill (font-mono) */}
+                        {/* Top ID Pill */}
                         <div className="absolute top-3 right-3">
                           <span className="bg-[#23313A]/80 backdrop-blur-xs text-white text-[10px] font-mono font-bold px-2 py-0.5 rounded-md shadow-xs">
                             ID #{id}
                           </span>
                         </div>
 
-                        {/* Brand Tag (font-mono) */}
+                        {/* Brand Tag */}
                         <div className="absolute bottom-3 left-3">
                           <span className="bg-white/95 backdrop-blur-xs text-[#23313A] border border-[#A8C3A0]/30 text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg shadow-xs">
                             {item.brand || 'Vintage Archive'}
@@ -611,7 +562,6 @@ export default function AdminDashboard() {
                             </span>
                           </div>
 
-                          {/* Garment Title in ThriftLoop font-serif */}
                           <h3 
                             className="font-serif font-bold text-base text-[#23313A] line-clamp-1"
                             title={item.name}
@@ -635,7 +585,7 @@ export default function AdminDashboard() {
                         </div>
                       </div>
 
-                      {/* Action Footer: Dot removed from AVAILABLE/SOLD badge */}
+                      {/* Action Footer (Clean text-only badge, dot removed) */}
                       <div className="p-3 sm:p-4 border-t border-[#A8C3A0]/20 bg-[#F6F1E8]/30 flex items-center gap-2 font-mono">
                         <div
                           className={`flex-1 py-2 px-3 rounded-xl text-[11px] font-bold text-center tracking-wider uppercase border flex items-center justify-center ${
@@ -657,7 +607,7 @@ export default function AdminDashboard() {
                           <Pencil size={15} />
                         </button>
 
-                        {/* Protected Delete Button for Unsold Inventory */}
+                        {/* Protected Delete Button */}
                         <button
                           type="button"
                           disabled={isSold}
@@ -903,7 +853,7 @@ export default function AdminDashboard() {
                             <UploadCloud size={26} />
                           </div>
                           <div>
-                            <p className="font-bold text-xs text-[#23313A]">Click to browse or drag & drop</p>
+                            <p className="font-bold text-xs sm:text-sm text-[#23313A]">Click to browse or drag & drop</p>
                             <p className="text-[10px] text-[#A8C3A0] mt-0.5">High-res JPG, PNG, WEBP auto-compressed</p>
                           </div>
                         </div>
