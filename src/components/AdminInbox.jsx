@@ -2,30 +2,49 @@ import { API_URL } from '../config';
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   MessageSquare, Send, Loader2, Store, User, 
-  ExternalLink, AlertCircle, RefreshCw 
+  ExternalLink, AlertCircle, RefreshCw, Image as ImageIcon, X 
 } from 'lucide-react';
+
+const extractImageAndText = (message) => {
+  if (message.image_url) {
+    return { imageUrl: message.image_url, text: message.message_text };
+  }
+  const text = message.message_text || '';
+  const match = text.match(/\[IMAGE\](.*?)\[\/IMAGE\]/);
+  if (match) {
+    return {
+      imageUrl: match[1],
+      text: text.replace(match[0], '').trim()
+    };
+  }
+  return { imageUrl: null, text };
+};
 
 export default function AdminInbox({ currentUser }) {
   const [conversations, setConversations] = useState([]);
   const [activeConvo, setActiveConvo] = useState(null);
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [imagePreview, setImagePreview] = useState('');
+  const [enlargedImage, setEnlargedImage] = useState(null);
+
   const [loading, setLoading] = useState(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  
+  const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
 
   const adminId = currentUser?.user_id || 1;
 
-  // 1. Fetch all buyer conversations involving the admin
   const fetchConversations = async () => {
     try {
       const res = await fetch(`${API_URL}/api/messages/conversations/user/${adminId}`);
       const data = await res.json();
       if (Array.isArray(data)) {
         setConversations(data);
-        // Automatically select first conversation if none selected
         if (!activeConvo && data.length > 0) {
           setActiveConvo(data[0]);
         }
@@ -43,7 +62,6 @@ export default function AdminInbox({ currentUser }) {
     return () => clearInterval(interval);
   }, [adminId]);
 
-  // 2. Fetch message logs for the selected conversation
   const fetchMessages = async (convoId) => {
     if (!convoId) return;
     try {
@@ -75,13 +93,47 @@ export default function AdminInbox({ currentUser }) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // 3. Send Admin Reply
+  const handleImageSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let { width, height } = img;
+        const maxDim = 900;
+        if (width > height && width > maxDim) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else if (height > maxDim) {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        const base64 = canvas.toDataURL('image/jpeg', 0.8);
+        setSelectedImage(base64);
+        setImagePreview(base64);
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSendReply = async (e) => {
     e.preventDefault();
-    if (!inputMessage.trim() || !activeConvo) return;
+    if ((!inputMessage.trim() && !selectedImage) || !activeConvo) return;
 
     const textToSend = inputMessage.trim();
+    const imageToSend = selectedImage;
+
     setInputMessage('');
+    setSelectedImage(null);
+    setImagePreview('');
     setSending(true);
 
     try {
@@ -93,6 +145,7 @@ export default function AdminInbox({ currentUser }) {
           sender_id: adminId,
           receiver_id: activeConvo.buyer_id,
           message_text: textToSend,
+          image_url: imageToSend,
         }),
       });
 
@@ -129,7 +182,7 @@ export default function AdminInbox({ currentUser }) {
           </div>
           <button 
             onClick={fetchConversations} 
-            className="text-[#A8C3A0] hover:text-[#2F6B4F] p-1.5 rounded-lg hover:bg-[#F6F1E8] transition-colors"
+            className="text-[#A8C3A0] hover:text-[#2F6B4F] p-1.5 rounded-lg hover:bg-[#F6F1E8] transition-colors cursor-pointer"
             title="Refresh Threads"
           >
             <RefreshCw size={14} />
@@ -153,8 +206,8 @@ export default function AdminInbox({ currentUser }) {
                     isSelected ? 'bg-white border-l-4 border-[#2F6B4F]' : 'hover:bg-white/60'
                   }`}
                 >
-                  <div className="w-9 h-9 rounded-full bg-[#2F6B4F]/10 text-[#2F6B4F] flex items-center justify-center shrink-0">
-                    <User size={16} />
+                  <div className="w-9 h-9 rounded-full bg-[#2F6B4F]/10 text-[#2F6B4F] flex items-center justify-center shrink-0 font-bold text-xs">
+                    {convo.buyer?.full_name?.charAt(0) || 'U'}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-1 mb-0.5">
@@ -203,7 +256,6 @@ export default function AdminInbox({ currentUser }) {
                 </div>
               </div>
 
-              {/* Linked Product Preview */}
               {activeConvo.products && (
                 <div className="flex items-center gap-2 bg-[#F6F1E8] px-3 py-1.5 rounded-xl border border-[#A8C3A0]/20">
                   {activeConvo.products.image_url && (
@@ -248,6 +300,8 @@ export default function AdminInbox({ currentUser }) {
               ) : (
                 messages.map((m) => {
                   const isSeller = m.sender_id === adminId;
+                  const { imageUrl, text } = extractImageAndText(m);
+
                   return (
                     <div
                       key={m.message_id}
@@ -263,7 +317,15 @@ export default function AdminInbox({ currentUser }) {
                             : 'bg-white text-[#23313A] border border-[#A8C3A0]/30 rounded-tl-xs'
                         }`}
                       >
-                        {m.message_text}
+                        {imageUrl && (
+                          <img
+                            src={imageUrl}
+                            alt="Attachment"
+                            onClick={() => setEnlargedImage(imageUrl)}
+                            className="max-h-52 rounded-xl object-contain mb-1.5 cursor-pointer hover:opacity-95 bg-black/5"
+                          />
+                        )}
+                        {text && text !== '📷 Sent an image' && <p>{text}</p>}
                       </div>
                       <span className="text-[8px] text-[#23313A]/40 mt-0.5 px-1">
                         {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -275,8 +337,46 @@ export default function AdminInbox({ currentUser }) {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Reply Input Bar */}
+            {/* Image Upload Preview Chip */}
+            {imagePreview && (
+              <div className="px-4 py-2 bg-[#F6F1E8] border-t border-[#A8C3A0]/30 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <img src={imagePreview} alt="Upload preview" className="w-10 h-10 rounded-lg object-cover border border-[#A8C3A0]/40" />
+                  <span className="text-[11px] text-[#23313A] font-bold">Image ready to send</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedImage(null);
+                    setImagePreview('');
+                  }}
+                  className="text-[#E67E5F] p-1 rounded-full hover:bg-white"
+                  title="Remove image"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            )}
+
+            {/* Reply Input Bar with Photo Picker */}
             <form onSubmit={handleSendReply} className="p-3 bg-white border-t border-[#A8C3A0]/20 flex gap-2 items-center">
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept="image/*"
+                className="hidden"
+                onChange={handleImageSelect}
+              />
+
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="p-2 text-[#A8C3A0] hover:text-[#2F6B4F] hover:bg-[#F6F1E8] rounded-xl transition-colors cursor-pointer"
+                title="Send Photo"
+              >
+                <ImageIcon size={18} />
+              </button>
+
               <input
                 type="text"
                 placeholder="Type your reply to the buyer..."
@@ -284,9 +384,10 @@ export default function AdminInbox({ currentUser }) {
                 onChange={(e) => setInputMessage(e.target.value)}
                 className="flex-1 bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 text-xs text-[#23313A] focus:outline-none focus:border-[#2F6B4F]"
               />
+
               <button
                 type="submit"
-                disabled={sending || !inputMessage.trim()}
+                disabled={sending || (!inputMessage.trim() && !selectedImage)}
                 className="bg-[#2F6B4F] hover:bg-[#23313A] disabled:opacity-40 text-white p-2.5 rounded-xl transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
               >
                 {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
@@ -303,6 +404,24 @@ export default function AdminInbox({ currentUser }) {
           </div>
         )}
       </div>
+
+      {/* Lightbox Modal */}
+      {enlargedImage && (
+        <div 
+          onClick={() => setEnlargedImage(null)}
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+        >
+          <div className="relative max-w-3xl max-h-[90vh]">
+            <button
+              onClick={() => setEnlargedImage(null)}
+              className="absolute -top-10 right-0 text-white/80 hover:text-white"
+            >
+              <X size={24} />
+            </button>
+            <img src={enlargedImage} alt="Enlarged" className="max-h-[85vh] max-w-full rounded-2xl object-contain shadow-2xl" />
+          </div>
+        </div>
+      )}
 
     </div>
   );

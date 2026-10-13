@@ -989,9 +989,9 @@ app.get('/api/messages/:conversationId', async (req, res) => {
 });
 
 app.post('/api/messages', async (req, res) => {
-  const { conversation_id, sender_id, receiver_id, message_text } = req.body;
-  if (!conversation_id || !sender_id || !message_text?.trim()) {
-    return res.status(400).json({ error: 'Missing required message parameters.' });
+  const { conversation_id, sender_id, receiver_id, message_text, image_url } = req.body;
+  if (!conversation_id || !sender_id || (!message_text?.trim() && !image_url)) {
+    return res.status(400).json({ error: 'Missing required message parameters or image attachment.' });
   }
 
   try {
@@ -1007,46 +1007,43 @@ app.post('/api/messages', async (req, res) => {
       }
     }
 
-    const { data: newMsg, error: msgErr } = await supabase
+    const payload = {
+      conversation_id,
+      sender_id,
+      receiver_id: resolvedReceiverId || null,
+      message_text: (message_text || '').trim() || '📷 Sent an image',
+    };
+    if (image_url) payload.image_url = image_url;
+
+    let { data: newMsg, error: msgErr } = await supabase
       .from('messages')
-      .insert([{
-        conversation_id,
-        sender_id,
-        receiver_id: resolvedReceiverId || null,
-        message_text: message_text.trim(),
-      }])
+      .insert([payload])
       .select('*, sender:users!sender_id(user_id, full_name, role)')
       .single();
 
-    if (msgErr) {
-      const { data: fallbackMsg, error: fallbackErr } = await supabase
+    // Fallback if image_url column is not present in Supabase table
+    if (msgErr && image_url) {
+      const fallbackPayload = {
+        conversation_id,
+        sender_id,
+        receiver_id: resolvedReceiverId || null,
+        message_text: `[IMAGE]${image_url}[/IMAGE] ${(message_text || '').trim()}`.trim(),
+      };
+      const resFallback = await supabase
         .from('messages')
-        .insert([{
-          conversation_id,
-          sender_id,
-          receiver_id: resolvedReceiverId || null,
-          message_text: message_text.trim(),
-        }])
-        .select('*')
+        .insert([fallbackPayload])
+        .select('*, sender:users!sender_id(user_id, full_name, role)')
         .single();
-
-      if (fallbackErr) throw fallbackErr;
-
-      await supabase
-        .from('conversations')
-        .update({
-          last_message: message_text.trim(),
-          last_message_at: new Date().toISOString(),
-        })
-        .eq('conversation_id', conversation_id);
-
-      return res.status(201).json(fallbackMsg);
+      newMsg = resFallback.data;
+      msgErr = resFallback.error;
     }
+
+    if (msgErr) throw msgErr;
 
     await supabase
       .from('conversations')
       .update({
-        last_message: message_text.trim(),
+        last_message: (message_text || '').trim() || '📷 Sent an image',
         last_message_at: new Date().toISOString(),
       })
       .eq('conversation_id', conversation_id);
@@ -1058,6 +1055,7 @@ app.post('/api/messages', async (req, res) => {
   }
 });
 
+// Check for incoming unread messages for navbar dot notification
 app.get('/api/messages/unread-status/:userId', async (req, res) => {
   const { userId } = req.params;
   try {
@@ -1268,6 +1266,7 @@ app.post('/api/checkout/paymongo', async (req, res) => {
   }
 });
 
+// --- VERIFY PAYMONGO PAYMENT & DISPATCH OFFICIAL CONFIRMATION RECEIPT ---
 app.get('/api/checkout/verify/:sessionId', async (req, res) => {
   const { sessionId } = req.params;
   const { order_id } = req.query;
@@ -1328,6 +1327,7 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
   }
 });
 
+// --- CASH ON DELIVERY (COD) ROUTE & DISPATCH CONFIRMATION RECEIPT (WITH ADMIN ROLE GUARD) ---
 app.post('/api/orders', async (req, res) => {
   const { 
     user_id, customer_name, email, phone, shipping_address, city, province, 
@@ -1658,11 +1658,11 @@ app.delete('/api/admin/orders/:id', async (req, res) => {
 });
 
 // ==========================================
-// AI CONCIERGE
+// AI CONCIERGE (WITH MULTIMODAL VISION SUPPORT)
 // ==========================================
 app.post('/api/chat', async (req, res) => {
-  const { message, user_id, email, current_order_id } = req.body;
-  if (!message) return res.status(400).json({ error: 'Message is required' });
+  const { message, user_id, email, current_order_id, image } = req.body;
+  if (!message && !image) return res.status(400).json({ error: 'Message or image is required' });
 
   if (!cleanedGeminiKey || cleanedGeminiKey.includes('YourGeminiKey')) {
     return res.json({ reply: '⚠️ AI Concierge Notice: GEMINI_API_KEY is not configured in backend environment variables.' });
@@ -1680,7 +1680,7 @@ app.post('/api/chat', async (req, res) => {
       : 'No items currently in stock.';
 
     let orderContext = 'No order records associated with this guest session.';
-    const orderMatch = message.match(/#?(\b\d+\b)/);
+    const orderMatch = (message || '').match(/#?(\b\d+\b)/);
     const targetOrderId = current_order_id || (orderMatch ? parseInt(orderMatch[1], 10) : null);
 
     if (targetOrderId || user_id || email) {
@@ -1706,8 +1706,9 @@ app.post('/api/chat', async (req, res) => {
     const systemInstruction = `You are 'Loopie', the AI stylist and order logistics concierge for 'ThriftLoop'—an online curated vintage boutique in the Philippines.
 
 YOUR CORE RESPONSIBILITIES:
-1. VINTAGE CATALOG & SIZING: Answer customer questions regarding specific archive pieces, sizing, chest width (pit-to-pit / PTP flat-lay in inches), lengths, condition grading (Deadstock, Grade A, Grade B), outfit pairings, and sustainable clothing care.
-2. SHIPMENT & LOGISTICS UPDATES: If the customer asks about order status, tracking, or delivery timing (e.g., "Where is my order #4?"), refer directly to BUYER ORDER RECORDS below. Explain whether the package is pending, processing, shipped, or delivered, report their tracking number, and specify courier turnaround (J&T Express 2-4 days standard, Lalamove same-day metro).
+1. VINTAGE CATALOG & SIZING: Answer customer questions regarding specific archive pieces, sizing, chest width (pit-to-pit / PTP flat-lay in inches), lengths, condition grading (Excellent, Good, Used but not abused, Flawed), outfit pairings, and sustainable clothing care.
+2. GARMENT IMAGE ANALYSIS: If the user provides an image, inspect it for vintage style aesthetics, garment condition, distressing, and authenticity advice.
+3. SHIPMENT & LOGISTICS UPDATES: If the customer asks about order status, tracking, or delivery timing (e.g., "Where is my order #4?"), refer directly to BUYER ORDER RECORDS below. Explain whether the package is pending, processing, shipped, or delivered, report their tracking number, and specify courier turnaround (J&T Express 2-4 days standard, Lalamove same-day metro).
 
 CURRENT ACTIVE INVENTORY:
 ${catalogSummary}
@@ -1719,9 +1720,25 @@ GUIDELINES:
 - Always quote prices in Philippine Pesos (₱).
 - Keep answers warm, concise, and helpful.`;
 
+    const parts = [{ text: message || 'Please analyze this garment image.' }];
+
+    if (image && typeof image === 'string' && image.startsWith('data:image')) {
+      const commaIdx = image.indexOf(',');
+      const meta = image.slice(0, commaIdx);
+      const mimeMatch = meta.match(/data:(.*?);/);
+      const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+      const base64Data = image.slice(commaIdx + 1);
+
+      parts.push({
+        inlineData: {
+          data: base64Data,
+          mimeType: mimeType,
+        },
+      });
+    }
+
     const candidateModels = [
-      (process.env.GEMINI_MODEL || 'gemini-3.6-flash').trim(),
-      'gemini-3.6-flash',
+      (process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim(),
       'gemini-2.5-flash',
       'gemini-2.0-flash',
     ].filter((m, idx, arr) => m && arr.indexOf(m) === idx);
@@ -1733,7 +1750,7 @@ GUIDELINES:
         try {
           const response = await ai.models.generateContent({
             model: modelCandidate,
-            contents: message,
+            contents: parts,
             config: { systemInstruction },
           });
           if (response?.text) {
@@ -1745,6 +1762,18 @@ GUIDELINES:
       }
 
       try {
+        const restParts = parts.map((p) => {
+          if (p.inlineData) {
+            return {
+              inlineData: {
+                mimeType: p.inlineData.mimeType,
+                data: p.inlineData.data,
+              },
+            };
+          }
+          return { text: p.text };
+        });
+
         const restRes = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${modelCandidate}:generateContent?key=${cleanedGeminiKey}`,
           {
@@ -1752,7 +1781,7 @@ GUIDELINES:
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               systemInstruction: { parts: [{ text: systemInstruction }] },
-              contents: [{ role: 'user', parts: [{ text: message }] }],
+              contents: [{ role: 'user', parts: restParts }],
             }),
           }
         );
@@ -1776,10 +1805,12 @@ GUIDELINES:
   }
 });
 
+// Safe stub route for frontend compatibility
 app.get('/api/blog/posts', (req, res) => {
   res.json([]);
 });
 
+// --- GLOBAL ERROR HANDLER ---
 app.use((err, req, res, next) => {
   console.error('❌ Server Middleware Error:', err.message);
   res.status(err.status || 500).json({

@@ -3,12 +3,27 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, ShoppingBag, QrCode, Check, Loader2, 
   MessageSquare, Send, X, AlertCircle, Store, Tag, 
-  ShieldCheck, Sparkles, Truck 
+  ShieldCheck, Sparkles, Truck, Image as ImageIcon 
 } from 'lucide-react';
 import { useCart } from './context/CartContext';
 import { API_URL } from './config';
 
 const BACKEND_URL = API_URL || import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
+
+const extractImageAndText = (message) => {
+  if (message.image_url) {
+    return { imageUrl: message.image_url, text: message.message_text };
+  }
+  const text = message.message_text || '';
+  const match = text.match(/\[IMAGE\](.*?)\[\/IMAGE\]/);
+  if (match) {
+    return {
+      imageUrl: match[1],
+      text: text.replace(match[0], '').trim()
+    };
+  }
+  return { imageUrl: null, text };
+};
 
 export default function ProductDetail() {
   const { id } = useParams();
@@ -27,9 +42,15 @@ export default function ProductDetail() {
   const [conversation, setConversation] = useState(null);
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [imagePreview, setImagePreview] = useState('');
+  const [enlargedImage, setEnlargedImage] = useState(null);
+
   const [chatLoading, setChatLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [chatError, setChatError] = useState('');
+  
+  const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
 
   const storedUser = localStorage.getItem('thriftloop_user');
@@ -53,7 +74,6 @@ export default function ProductDetail() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Live polling for seller responses
   useEffect(() => {
     if (!showChatModal || !conversation?.conversation_id) return;
 
@@ -131,12 +151,47 @@ export default function ProductDetail() {
     }
   };
 
+  const handleImageSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let { width, height } = img;
+        const maxDim = 900;
+        if (width > height && width > maxDim) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else if (height > maxDim) {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        const base64 = canvas.toDataURL('image/jpeg', 0.8);
+        setSelectedImage(base64);
+        setImagePreview(base64);
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!inputMessage.trim() || !conversation) return;
+    if ((!inputMessage.trim() && !selectedImage) || !conversation) return;
 
     const textToSend = inputMessage.trim();
+    const imageToSend = selectedImage;
+
     setInputMessage('');
+    setSelectedImage(null);
+    setImagePreview('');
     setSending(true);
     setChatError('');
 
@@ -149,6 +204,7 @@ export default function ProductDetail() {
           sender_id: currentUserId,
           receiver_id: conversation.seller_id,
           message_text: textToSend,
+          image_url: imageToSend,
         }),
       });
 
@@ -357,7 +413,7 @@ export default function ProductDetail() {
         </div>
       </main>
 
-      {/* Sticky Thumb Bar on Mobile Viewports */}
+      {/* Sticky Mobile Bar */}
       <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-[#A8C3A0]/30 px-4 py-3 flex items-center justify-between gap-3 z-40 shadow-lg">
         <div>
           <span className="text-[10px] text-[#A8C3A0] font-bold block uppercase">1-of-1 Price</span>
@@ -384,7 +440,7 @@ export default function ProductDetail() {
         </div>
       </div>
 
-      {/* Direct Seller Messaging Modal (Mobile Sheet + Desktop Modal) */}
+      {/* Direct Seller Messaging Modal with Image Support */}
       {showChatModal && (
         <div className="fixed inset-0 bg-[#23313A]/60 backdrop-blur-xs flex items-end sm:items-center justify-center z-50 p-0 sm:p-4 animate-in fade-in duration-150">
           <div className="bg-white w-full sm:max-w-lg h-[90dvh] sm:h-[580px] rounded-t-3xl sm:rounded-3xl flex flex-col shadow-2xl border border-[#A8C3A0]/30 overflow-hidden animate-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200">
@@ -445,12 +501,14 @@ export default function ProductDetail() {
                   <MessageSquare size={28} className="text-[#A8C3A0]" />
                   <p className="font-bold text-[#23313A]">No messages yet</p>
                   <p className="text-[11px] max-w-xs">
-                    Ask about condition details, pit-to-pit flat lays, or custom shipping queries.
+                    Ask about condition details, pit-to-pit flat lays, or send screenshots.
                   </p>
                 </div>
               ) : (
                 messages.map((m) => {
                   const isMine = String(m.sender_id) === String(currentUserId);
+                  const { imageUrl, text } = extractImageAndText(m);
+
                   return (
                     <div
                       key={m.message_id}
@@ -466,7 +524,15 @@ export default function ProductDetail() {
                             : 'bg-white text-[#23313A] border border-[#A8C3A0]/30 rounded-tl-xs'
                         }`}
                       >
-                        {m.message_text}
+                        {imageUrl && (
+                          <img
+                            src={imageUrl}
+                            alt="Attachment"
+                            onClick={() => setEnlargedImage(imageUrl)}
+                            className="max-h-52 rounded-xl object-contain mb-1.5 cursor-pointer hover:opacity-95 bg-black/5"
+                          />
+                        )}
+                        {text && text !== '📷 Sent an image' && <p>{text}</p>}
                       </div>
                       <span className="text-[8px] text-[#23313A]/40 mt-0.5 px-1">
                         {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -478,8 +544,46 @@ export default function ProductDetail() {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Zero-Zoom Mobile Input Field */}
+            {/* Preview Chip */}
+            {imagePreview && (
+              <div className="px-3 py-2 bg-[#F6F1E8] border-t border-[#A8C3A0]/30 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <img src={imagePreview} alt="Upload preview" className="w-10 h-10 rounded-lg object-cover border border-[#A8C3A0]/40" />
+                  <span className="text-[11px] text-[#23313A] font-bold">Image attached</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedImage(null);
+                    setImagePreview('');
+                  }}
+                  className="text-[#E67E5F] p-1 rounded-full hover:bg-white"
+                  title="Remove image"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            )}
+
+            {/* Mobile Zero-Zoom Input Field with Image Attachment */}
             <form onSubmit={handleSendMessage} className="p-2.5 sm:p-3 bg-white border-t border-[#A8C3A0]/20 flex gap-2 items-center shrink-0">
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept="image/*"
+                className="hidden"
+                onChange={handleImageSelect}
+              />
+
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="p-2 text-[#A8C3A0] hover:text-[#2F6B4F] hover:bg-[#F6F1E8] rounded-xl transition-colors cursor-pointer"
+                title="Attach Photo"
+              >
+                <ImageIcon size={18} />
+              </button>
+
               <input
                 type="text"
                 inputMode="text"
@@ -488,15 +592,34 @@ export default function ProductDetail() {
                 onChange={(e) => setInputMessage(e.target.value)}
                 className="flex-1 bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3 py-2.5 sm:py-2 text-[16px] sm:text-xs text-[#23313A] focus:outline-none focus:border-[#2F6B4F]"
               />
+
               <button
                 type="submit"
-                disabled={sending || !inputMessage.trim()}
+                disabled={sending || (!inputMessage.trim() && !selectedImage)}
                 className="bg-[#2F6B4F] hover:bg-[#23313A] disabled:opacity-40 text-white p-2.5 rounded-xl transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
               >
                 {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
               </button>
             </form>
 
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox Modal */}
+      {enlargedImage && (
+        <div 
+          onClick={() => setEnlargedImage(null)}
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+        >
+          <div className="relative max-w-3xl max-h-[90vh]">
+            <button
+              onClick={() => setEnlargedImage(null)}
+              className="absolute -top-10 right-0 text-white/80 hover:text-white"
+            >
+              <X size={24} />
+            </button>
+            <img src={enlargedImage} alt="Enlarged" className="max-h-[85vh] max-w-full rounded-2xl object-contain shadow-2xl" />
           </div>
         </div>
       )}

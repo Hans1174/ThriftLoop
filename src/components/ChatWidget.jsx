@@ -1,6 +1,8 @@
 import { API_URL } from '../config';
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, X, Send, Loader2 } from 'lucide-react';
+import { 
+  ChevronLeft, ChevronRight, X, Send, Loader2, Image as ImageIcon 
+} from 'lucide-react';
 
 export default function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
@@ -8,15 +10,18 @@ export default function ChatWidget() {
   const [messages, setMessages] = useState([
     {
       sender: 'bot',
-      text: "Hi! I'm Loopie. Ask me about sizing, flat-lay measurements (PTP), or order status.",
+      text: "Hi! I'm Loopie. Ask me about sizing, flat-lay measurements (PTP), or order status. You can also send photos for styling advice!",
     },
   ]);
   const [loading, setLoading] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [imagePreview, setImagePreview] = useState('');
+
+  const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
 
-  // Screen-edge docking & vertical drag state
   const [position, setPosition] = useState({
-    side: 'right', // 'left' | 'right'
+    side: 'right',
     y: typeof window !== 'undefined' ? Math.max(100, window.innerHeight * 0.55) : 350,
   });
   const [isDragging, setIsDragging] = useState(false);
@@ -84,24 +89,59 @@ export default function ChatWidget() {
     } catch {}
 
     if (hasMovedRef.current) {
-      // Snap to whichever side is closer upon release
       const snapSide = e.clientX < window.innerWidth / 2 ? 'left' : 'right';
       setPosition((prev) => ({
         ...prev,
         side: snapSide,
       }));
     } else {
-      // Clean tap/click toggles the chat window
       setIsOpen((prev) => !prev);
     }
   };
 
+  const handleImageSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let { width, height } = img;
+        const maxDim = 800;
+        if (width > height && width > maxDim) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else if (height > maxDim) {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        const base64 = canvas.toDataURL('image/jpeg', 0.8);
+        setSelectedImage(base64);
+        setImagePreview(base64);
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSend = async (customMessage) => {
     const messageToSend = (typeof customMessage === 'string' ? customMessage : input).trim();
-    if (!messageToSend || loading) return;
+    if ((!messageToSend && !selectedImage) || loading) return;
 
-    setMessages((prev) => [...prev, { sender: 'user', text: messageToSend }]);
+    const imageToSend = selectedImage;
+    setMessages((prev) => [
+      ...prev, 
+      { sender: 'user', text: messageToSend, image: imageToSend }
+    ]);
     setInput('');
+    setSelectedImage(null);
+    setImagePreview('');
     setLoading(true);
 
     try {
@@ -109,7 +149,8 @@ export default function ChatWidget() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: messageToSend,
+          message: messageToSend || 'Please analyze this garment image.',
+          image: imageToSend,
           user_id: currentUser?.user_id,
           email: currentUser?.email,
         }),
@@ -132,7 +173,7 @@ export default function ChatWidget() {
 
   return (
     <>
-      {/* 1. Movable Side-Docked Arrow Tab (0px Gap) */}
+      {/* 1. Movable Side-Docked Arrow Tab */}
       {!isOpen && (
         <div
           style={{
@@ -200,7 +241,10 @@ export default function ChatWidget() {
                         : 'bg-white border border-[#A8C3A0]/30 text-[#23313A] rounded-bl-xs'
                     }`}
                   >
-                    {m.text}
+                    {m.image && (
+                      <img src={m.image} alt="User upload" className="max-h-40 rounded-xl object-contain mb-1 bg-black/10" />
+                    )}
+                    {m.text && <p>{m.text}</p>}
                   </div>
                 </div>
               );
@@ -216,6 +260,26 @@ export default function ChatWidget() {
             )}
             <div ref={messagesEndRef} />
           </div>
+
+          {/* Image Preview Chip */}
+          {imagePreview && (
+            <div className="px-3 py-1.5 bg-[#F6F1E8] border-t border-[#A8C3A0]/20 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <img src={imagePreview} alt="Upload Preview" className="w-8 h-8 rounded-md object-cover" />
+                <span className="text-[10px] text-[#23313A] font-bold">Image attached</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedImage(null);
+                  setImagePreview('');
+                }}
+                className="text-[#E67E5F] p-1 rounded-full hover:bg-white"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          )}
 
           {/* Action Chips */}
           <div className="px-3 py-2 bg-white border-t border-[#A8C3A0]/20 flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0">
@@ -248,8 +312,25 @@ export default function ChatWidget() {
               e.preventDefault();
               handleSend();
             }}
-            className="p-2.5 sm:p-3 bg-white border-t border-[#A8C3A0]/20 flex gap-2 shrink-0"
+            className="p-2.5 sm:p-3 bg-white border-t border-[#A8C3A0]/20 flex gap-2 shrink-0 items-center"
           >
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept="image/*"
+              className="hidden"
+              onChange={handleImageSelect}
+            />
+
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="p-2 text-[#A8C3A0] hover:text-[#2F6B4F] hover:bg-[#F6F1E8] rounded-xl transition-colors cursor-pointer"
+              title="Upload photo for Loopie"
+            >
+              <ImageIcon size={18} />
+            </button>
+
             <input
               type="text"
               placeholder="Ask Loopie..."
@@ -257,9 +338,10 @@ export default function ChatWidget() {
               onChange={(e) => setInput(e.target.value)}
               className="flex-1 bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2 text-base sm:text-xs text-[#23313A] focus:outline-none focus:border-[#2F6B4F] focus:bg-white transition-all"
             />
+
             <button
               type="submit"
-              disabled={loading || !input.trim()}
+              disabled={loading || (!input.trim() && !selectedImage)}
               className="bg-[#2F6B4F] hover:bg-[#23313A] disabled:opacity-40 text-white p-2.5 rounded-xl transition-colors shadow-xs cursor-pointer"
               title="Send"
             >
