@@ -25,6 +25,23 @@ import BuyerMessages from './BuyerMessages';
 
 const GOOGLE_CLIENT_ID = '1089526724617-1e8fas2jq3noffeigk0kh5v7gfsids1f.apps.googleusercontent.com';
 
+// Route Guard: Restricts admins exclusively to /admin and prevents them from shopping or checking out
+function CustomerRoute({ children }) {
+  const storedUser = localStorage.getItem('thriftloop_user');
+  let user = null;
+  try {
+    user = storedUser ? JSON.parse(storedUser) : null;
+  } catch {
+    user = null;
+  }
+
+  if (user?.role === 'admin' || user?.email === 'admin@thriftloop.com') {
+    return <Navigate to="/admin" replace />;
+  }
+
+  return children;
+}
+
 export default function App() {
   const [isLoginOpen, setIsLoginOpen] = useState(false);
 
@@ -46,18 +63,63 @@ export default function App() {
             {/* Main Application Views */}
             <div className="flex-1">
               <Routes>
-                <Route path="/" element={<Landing />} />
-                <Route path="/shop" element={<Shop />} />
-                <Route path="/product/:id" element={<ProductDetail />} />
-                <Route path="/cart" element={<Cart />} />
-                <Route path="/checkout" element={<Checkout />} />
+                {/* Storefront & Purchasing Routes Protected from Admin Accounts */}
+                <Route
+                  path="/"
+                  element={
+                    <CustomerRoute>
+                      <Landing />
+                    </CustomerRoute>
+                  }
+                />
+                <Route
+                  path="/shop"
+                  element={
+                    <CustomerRoute>
+                      <Shop />
+                    </CustomerRoute>
+                  }
+                />
+                <Route
+                  path="/product/:id"
+                  element={
+                    <CustomerRoute>
+                      <ProductDetail />
+                    </CustomerRoute>
+                  }
+                />
+                <Route
+                  path="/cart"
+                  element={
+                    <CustomerRoute>
+                      <Cart />
+                    </CustomerRoute>
+                  }
+                />
+                <Route
+                  path="/checkout"
+                  element={
+                    <CustomerRoute>
+                      <Checkout />
+                    </CustomerRoute>
+                  }
+                />
+
+                {/* Account & Tracking Routes */}
                 <Route path="/orders" element={<MyOrders />} />
                 <Route path="/confirmation" element={<Confirmation />} />
                 <Route path="/order-success" element={<Confirmation />} />
                 <Route path="/track" element={<TrackOrder />} />
                 <Route path="/track/:id" element={<TrackOrder />} />
                 <Route path="/account" element={<MyAccount />} />
-                <Route path="/register" element={<Register />} />
+                <Route
+                  path="/register"
+                  element={
+                    <CustomerRoute>
+                      <Register />
+                    </CustomerRoute>
+                  }
+                />
 
                 {/* Direct Buyer-to-Seller Conversations */}
                 <Route path="/messages" element={<BuyerMessages />} />
@@ -66,7 +128,7 @@ export default function App() {
                 <Route path="/forgot-password" element={<ResetPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
 
-                {/* Redirect any legacy /login visits to home and open the modal */}
+                {/* Legacy /login redirect */}
                 <Route
                   path="/login"
                   element={
@@ -87,6 +149,9 @@ export default function App() {
                     </AdminRoute>
                   }
                 />
+
+                {/* Catch-all fallback */}
+                <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </div>
 
@@ -96,12 +161,22 @@ export default function App() {
             {/* AI Concierge (Loopie) Side Widget */}
             <ChatWidget />
 
-            {/* Global Interactive Login Modal */}
+            {/* Global Interactive Login Modal with Role-Based Redirection */}
             <Login
               isOpen={isLoginOpen}
               onClose={() => setIsLoginOpen(false)}
               onLoginSuccess={() => {
                 setIsLoginOpen(false);
+                try {
+                  const storedUser = localStorage.getItem('thriftloop_user');
+                  const user = storedUser ? JSON.parse(storedUser) : null;
+                  if (user?.role === 'admin' || user?.email === 'admin@thriftloop.com') {
+                    window.location.href = '/admin';
+                    return;
+                  }
+                } catch {
+                  // Fall through to regular reload
+                }
                 window.location.reload();
               }}
             />
