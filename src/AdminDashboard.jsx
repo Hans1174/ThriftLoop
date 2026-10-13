@@ -3,11 +3,22 @@ import {
   Package, Plus, Trash2, CheckCircle, 
   ShoppingBag, DollarSign, Tag, AlertCircle, 
   X, Search, UploadCloud, Pencil, Truck, Check, MessageSquare,
-  Sparkles, ImageIcon, ShieldCheck, Lock
+  ImageIcon, ShieldCheck, Lock
 } from 'lucide-react';
 import AdminInbox from './components/AdminInbox';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
+
+// Fixed official category taxonomy
+const OFFICIAL_CATEGORIES = ['Tops', 'Bottoms', 'Outerwear', 'Dresses', 'Footwear', 'Accessories'];
+
+const normalizeCategory = (cat) => {
+  if (!cat) return 'Tops';
+  const c = cat.trim();
+  if (c.toLowerCase() === 'shoes') return 'Footwear';
+  const match = OFFICIAL_CATEGORIES.find((item) => item.toLowerCase() === c.toLowerCase());
+  return match || 'Tops';
+};
 
 const normalizeCondition = (grade) => {
   if (!grade) return 'Good';
@@ -23,7 +34,6 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('inventory');
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
-  const [categoriesList, setCategoriesList] = useState(['Tops', 'Bottoms', 'Outerwear', 'Dresses', 'Shoes', 'Accessories']);
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState(null);
 
@@ -59,6 +69,7 @@ export default function AdminDashboard() {
 
   const getSizeOptions = (category) => {
     switch (category) {
+      case 'Footwear':
       case 'Shoes':
         return [
           'US 5 (EU 37.5)', 'US 5.5 (EU 38)', 'US 6 (EU 38.5)', 'US 6.5 (EU 39)', 
@@ -89,7 +100,6 @@ export default function AdminDashboard() {
     }));
   };
 
-  // Automated background data fetch (silent polling avoids UI flickering)
   const fetchData = async (isSilent = false) => {
     if (!isSilent) setLoading(true);
     try {
@@ -99,10 +109,9 @@ export default function AdminDashboard() {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       };
 
-      const [resProd, resOrd, resCat] = await Promise.all([
+      const [resProd, resOrd] = await Promise.all([
         fetch(`${API_URL}/api/products`),
         fetch(`${API_URL}/api/admin/orders`, { headers }).catch(() => null),
-        fetch(`${API_URL}/api/categories`).catch(() => null),
       ]);
 
       if (resProd.ok) {
@@ -114,14 +123,6 @@ export default function AdminDashboard() {
         const ordData = await resOrd.json();
         setOrders(Array.isArray(ordData) ? ordData : []);
       }
-
-      if (resCat && resCat.ok) {
-        const catData = await resCat.json();
-        if (Array.isArray(catData) && catData.length > 0) {
-          const names = catData.map((c) => c.name);
-          setCategoriesList((prev) => Array.from(new Set([...prev, ...names])));
-        }
-      }
     } catch (err) {
       if (!isSilent) showToast(err.message || 'Error communicating with backend.', 'error');
     } finally {
@@ -129,7 +130,7 @@ export default function AdminDashboard() {
     }
   };
 
-  // Automatic real-time polling every 4 seconds
+  // Automated silent background sync every 4 seconds
   useEffect(() => {
     fetchData(false);
     const syncInterval = setInterval(() => {
@@ -185,7 +186,7 @@ export default function AdminDashboard() {
     setForm({
       name: '',
       brand: '',
-      category_name: categoriesList[0] || 'Tops',
+      category_name: 'Tops',
       condition_grade: 'Excellent',
       size: 'M',
       price: '',
@@ -199,7 +200,8 @@ export default function AdminDashboard() {
     setEditingItem(item);
     setPreviewUrl(item.image_url || '');
 
-    const resolvedCat = item.categories?.name || item.category_name || 'Tops';
+    const rawCat = item.categories?.name || item.category_name || 'Tops';
+    const resolvedCat = normalizeCategory(rawCat);
 
     setForm({
       name: item.name || '',
@@ -310,7 +312,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // Neutral, clean condition badge
   const renderConditionBadge = (rawCondition) => {
     const condition = normalizeCondition(rawCondition);
     return (
@@ -328,10 +329,11 @@ export default function AdminDashboard() {
     .filter((p) => p.status !== 'sold')
     .reduce((sum, p) => sum + (parseFloat(p.price) || 0), 0);
 
-  // Filters with category resolution
+  // Filters
   const filteredProducts = products.filter((p) => {
     const q = searchFilter.toLowerCase();
-    const resolvedCat = p.categories?.name || p.category_name || '';
+    const rawCat = p.categories?.name || p.category_name || '';
+    const resolvedCat = normalizeCategory(rawCat);
 
     const matchesSearch = 
       String(p.name || '').toLowerCase().includes(q) ||
@@ -366,7 +368,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Clean Header: Renamed to Admin Dashboard with no subtext & automatic live sync */}
+        {/* Clean Header Banner */}
         <div className="bg-white border border-[#A8C3A0]/30 rounded-3xl p-6 sm:p-8 shadow-xs flex justify-between items-center gap-4">
           <h1 className="font-serif text-2xl sm:text-3xl font-bold text-[#23313A]">
             Admin Dashboard
@@ -382,7 +384,7 @@ export default function AdminDashboard() {
           </button>
         </div>
 
-        {/* Analytics Summary Cards (Clean: Subtext Removed) */}
+        {/* Analytics Summary Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <div className="bg-white border border-[#A8C3A0]/30 p-5 rounded-2xl shadow-xs space-y-1">
             <div className="flex items-center justify-between text-[#A8C3A0]">
@@ -465,7 +467,7 @@ export default function AdminDashboard() {
           </button>
         </div>
 
-        {/* Tab 1: Product Card Box Grid (font-serif titles + font-mono data) */}
+        {/* Tab 1: Product Card Box Grid */}
         {activeTab === 'inventory' && (
           <div className="space-y-6">
             
@@ -489,7 +491,7 @@ export default function AdminDashboard() {
                   className="bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3 py-2 text-xs font-mono font-bold text-[#23313A] focus:outline-none focus:border-[#2F6B4F]"
                 >
                   <option value="ALL">All Categories</option>
-                  {categoriesList.map((c) => (
+                  {OFFICIAL_CATEGORIES.map((c) => (
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
@@ -522,7 +524,8 @@ export default function AdminDashboard() {
                 {filteredProducts.map((item) => {
                   const id = item.product_id || item.id;
                   const isSold = item.status === 'sold';
-                  const resolvedCategory = item.categories?.name || item.category_name || 'Vintage';
+                  const rawCategory = item.categories?.name || item.category_name;
+                  const resolvedCategory = normalizeCategory(rawCategory);
 
                   return (
                     <div
@@ -585,7 +588,7 @@ export default function AdminDashboard() {
                         </div>
                       </div>
 
-                      {/* Action Footer (Clean text-only badge, dot removed) */}
+                      {/* Action Footer */}
                       <div className="p-3 sm:p-4 border-t border-[#A8C3A0]/20 bg-[#F6F1E8]/30 flex items-center gap-2 font-mono">
                         <div
                           className={`flex-1 py-2 px-3 rounded-xl text-[11px] font-bold text-center tracking-wider uppercase border flex items-center justify-center ${
@@ -597,7 +600,6 @@ export default function AdminDashboard() {
                           <span>{isSold ? 'Sold' : 'Available'}</span>
                         </div>
 
-                        {/* Edit Button */}
                         <button
                           type="button"
                           onClick={() => handleOpenEditModal(item)}
@@ -607,7 +609,6 @@ export default function AdminDashboard() {
                           <Pencil size={15} />
                         </button>
 
-                        {/* Protected Delete Button */}
                         <button
                           type="button"
                           disabled={isSold}
@@ -711,7 +712,7 @@ export default function AdminDashboard() {
 
       </div>
 
-      {/* 2-Column Product Modal */}
+      {/* Clean 2-Column Product Modal */}
       {isModalOpen && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
@@ -739,20 +740,11 @@ export default function AdminDashboard() {
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => e.preventDefault()}
           >
+            {/* Clean Modal Header */}
             <div className="flex items-center justify-between pb-4 sm:pb-5 border-b border-[#A8C3A0]/20 mb-6">
-              <div>
-                <span className="text-[10px] uppercase font-mono font-bold text-[#A8C3A0] tracking-wider flex items-center gap-1">
-                  <Sparkles size={11} className="text-[#E67E5F]" /> 1-of-1 Catalog Curator
-                </span>
-                <h3 className="font-serif font-bold text-2xl sm:text-3xl text-[#23313A] mt-0.5">
-                  {editingItem ? 'Edit Vintage Listing' : 'Add 1-of-1 Vintage Listing'}
-                </h3>
-                <p className="text-xs font-mono text-[#23313A]/60 mt-1">
-                  {editingItem 
-                    ? `Updating archive piece #${editingItem.product_id || editingItem.id}` 
-                    : 'Upload photos, select condition, specify measurements, and publish drops to ThriftLoop.'}
-                </p>
-              </div>
+              <h3 className="font-serif font-bold text-2xl sm:text-3xl text-[#23313A]">
+                {editingItem ? 'Edit Listing' : 'Add Listing'}
+              </h3>
               <button 
                 type="button"
                 onClick={() => setIsModalOpen(false)}
@@ -853,8 +845,7 @@ export default function AdminDashboard() {
                             <UploadCloud size={26} />
                           </div>
                           <div>
-                            <p className="font-bold text-xs sm:text-sm text-[#23313A]">Click to browse or drag & drop</p>
-                            <p className="text-[10px] text-[#A8C3A0] mt-0.5">High-res JPG, PNG, WEBP auto-compressed</p>
+                            <p className="font-bold text-xs">Click to browse or drag & drop</p>
                           </div>
                         </div>
                       )}
@@ -863,7 +854,6 @@ export default function AdminDashboard() {
                     <div className="space-y-2">
                       <input
                         type="url"
-                        placeholder="https://images.unsplash.com/photo-..."
                         value={form.image_url}
                         onChange={(e) => {
                           setForm({ ...form, image_url: e.target.value });
@@ -883,19 +873,18 @@ export default function AdminDashboard() {
                       ) : (
                         <div className="w-full h-40 border border-dashed border-[#A8C3A0]/40 rounded-2xl flex flex-col items-center justify-center gap-1.5 text-[#A8C3A0]">
                           <ImageIcon size={22} />
-                          <span className="text-[10px]">Image preview will appear here</span>
                         </div>
                       )}
                     </div>
                   )}
 
+                  {/* Description without placeholder */}
                   <div>
                     <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
                       Description & Flat-Lay Notes
                     </label>
                     <textarea
                       rows="4"
-                      placeholder="Specify single-stitch hem details, wash distressing, pit-to-pit flat lay notes, and tag provenance..."
                       value={form.description}
                       onChange={(e) => setForm({ ...form, description: e.target.value })}
                       className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl p-3 focus:outline-none focus:border-[#2F6B4F] text-[#23313A] leading-relaxed resize-none text-xs font-mono"
@@ -903,7 +892,7 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                {/* Right Column: Specifications */}
+                {/* Right Column: Specifications without placeholders */}
                 <div className="md:col-span-7 space-y-4">
                   <div>
                     <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
@@ -912,7 +901,6 @@ export default function AdminDashboard() {
                     <input
                       type="text"
                       required
-                      placeholder="e.g. 90s Vintage Single-Stitch Band Tee"
                       value={form.name}
                       onChange={(e) => setForm({ ...form, name: e.target.value })}
                       className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] text-[#23313A] font-serif font-bold text-sm"
@@ -926,7 +914,6 @@ export default function AdminDashboard() {
                       </label>
                       <input
                         type="text"
-                        placeholder="e.g. Brockum, Levi's, Carhartt"
                         value={form.brand}
                         onChange={(e) => setForm({ ...form, brand: e.target.value })}
                         className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] text-[#23313A] font-mono"
@@ -941,7 +928,6 @@ export default function AdminDashboard() {
                         type="number"
                         step="0.01"
                         required
-                        placeholder="450.00"
                         value={form.price}
                         onChange={(e) => setForm({ ...form, price: e.target.value })}
                         className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] text-[#23313A] font-mono font-bold"
@@ -949,6 +935,7 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
+                  {/* Strictly 6 Categories */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     <div>
                       <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
@@ -959,7 +946,7 @@ export default function AdminDashboard() {
                         onChange={(e) => handleCategoryChange(e.target.value)}
                         className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 font-mono font-bold focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
                       >
-                        {categoriesList.map((c) => (
+                        {OFFICIAL_CATEGORIES.map((c) => (
                           <option key={c} value={c}>{c}</option>
                         ))}
                       </select>
@@ -967,7 +954,7 @@ export default function AdminDashboard() {
 
                     <div>
                       <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
-                        {form.category_name === 'Shoes' ? 'Shoe Size' : 'Size'}
+                        {form.category_name === 'Footwear' ? 'Shoe Size' : 'Size'}
                       </label>
                       <select
                         value={form.size}
@@ -981,6 +968,7 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
+                  {/* Condition (Without subtext box) */}
                   <div>
                     <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
                       Garment Condition
@@ -994,13 +982,6 @@ export default function AdminDashboard() {
                         <option key={g} value={g}>{g}</option>
                       ))}
                     </select>
-
-                    <div className="mt-2 p-3 bg-[#F6F1E8]/40 border border-[#A8C3A0]/20 rounded-xl text-[11px] font-mono text-[#23313A]/70 leading-relaxed">
-                      {form.condition_grade === 'Excellent' && '✨ Flawless archive piece with crisp fabric and no visible signs of wear.'}
-                      {form.condition_grade === 'Good' && '👌 Well-preserved vintage piece with gentle, natural character and firm structure.'}
-                      {form.condition_grade === 'Used but not abused' && '🧥 Authentic pre-loved vintage garment. Broken in comfortably with no tears or heavy stains.'}
-                      {form.condition_grade === 'Flawed' && '⚠️ Contains visible distressing, minor fraying, or vintage sun-fading noted in the description.'}
-                    </div>
                   </div>
 
                   <div className="pt-4 border-t border-[#A8C3A0]/20 flex items-center justify-end gap-3 font-mono">
