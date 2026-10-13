@@ -3,7 +3,7 @@ import {
   Package, Plus, Trash2, CheckCircle, RefreshCw, 
   ShoppingBag, DollarSign, Tag, AlertCircle, 
   X, Search, UploadCloud, Pencil, Truck, Check, MessageSquare,
-  Sparkles, ImageIcon, ShieldCheck, ArrowUpRight, Filter, Wand2
+  Sparkles, ImageIcon, ShieldCheck, Filter, Wand2, Lock
 } from 'lucide-react';
 import AdminInbox from './components/AdminInbox';
 
@@ -20,7 +20,7 @@ const normalizeCondition = (grade) => {
 };
 
 export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState('inventory'); // 'inventory' | 'orders' | 'messages'
+  const [activeTab, setActiveTab] = useState('inventory');
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [categoriesList, setCategoriesList] = useState(['Tops', 'Bottoms', 'Outerwear', 'Dresses', 'Shoes', 'Accessories']);
@@ -36,7 +36,7 @@ export default function AdminDashboard() {
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
 
-  // Modal State (Create & Edit)
+  // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -210,7 +210,6 @@ export default function AdminDashboard() {
     setEditingItem(item);
     setPreviewUrl(item.image_url || '');
 
-    // Properly resolves relational category name to prevent incorrect fallback
     const resolvedCat = item.categories?.name || item.category_name || 'Tops';
 
     setForm({
@@ -273,8 +272,14 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleDeleteProduct = async (id) => {
-    if (!window.confirm('Are you sure you want to permanently remove this archive piece?')) return;
+  const handleDeleteProduct = async (item) => {
+    const id = item.product_id || item.id;
+    if (item.status === 'sold') {
+      showToast('Cannot delete sold piece. It is preserved for order history and audit records.', 'error');
+      return;
+    }
+
+    if (!window.confirm('Are you sure you want to permanently remove this unsold archive piece?')) return;
     try {
       const token = localStorage.getItem('thriftloop_token');
       const res = await fetch(`${API_URL}/api/products/${id}`, {
@@ -282,7 +287,9 @@ export default function AdminDashboard() {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
-      if (!res.ok) throw new Error('Failed to delete piece.');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete piece.');
+
       setProducts((prev) => prev.filter((p) => (p.product_id || p.id) !== id));
       showToast('Piece deleted from inventory.');
     } catch (err) {
@@ -314,20 +321,11 @@ export default function AdminDashboard() {
     }
   };
 
+  // Uniform, non-colorful condition badge
   const renderConditionBadge = (rawCondition) => {
     const condition = normalizeCondition(rawCondition);
-    let badgeStyle = 'bg-emerald-50 text-emerald-800 border-emerald-200';
-
-    if (condition === 'Good') {
-      badgeStyle = 'bg-blue-50 text-blue-800 border-blue-200';
-    } else if (condition === 'Used but not abused') {
-      badgeStyle = 'bg-amber-50 text-amber-800 border-amber-200';
-    } else if (condition === 'Flawed') {
-      badgeStyle = 'bg-rose-50 text-rose-800 border-rose-200';
-    }
-
     return (
-      <span className={`inline-block px-2.5 py-0.5 rounded-md text-[10px] font-bold border tracking-tight ${badgeStyle}`}>
+      <span className="inline-block px-2.5 py-0.5 rounded-md text-[10px] font-semibold tracking-wide border border-[#A8C3A0]/40 bg-[#F6F1E8]/70 text-[#23313A]">
         {condition}
       </span>
     );
@@ -341,7 +339,7 @@ export default function AdminDashboard() {
     .filter((p) => p.status !== 'sold')
     .reduce((sum, p) => sum + (parseFloat(p.price) || 0), 0);
 
-  // Filters with category resolution
+  // Filters
   const filteredProducts = products.filter((p) => {
     const q = searchFilter.toLowerCase();
     const resolvedCat = p.categories?.name || p.category_name || '';
@@ -402,7 +400,7 @@ export default function AdminDashboard() {
               onClick={handleBulkMigrateConditions}
               disabled={syncing}
               className="flex items-center justify-center gap-1.5 bg-[#F6F1E8] hover:bg-[#A8C3A0]/25 text-[#23313A] text-xs font-bold px-3.5 py-2.5 rounded-xl border border-[#A8C3A0]/30 transition-all cursor-pointer"
-              title="Sync any older Class A / Class C items to the new taxonomy"
+              title="Sync any older condition entries to the standard taxonomy"
             >
               <Wand2 size={14} className={syncing ? 'animate-spin text-[#2F6B4F]' : 'text-[#2F6B4F]'} />
               <span>{syncing ? 'Syncing...' : 'Sync Conditions'}</span>
@@ -438,7 +436,7 @@ export default function AdminDashboard() {
                 <Package size={16} />
               </div>
             </div>
-            <p className="text-2xl sm:text-3xl font-bold text-[#23313A]">{availableCount}</p>
+            <p className="text-2xl sm:text-3xl font-serif font-bold text-[#23313A]">{availableCount}</p>
             <span className="text-[10px] font-semibold text-[#2F6B4F] block">Ready for checkout</span>
           </div>
 
@@ -449,7 +447,7 @@ export default function AdminDashboard() {
                 <CheckCircle size={16} />
               </div>
             </div>
-            <p className="text-2xl sm:text-3xl font-bold text-[#23313A]">{soldCount}</p>
+            <p className="text-2xl sm:text-3xl font-serif font-bold text-[#23313A]">{soldCount}</p>
             <span className="text-[10px] font-semibold text-[#E67E5F] block">Claimed archive items</span>
           </div>
 
@@ -460,7 +458,7 @@ export default function AdminDashboard() {
                 <DollarSign size={16} />
               </div>
             </div>
-            <p className="text-2xl sm:text-3xl font-bold text-[#23313A]">
+            <p className="text-2xl sm:text-3xl font-serif font-bold text-[#23313A]">
               ₱{totalValuation.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </p>
             <span className="text-[10px] font-semibold text-[#A8C3A0] block">Unsold catalog value</span>
@@ -473,7 +471,7 @@ export default function AdminDashboard() {
                 <ShoppingBag size={16} />
               </div>
             </div>
-            <p className="text-2xl sm:text-3xl font-bold text-[#23313A]">{orders.length}</p>
+            <p className="text-2xl sm:text-3xl font-serif font-bold text-[#23313A]">{orders.length}</p>
             <span className="text-[10px] font-semibold text-[#A8C3A0] block">PayMongo & COD placed</span>
           </div>
         </div>
@@ -516,7 +514,7 @@ export default function AdminDashboard() {
           </button>
         </div>
 
-        {/* Tab 1: Product Card Box Grid */}
+        {/* Tab 1: Product Card Box Grid with Consistent Fonts */}
         {activeTab === 'inventory' && (
           <div className="space-y-6">
             
@@ -561,7 +559,7 @@ export default function AdminDashboard() {
               </p>
             </div>
 
-            {/* Individual Product Card Boxes */}
+            {/* Product Card Boxes */}
             {filteredProducts.length === 0 ? (
               <div className="bg-white border border-[#A8C3A0]/30 rounded-3xl p-12 text-center text-[#A8C3A0] space-y-2">
                 <Package size={36} className="mx-auto text-[#2F6B4F] opacity-50" />
@@ -580,7 +578,7 @@ export default function AdminDashboard() {
                       key={id}
                       className="bg-white border border-[#A8C3A0]/35 rounded-3xl overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
                     >
-                      {/* Photo Box with Brand & ID Overlays */}
+                      {/* Photo Canvas */}
                       <div className="relative h-56 sm:h-60 w-full bg-[#F6F1E8] overflow-hidden border-b border-[#A8C3A0]/20 flex items-center justify-center p-3">
                         <img
                           src={item.image_url || 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=400'}
@@ -590,7 +588,7 @@ export default function AdminDashboard() {
 
                         {/* Top ID Pill */}
                         <div className="absolute top-3 right-3">
-                          <span className="bg-[#23313A]/80 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-xs">
+                          <span className="bg-[#23313A]/80 backdrop-blur-xs text-white text-[10px] font-mono font-bold px-2 py-0.5 rounded-md shadow-xs">
                             ID #{id}
                           </span>
                         </div>
@@ -603,18 +601,18 @@ export default function AdminDashboard() {
                         </div>
                       </div>
 
-                      {/* Content Section */}
+                      {/* Content Section with Standardized Font Hierarchies */}
                       <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-3">
                         <div className="space-y-1.5">
-                          <div className="flex items-center justify-between text-[11px] text-[#A8C3A0] font-semibold">
+                          <div className="flex items-center justify-between text-xs font-semibold text-[#A8C3A0]">
                             <span>{resolvedCategory}</span>
-                            <span className="font-bold text-[#23313A] bg-[#F6F1E8] px-2 py-0.5 rounded-md text-[10px]">
+                            <span className="font-bold text-[#23313A] bg-[#F6F1E8] border border-[#A8C3A0]/30 px-2 py-0.5 rounded-md text-[10px]">
                               Size {item.size}
                             </span>
                           </div>
 
                           <h3 
-                            className="font-serif font-bold text-sm sm:text-base text-[#23313A] line-clamp-1"
+                            className="font-serif font-bold text-base text-[#23313A] line-clamp-1"
                             title={item.name}
                           >
                             {item.name}
@@ -625,16 +623,18 @@ export default function AdminDashboard() {
                           </div>
                         </div>
 
-                        {/* Price Tag */}
+                        {/* Standardized Price Section */}
                         <div className="pt-2 border-t border-[#A8C3A0]/15 flex items-baseline justify-between">
-                          <span className="text-[10px] uppercase font-bold text-[#A8C3A0]">Price</span>
-                          <span className="font-bold text-base sm:text-lg text-[#2F6B4F]">
+                          <span className="text-[10px] uppercase font-bold text-[#A8C3A0] tracking-wider">
+                            Price
+                          </span>
+                          <span className="font-serif font-bold text-base sm:text-lg text-[#2F6B4F]">
                             ₱{parseFloat(item.price || 0).toFixed(2)}
                           </span>
                         </div>
                       </div>
 
-                      {/* Clean Card Action Footer with Available/Sold Status Label */}
+                      {/* Action Footer with Locked Delete Protection */}
                       <div className="p-3 sm:p-4 border-t border-[#A8C3A0]/20 bg-[#F6F1E8]/30 flex items-center gap-2">
                         <div
                           className={`flex-1 py-2 px-3 rounded-xl text-[11px] font-bold text-center tracking-wider uppercase border flex items-center justify-center gap-1.5 ${
@@ -647,6 +647,7 @@ export default function AdminDashboard() {
                           <span>{isSold ? 'Sold' : 'Available'}</span>
                         </div>
 
+                        {/* Edit Button */}
                         <button
                           type="button"
                           onClick={() => handleOpenEditModal(item)}
@@ -656,13 +657,19 @@ export default function AdminDashboard() {
                           <Pencil size={15} />
                         </button>
 
+                        {/* Data Integrity Protected Delete Button */}
                         <button
                           type="button"
-                          onClick={() => handleDeleteProduct(id)}
-                          className="p-2 rounded-xl text-[#E67E5F] bg-white hover:bg-[#E67E5F] hover:text-white border border-[#E67E5F]/30 transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
-                          title="Delete Piece"
+                          disabled={isSold}
+                          onClick={() => handleDeleteProduct(item)}
+                          className={`p-2 rounded-xl transition-all shadow-xs shrink-0 ${
+                            isSold
+                              ? 'text-gray-400 bg-gray-100 border border-gray-200 cursor-not-allowed opacity-50'
+                              : 'text-[#E67E5F] bg-white hover:bg-[#E67E5F] hover:text-white border border-[#E67E5F]/30 cursor-pointer active:scale-95'
+                          }`}
+                          title={isSold ? 'Sold pieces cannot be deleted (linked to customer orders)' : 'Delete Piece'}
                         >
-                          <Trash2 size={15} />
+                          {isSold ? <Lock size={15} /> : <Trash2 size={15} />}
                         </button>
                       </div>
 
@@ -705,7 +712,7 @@ export default function AdminDashboard() {
                       return (
                         <tr key={orderId} className="hover:bg-[#F6F1E8]/30">
                           <td className="py-3 px-4">
-                            <span className="font-bold text-[#23313A] block">#{orderId}</span>
+                            <span className="font-mono font-bold text-[#23313A] block">#{orderId}</span>
                             <span className="text-[10px] text-[#A8C3A0] flex items-center gap-1 mt-0.5">
                               <Truck size={12} className="text-[#2F6B4F]" />
                               {ord.courier || 'J&T Express'} ({ord.tracking_number || 'Pending'})
@@ -718,7 +725,7 @@ export default function AdminDashboard() {
                           <td className="py-3 px-4 text-[#23313A]/70 max-w-[200px] truncate">
                             {[ord.shipping_address, ord.city, ord.province].filter(Boolean).join(', ')}
                           </td>
-                          <td className="py-3 px-4 font-bold text-[#2F6B4F]">
+                          <td className="py-3 px-4 font-serif font-bold text-[#2F6B4F]">
                             ₱{parseFloat(ord.total_amount || 0).toFixed(2)}
                           </td>
                           <td className="py-3 px-4 uppercase font-bold text-[10px] text-[#23313A]/70">
@@ -1000,7 +1007,7 @@ export default function AdminDashboard() {
                       <select
                         value={form.category_name}
                         onChange={(e) => handleCategoryChange(e.target.value)}
-                        className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3 py-2.5 font-bold focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
+                        className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 font-bold focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
                       >
                         {categoriesList.map((c) => (
                           <option key={c} value={c}>{c}</option>
@@ -1015,7 +1022,7 @@ export default function AdminDashboard() {
                       <select
                         value={form.size}
                         onChange={(e) => setForm({ ...form, size: e.target.value })}
-                        className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3 py-2.5 font-bold focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
+                        className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 font-bold focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
                       >
                         {getSizeOptions(form.category_name).map((s) => (
                           <option key={s} value={s}>{s}</option>
