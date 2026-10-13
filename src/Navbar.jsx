@@ -221,6 +221,13 @@ export default function Navbar({ onOpenLogin }) {
     else navigate('/messages');
   };
 
+  const handleOrdersClick = () => {
+    setIsProfileOpen(false);
+    setIsMobileMenuOpen(false);
+    if (!currentUser) handleTriggerLogin();
+    else navigate('/orders');
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('thriftloop_user');
     localStorage.removeItem('thriftloop_token');
@@ -392,9 +399,14 @@ export default function Navbar({ onOpenLogin }) {
                       <Settings size={14} /> My Account
                     </Link>
 
-                    <Link to="/orders" className="flex items-center gap-2 px-4 py-2 hover:bg-[#F6F1E8] font-bold text-[#23313A]">
-                      <Package size={14} /> Orders
-                    </Link>
+                    {/* Fixed Dedicated Orders Route */}
+                    <button
+                      type="button"
+                      onClick={handleOrdersClick}
+                      className="w-full flex items-center gap-2 px-4 py-2 hover:bg-[#F6F1E8] font-bold text-[#23313A] text-left cursor-pointer"
+                    >
+                      <Package size={14} /> My Orders
+                    </button>
 
                     <Link to="/messages" onClick={handleMessagesClick} className="flex items-center justify-between px-4 py-2 hover:bg-[#F6F1E8] font-bold text-[#23313A]">
                       <span className="flex items-center gap-2">
@@ -475,7 +487,7 @@ export default function Navbar({ onOpenLogin }) {
               Shop Collection
             </Link>
             <Link to="/track" onClick={() => setIsMobileMenuOpen(false)} className="py-2 border-b border-[#F6F1E8]">
-              Track Order
+              Track Parcel
             </Link>
             {currentUser && (
               <>
@@ -485,11 +497,15 @@ export default function Navbar({ onOpenLogin }) {
                     <span className="w-2 h-2 rounded-full bg-[#E67E5F] animate-pulse" />
                   )}
                 </Link>
+                <button
+                  type="button"
+                  onClick={handleOrdersClick}
+                  className="py-2 border-b border-[#F6F1E8] text-left font-bold"
+                >
+                  My Orders
+                </button>
                 <Link to="/account" onClick={() => setIsMobileMenuOpen(false)} className="py-2 border-b border-[#F6F1E8]">
                   My Account
-                </Link>
-                <Link to="/orders" onClick={() => setIsMobileMenuOpen(false)} className="py-2 border-b border-[#F6F1E8]">
-                  My Orders
                 </Link>
                 {isAdmin && (
                   <Link to="/admin" onClick={() => setIsMobileMenuOpen(false)} className="py-2 text-[#2F6B4F]">

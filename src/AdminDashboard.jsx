@@ -9,7 +9,6 @@ import AdminInbox from './components/AdminInbox';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
 
-// Normalizes any old or unformatted grade into the 4 official conditions
 const normalizeCondition = (grade) => {
   if (!grade) return 'Good';
   const g = grade.trim().toLowerCase();
@@ -24,11 +23,11 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('inventory'); // 'inventory' | 'orders' | 'messages'
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [categoriesList, setCategoriesList] = useState(['Tops', 'Bottoms', 'Outerwear', 'Dresses', 'Shoes', 'Accessories']);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [notification, setNotification] = useState(null);
 
-  // Authenticated Admin User
   const storedUser = localStorage.getItem('thriftloop_user');
   const currentUser = storedUser ? JSON.parse(storedUser) : null;
 
@@ -41,12 +40,11 @@ export default function AdminDashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const [imageMode, setImageMode] = useState('file'); // 'file' | 'url'
+  const [imageMode, setImageMode] = useState('file');
   const [previewUrl, setPreviewUrl] = useState('');
   const fileInputRef = useRef(null);
   const backdropMouseDownRef = useRef(false);
 
-  const categories = ['Tops', 'Bottoms', 'Outerwear', 'Dresses', 'Shoes', 'Accessories'];
   const conditions = ['Excellent', 'Good', 'Used but not abused', 'Flawed'];
 
   const [form, setForm] = useState({
@@ -101,9 +99,10 @@ export default function AdminDashboard() {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       };
 
-      const [resProd, resOrd] = await Promise.all([
+      const [resProd, resOrd, resCat] = await Promise.all([
         fetch(`${API_URL}/api/products`),
         fetch(`${API_URL}/api/admin/orders`, { headers }).catch(() => null),
+        fetch(`${API_URL}/api/categories`).catch(() => null),
       ]);
 
       if (!resProd.ok) throw new Error('Could not retrieve catalog inventory.');
@@ -113,6 +112,14 @@ export default function AdminDashboard() {
       if (resOrd && resOrd.ok) {
         const ordData = await resOrd.json();
         setOrders(Array.isArray(ordData) ? ordData : []);
+      }
+
+      if (resCat && resCat.ok) {
+        const catData = await resCat.json();
+        if (Array.isArray(catData) && catData.length > 0) {
+          const names = catData.map(c => c.name);
+          setCategoriesList(Array.from(new Set([...categoriesList, ...names])));
+        }
       }
     } catch (err) {
       showToast(err.message || 'Error communicating with backend.', 'error');
@@ -125,7 +132,6 @@ export default function AdminDashboard() {
     fetchData();
   }, []);
 
-  // One-click migration for legacy database items
   const handleBulkMigrateConditions = async () => {
     setSyncing(true);
     try {
@@ -190,7 +196,7 @@ export default function AdminDashboard() {
     setForm({
       name: '',
       brand: '',
-      category_name: 'Tops',
+      category_name: categoriesList[0] || 'Tops',
       condition_grade: 'Excellent',
       size: 'M',
       price: '',
@@ -203,11 +209,14 @@ export default function AdminDashboard() {
   const handleOpenEditModal = (item) => {
     setEditingItem(item);
     setPreviewUrl(item.image_url || '');
+
+    // Properly resolves relational category name to prevent incorrect fallback
+    const resolvedCat = item.categories?.name || item.category_name || 'Tops';
+
     setForm({
       name: item.name || '',
       brand: item.brand || '',
-      category_name: item.category_name || 'Tops',
-      // Automatically maps old Class A / Class C strings to valid select options
+      category_name: resolvedCat,
       condition_grade: normalizeCondition(item.condition_grade),
       size: item.size || 'M',
       price: item.price || '',
@@ -305,7 +314,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // Condition badge with automatic legacy fallback styling
   const renderConditionBadge = (rawCondition) => {
     const condition = normalizeCondition(rawCondition);
     let badgeStyle = 'bg-emerald-50 text-emerald-800 border-emerald-200';
@@ -333,17 +341,19 @@ export default function AdminDashboard() {
     .filter((p) => p.status !== 'sold')
     .reduce((sum, p) => sum + (parseFloat(p.price) || 0), 0);
 
-  // Filters
+  // Filters with category resolution
   const filteredProducts = products.filter((p) => {
     const q = searchFilter.toLowerCase();
+    const resolvedCat = p.categories?.name || p.category_name || '';
+
     const matchesSearch = 
       String(p.name || '').toLowerCase().includes(q) ||
       String(p.brand || '').toLowerCase().includes(q) ||
-      String(p.category_name || '').toLowerCase().includes(q);
+      String(resolvedCat).toLowerCase().includes(q);
 
     const matchesCategory = 
       categoryFilter === 'ALL' || 
-      String(p.category_name).toLowerCase() === categoryFilter.toLowerCase();
+      String(resolvedCat).toLowerCase() === categoryFilter.toLowerCase();
 
     const matchesStatus = 
       statusFilter === 'ALL' || 
@@ -530,7 +540,7 @@ export default function AdminDashboard() {
                   className="bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3 py-2 text-xs font-bold text-[#23313A] focus:outline-none focus:border-[#2F6B4F]"
                 >
                   <option value="ALL">All Categories</option>
-                  {categories.map((c) => (
+                  {categoriesList.map((c) => (
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
@@ -563,6 +573,7 @@ export default function AdminDashboard() {
                 {filteredProducts.map((item) => {
                   const id = item.product_id || item.id;
                   const isSold = item.status === 'sold';
+                  const resolvedCategory = item.categories?.name || item.category_name || 'Vintage';
 
                   return (
                     <div
@@ -596,7 +607,7 @@ export default function AdminDashboard() {
                       <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-3">
                         <div className="space-y-1.5">
                           <div className="flex items-center justify-between text-[11px] text-[#A8C3A0] font-semibold">
-                            <span>{item.category_name || 'Vintage'}</span>
+                            <span>{resolvedCategory}</span>
                             <span className="font-bold text-[#23313A] bg-[#F6F1E8] px-2 py-0.5 rounded-md text-[10px]">
                               Size {item.size}
                             </span>
@@ -989,9 +1000,9 @@ export default function AdminDashboard() {
                       <select
                         value={form.category_name}
                         onChange={(e) => handleCategoryChange(e.target.value)}
-                        className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 font-bold focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
+                        className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3 py-2.5 font-bold focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
                       >
-                        {categories.map((c) => (
+                        {categoriesList.map((c) => (
                           <option key={c} value={c}>{c}</option>
                         ))}
                       </select>
@@ -1004,7 +1015,7 @@ export default function AdminDashboard() {
                       <select
                         value={form.size}
                         onChange={(e) => setForm({ ...form, size: e.target.value })}
-                        className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 font-bold focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
+                        className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3 py-2.5 font-bold focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
                       >
                         {getSizeOptions(form.category_name).map((s) => (
                           <option key={s} value={s}>{s}</option>

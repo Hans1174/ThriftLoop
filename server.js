@@ -181,7 +181,7 @@ app.post('/api/notifications/email', async (req, res) => {
 });
 
 // ==========================================
-// AUTOMATED TELEGRAM DROP POSTING ENGINE (PHOTO & TEXT)
+// AUTOMATED TELEGRAM DROP POSTING ENGINE
 // ==========================================
 const postToTelegram = async (product) => {
   const token = (process.env.TELEGRAM_BOT_TOKEN || TELEGRAM_BOT_TOKEN).trim();
@@ -647,7 +647,23 @@ app.post('/api/vouchers/validate', (req, res) => {
   });
 });
 
-// --- CATALOG & INVENTORY ROUTES ---
+// ==========================================
+// CATALOG & DYNAMIC CATEGORY ROUTES
+// ==========================================
+app.get('/api/categories', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('categories')
+      .select('*')
+      .order('name', { ascending: true });
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch {
+    res.json([]);
+  }
+});
+
 app.get('/api/products', async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -691,11 +707,21 @@ app.post('/api/products', async (req, res) => {
   try {
     let finalCatId = category_id || 1;
     if (category_name) {
-      const { data: cat } = await supabase
+      const cleanName = category_name.trim();
+      let { data: cat } = await supabase
         .from('categories')
         .select('category_id')
-        .eq('name', category_name)
+        .ilike('name', cleanName)
         .maybeSingle();
+
+      if (!cat) {
+        const { data: newCat } = await supabase
+          .from('categories')
+          .insert([{ name: cleanName }])
+          .select('category_id')
+          .maybeSingle();
+        if (newCat) cat = newCat;
+      }
       if (cat) finalCatId = cat.category_id;
     }
 
@@ -739,11 +765,21 @@ app.put('/api/products/:id', async (req, res) => {
   try {
     let finalCatId = category_id || 1;
     if (category_name) {
-      const { data: cat } = await supabase
+      const cleanName = category_name.trim();
+      let { data: cat } = await supabase
         .from('categories')
         .select('category_id')
-        .eq('name', category_name)
+        .ilike('name', cleanName)
         .maybeSingle();
+
+      if (!cat) {
+        const { data: newCat } = await supabase
+          .from('categories')
+          .insert([{ name: cleanName }])
+          .select('category_id')
+          .maybeSingle();
+        if (newCat) cat = newCat;
+      }
       if (cat) finalCatId = cat.category_id;
     }
 
@@ -790,6 +826,50 @@ app.patch('/api/products/:id/status', async (req, res) => {
     res.json({ message: `Status updated to ${status}` });
   } catch {
     res.status(500).json({ error: 'Failed to update garment status' });
+  }
+});
+
+// Bulk condition normalizer for legacy items
+app.post('/api/admin/inventory/migrate-conditions', async (req, res) => {
+  try {
+    const { data: allProducts, error } = await supabase
+      .from('products')
+      .select('product_id, condition_grade');
+
+    if (error) throw error;
+
+    let updatedCount = 0;
+
+    for (const p of allProducts || []) {
+      const g = (p.condition_grade || '').trim().toLowerCase();
+      let targetGrade = null;
+
+      if (['class a', 'grade a', 'brand new', 'deadstock'].includes(g)) {
+        targetGrade = 'Excellent';
+      } else if (['class b', 'grade b'].includes(g)) {
+        targetGrade = 'Good';
+      } else if (['class c', 'grade c', 'used'].includes(g)) {
+        targetGrade = 'Used but not abused';
+      } else if (['class d', 'grade d', 'flaw'].includes(g)) {
+        targetGrade = 'Flawed';
+      }
+
+      if (targetGrade && targetGrade !== p.condition_grade) {
+        await supabase
+          .from('products')
+          .update({ condition_grade: targetGrade })
+          .eq('product_id', p.product_id);
+        updatedCount++;
+      }
+    }
+
+    res.json({ 
+      message: `Successfully migrated ${updatedCount} items to the new condition taxonomy.`,
+      updatedCount 
+    });
+  } catch (err) {
+    console.error('❌ Condition migration error:', err.message);
+    res.status(500).json({ error: 'Failed to migrate product conditions.' });
   }
 });
 
@@ -978,7 +1058,6 @@ app.post('/api/messages', async (req, res) => {
   }
 });
 
-// Check for incoming unread messages for navbar dot notification
 app.get('/api/messages/unread-status/:userId', async (req, res) => {
   const { userId } = req.params;
   try {
@@ -1009,7 +1088,7 @@ app.get('/api/messages/unread-status/:userId', async (req, res) => {
 });
 
 // ==========================================
-// CHECKOUT & ORDERS CRUD (WITH ADMIN ROLE GUARD)
+// CHECKOUT & ORDERS CRUD (SECURED & SCOPED)
 // ==========================================
 
 app.post('/api/checkout/paymongo', async (req, res) => {
@@ -1189,7 +1268,6 @@ app.post('/api/checkout/paymongo', async (req, res) => {
   }
 });
 
-// --- VERIFY PAYMONGO PAYMENT & DISPATCH OFFICIAL CONFIRMATION RECEIPT ---
 app.get('/api/checkout/verify/:sessionId', async (req, res) => {
   const { sessionId } = req.params;
   const { order_id } = req.query;
@@ -1250,7 +1328,6 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
   }
 });
 
-// --- CASH ON DELIVERY (COD) ROUTE & DISPATCH CONFIRMATION RECEIPT (WITH ADMIN ROLE GUARD) ---
 app.post('/api/orders', async (req, res) => {
   const { 
     user_id, customer_name, email, phone, shipping_address, city, province, 
@@ -1396,7 +1473,33 @@ app.post('/api/orders', async (req, res) => {
   }
 });
 
-// --- TRACKING & USER ORDERS ---
+// Single Route to fetch user-scoped orders (Accepts either email or numeric user_id)
+app.get('/api/orders/user/:identifier', async (req, res) => {
+  const { identifier } = req.params;
+  if (!identifier) return res.json([]);
+
+  try {
+    const cleanId = decodeURIComponent(identifier).trim();
+    let query = supabase
+      .from('orders')
+      .select('*, order_items(*, products(*))')
+      .order('order_id', { ascending: false });
+
+    if (cleanId.includes('@')) {
+      query = query.ilike('email', cleanId);
+    } else {
+      query = query.eq('user_id', cleanId);
+    }
+
+    const { data: orders, error } = await query;
+    if (error) throw error;
+    res.json(orders || []);
+  } catch (err) {
+    console.error('Fetch user orders error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch user orders.' });
+  }
+});
+
 app.get('/api/track/:id', async (req, res) => {
   try {
     const { data: order, error } = await supabase
@@ -1409,22 +1512,6 @@ app.get('/api/track/:id', async (req, res) => {
     res.json(order);
   } catch {
     res.status(500).json({ error: 'Database error' });
-  }
-});
-
-app.get('/api/orders/user/:email', async (req, res) => {
-  try {
-    const { data: orders, error } = await supabase
-      .from('orders')
-      .select('order_id, status, courier, tracking_number, total_amount, created_at')
-      .ilike('email', req.params.email.trim())
-      .order('order_id', { ascending: false })
-      .limit(10);
-
-    if (error) throw error;
-    res.json(orders || []);
-  } catch {
-    res.status(500).json({ error: 'Failed to fetch user orders.' });
   }
 });
 
