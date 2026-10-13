@@ -874,7 +874,7 @@ app.post('/api/admin/inventory/migrate-conditions', async (req, res) => {
 });
 
 // ==========================================
-// BUYER-TO-SELLER DIRECT MESSAGING & UNREAD NOTIFICATIONS
+// BUYER-TO-SELLER DIRECT MESSAGING & IMAGES
 // ==========================================
 app.post('/api/messages/conversations', async (req, res) => {
   const { buyer_id, seller_id, product_id } = req.body;
@@ -1266,7 +1266,6 @@ app.post('/api/checkout/paymongo', async (req, res) => {
   }
 });
 
-// --- VERIFY PAYMONGO PAYMENT & DISPATCH OFFICIAL CONFIRMATION RECEIPT ---
 app.get('/api/checkout/verify/:sessionId', async (req, res) => {
   const { sessionId } = req.params;
   const { order_id } = req.query;
@@ -1327,7 +1326,6 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
   }
 });
 
-// --- CASH ON DELIVERY (COD) ROUTE & DISPATCH CONFIRMATION RECEIPT (WITH ADMIN ROLE GUARD) ---
 app.post('/api/orders', async (req, res) => {
   const { 
     user_id, customer_name, email, phone, shipping_address, city, province, 
@@ -1658,7 +1656,7 @@ app.delete('/api/admin/orders/:id', async (req, res) => {
 });
 
 // ==========================================
-// AI CONCIERGE (WITH MULTIMODAL VISION SUPPORT)
+// AI CONCIERGE (LOCKED TO GEMINI-3.8-FLASH)
 // ==========================================
 app.post('/api/chat', async (req, res) => {
   const { message, user_id, email, current_order_id, image } = req.body;
@@ -1737,64 +1735,58 @@ GUIDELINES:
       });
     }
 
-    const candidateModels = [
-      (process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim(),
-      'gemini-2.5-flash',
-      'gemini-2.0-flash',
-    ].filter((m, idx, arr) => m && arr.indexOf(m) === idx);
-
+    // Strictly locked to gemini-3.8-flash per requirement
+    const targetModel = 'gemini-3.8-flash';
     let lastError = null;
 
-    for (const modelCandidate of candidateModels) {
-      if (ai) {
-        try {
-          const response = await ai.models.generateContent({
-            model: modelCandidate,
-            contents: parts,
-            config: { systemInstruction },
-          });
-          if (response?.text) {
-            return res.json({ reply: response.text });
-          }
-        } catch (sdkErr) {
-          lastError = sdkErr.message;
-        }
-      }
-
+    if (ai) {
       try {
-        const restParts = parts.map((p) => {
-          if (p.inlineData) {
-            return {
-              inlineData: {
-                mimeType: p.inlineData.mimeType,
-                data: p.inlineData.data,
-              },
-            };
-          }
-          return { text: p.text };
+        const response = await ai.models.generateContent({
+          model: targetModel,
+          contents: parts,
+          config: { systemInstruction },
         });
-
-        const restRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${modelCandidate}:generateContent?key=${cleanedGeminiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              systemInstruction: { parts: [{ text: systemInstruction }] },
-              contents: [{ role: 'user', parts: restParts }],
-            }),
-          }
-        );
-        const restData = await restRes.json();
-        if (restRes.ok && restData?.candidates?.[0]?.content?.parts?.[0]?.text) {
-          return res.json({ reply: restData.candidates[0].content.parts[0].text });
+        if (response?.text) {
+          return res.json({ reply: response.text });
         }
-        if (restData.error) {
-          lastError = restData.error.message || JSON.stringify(restData.error);
-        }
-      } catch (restErr) {
-        lastError = restErr.message;
+      } catch (sdkErr) {
+        lastError = sdkErr.message;
       }
+    }
+
+    try {
+      const restParts = parts.map((p) => {
+        if (p.inlineData) {
+          return {
+            inlineData: {
+              mimeType: p.inlineData.mimeType,
+              data: p.inlineData.data,
+            },
+          };
+        }
+        return { text: p.text };
+      });
+
+      const restRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${cleanedGeminiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemInstruction }] },
+            contents: [{ role: 'user', parts: restParts }],
+          }),
+        }
+      );
+      const restData = await restRes.json();
+      if (restRes.ok && restData?.candidates?.[0]?.content?.parts?.[0]?.text) {
+        return res.json({ reply: restData.candidates[0].content.parts[0].text });
+      }
+      if (restData.error) {
+        lastError = restData.error.message || JSON.stringify(restData.error);
+      }
+    } catch (restErr) {
+      lastError = restErr.message;
     }
 
     res.json({
@@ -1805,12 +1797,10 @@ GUIDELINES:
   }
 });
 
-// Safe stub route for frontend compatibility
 app.get('/api/blog/posts', (req, res) => {
   res.json([]);
 });
 
-// --- GLOBAL ERROR HANDLER ---
 app.use((err, req, res, next) => {
   console.error('❌ Server Middleware Error:', err.message);
   res.status(err.status || 500).json({
