@@ -321,11 +321,11 @@ export default function AdminDashboard() {
     }
   };
 
-  // Uniform, non-colorful condition badge
+  // Consistent neutral condition badge using font-mono
   const renderConditionBadge = (rawCondition) => {
     const condition = normalizeCondition(rawCondition);
     return (
-      <span className="inline-block px-2.5 py-0.5 rounded-md text-[10px] font-semibold tracking-wide border border-[#A8C3A0]/40 bg-[#F6F1E8]/70 text-[#23313A]">
+      <span className="inline-block px-2.5 py-0.5 rounded-md text-[10px] font-mono font-medium tracking-tight border border-[#A8C3A0]/40 bg-[#F6F1E8]/70 text-[#23313A]">
         {condition}
       </span>
     );
@@ -339,7 +339,7 @@ export default function AdminDashboard() {
     .filter((p) => p.status !== 'sold')
     .reduce((sum, p) => sum + (parseFloat(p.price) || 0), 0);
 
-  // Filters
+  // Filters with category resolution
   const filteredProducts = products.filter((p) => {
     const q = searchFilter.toLowerCase();
     const resolvedCat = p.categories?.name || p.category_name || '';
@@ -362,12 +362,12 @@ export default function AdminDashboard() {
   });
 
   return (
-    <div className="min-h-screen bg-[#F6F1E8] text-[#23313A] font-sans py-6 sm:py-10 px-4 sm:px-8">
+    <div className="min-h-screen bg-[#F6F1E8] text-[#23313A] font-mono py-6 sm:py-10 px-4 sm:px-8">
       <div className="max-w-7xl mx-auto space-y-6 sm:space-y-8">
         
         {/* Toast Alert */}
         {notification && (
-          <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-2xl shadow-xl border text-xs font-bold flex items-center gap-2 animate-in fade-in slide-in-from-bottom-3 ${
+          <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-2xl shadow-xl border text-xs font-mono font-bold flex items-center gap-2 animate-in fade-in slide-in-from-bottom-3 ${
             notification.type === 'error'
               ? 'bg-[#E67E5F] text-white border-[#E67E5F]'
               : 'bg-[#2F6B4F] text-white border-[#2F6B4F]'
@@ -382,14 +382,14 @@ export default function AdminDashboard() {
           <div>
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[10px] uppercase font-bold text-[#A8C3A0] tracking-wider">
+              <span className="text-[10px] uppercase font-mono font-bold text-[#A8C3A0] tracking-wider">
                 Store Operations & Live Inventory
               </span>
             </div>
             <h1 className="font-serif text-2xl sm:text-3xl font-bold text-[#23313A] mt-1">
               Admin Console
             </h1>
-            <p className="text-xs text-[#23313A]/60 font-medium">
+            <p className="text-xs font-mono text-[#23313A]/60 mt-0.5">
               Curate archive pieces, process customer fulfillments, and handle direct buyer messages.
             </p>
           </div>
@@ -399,8 +399,8 @@ export default function AdminDashboard() {
               type="button"
               onClick={handleBulkMigrateConditions}
               disabled={syncing}
-              className="flex items-center justify-center gap-1.5 bg-[#F6F1E8] hover:bg-[#A8C3A0]/25 text-[#23313A] text-xs font-bold px-3.5 py-2.5 rounded-xl border border-[#A8C3A0]/30 transition-all cursor-pointer"
-              title="Sync any older condition entries to the standard taxonomy"
+              className="flex items-center justify-center gap-1.5 bg-[#F6F1E8] hover:bg-[#A8C3A0]/25 text-[#23313A] text-xs font-mono font-bold px-3.5 py-2.5 rounded-xl border border-[#A8C3A0]/30 transition-all cursor-pointer"
+              title="Sync any older condition entries to standard taxonomy"
             >
               <Wand2 size={14} className={syncing ? 'animate-spin text-[#2F6B4F]' : 'text-[#2F6B4F]'} />
               <span>{syncing ? 'Syncing...' : 'Sync Conditions'}</span>
@@ -410,7 +410,7 @@ export default function AdminDashboard() {
               type="button"
               onClick={fetchData}
               disabled={loading}
-              className="flex items-center justify-center gap-1.5 bg-[#F6F1E8] hover:bg-[#A8C3A0]/25 text-[#23313A] text-xs font-bold px-3.5 py-2.5 rounded-xl border border-[#A8C3A0]/30 transition-all cursor-pointer"
+              className="flex items-center justify-center gap-1.5 bg-[#F6F1E8] hover:bg-[#A8C3A0]/25 text-[#23313A] text-xs font-mono font-bold px-3.5 py-2.5 rounded-xl border border-[#A8C3A0]/30 transition-all cursor-pointer"
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
               <span>Refresh</span>
@@ -419,7 +419,7 @@ export default function AdminDashboard() {
             <button
               type="button"
               onClick={handleOpenCreateModal}
-              className="flex items-center justify-center gap-2 bg-[#2F6B4F] hover:bg-[#23313A] text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer"
+              className="flex items-center justify-center gap-2 bg-[#2F6B4F] hover:bg-[#23313A] text-white text-xs font-mono font-bold px-5 py-2.5 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer"
             >
               <Plus size={15} />
               <span>Add Products</span>
@@ -431,29 +431,29 @@ export default function AdminDashboard() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <div className="bg-white border border-[#A8C3A0]/30 p-5 rounded-2xl shadow-xs space-y-1">
             <div className="flex items-center justify-between text-[#A8C3A0]">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">Live Inventory</span>
+              <span className="text-[10px] sm:text-[11px] font-mono font-bold uppercase tracking-wider">Live Inventory</span>
               <div className="w-8 h-8 rounded-lg bg-[#2F6B4F]/10 text-[#2F6B4F] flex items-center justify-center">
                 <Package size={16} />
               </div>
             </div>
             <p className="text-2xl sm:text-3xl font-serif font-bold text-[#23313A]">{availableCount}</p>
-            <span className="text-[10px] font-semibold text-[#2F6B4F] block">Ready for checkout</span>
+            <span className="text-[10px] font-mono text-[#2F6B4F] block">Ready for checkout</span>
           </div>
 
           <div className="bg-white border border-[#A8C3A0]/30 p-5 rounded-2xl shadow-xs space-y-1">
             <div className="flex items-center justify-between text-[#A8C3A0]">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">Sold Pieces</span>
+              <span className="text-[10px] sm:text-[11px] font-mono font-bold uppercase tracking-wider">Sold Pieces</span>
               <div className="w-8 h-8 rounded-lg bg-[#E67E5F]/10 text-[#E67E5F] flex items-center justify-center">
                 <CheckCircle size={16} />
               </div>
             </div>
             <p className="text-2xl sm:text-3xl font-serif font-bold text-[#23313A]">{soldCount}</p>
-            <span className="text-[10px] font-semibold text-[#E67E5F] block">Claimed archive items</span>
+            <span className="text-[10px] font-mono text-[#E67E5F] block">Claimed archive items</span>
           </div>
 
           <div className="bg-white border border-[#A8C3A0]/30 p-5 rounded-2xl shadow-xs space-y-1">
             <div className="flex items-center justify-between text-[#A8C3A0]">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">Active Valuation</span>
+              <span className="text-[10px] sm:text-[11px] font-mono font-bold uppercase tracking-wider">Active Valuation</span>
               <div className="w-8 h-8 rounded-lg bg-[#2F6B4F]/10 text-[#2F6B4F] flex items-center justify-center">
                 <DollarSign size={16} />
               </div>
@@ -461,18 +461,18 @@ export default function AdminDashboard() {
             <p className="text-2xl sm:text-3xl font-serif font-bold text-[#23313A]">
               ₱{totalValuation.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </p>
-            <span className="text-[10px] font-semibold text-[#A8C3A0] block">Unsold catalog value</span>
+            <span className="text-[10px] font-mono text-[#A8C3A0] block">Unsold catalog value</span>
           </div>
 
           <div className="bg-white border border-[#A8C3A0]/30 p-5 rounded-2xl shadow-xs space-y-1">
             <div className="flex items-center justify-between text-[#A8C3A0]">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">Total Orders</span>
+              <span className="text-[10px] sm:text-[11px] font-mono font-bold uppercase tracking-wider">Total Orders</span>
               <div className="w-8 h-8 rounded-lg bg-[#23313A]/10 text-[#23313A] flex items-center justify-center">
                 <ShoppingBag size={16} />
               </div>
             </div>
             <p className="text-2xl sm:text-3xl font-serif font-bold text-[#23313A]">{orders.length}</p>
-            <span className="text-[10px] font-semibold text-[#A8C3A0] block">PayMongo & COD placed</span>
+            <span className="text-[10px] font-mono text-[#A8C3A0] block">PayMongo & COD placed</span>
           </div>
         </div>
 
@@ -481,7 +481,7 @@ export default function AdminDashboard() {
           <button
             type="button"
             onClick={() => setActiveTab('inventory')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`px-4 py-2.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
               activeTab === 'inventory'
                 ? 'bg-[#2F6B4F] text-white shadow-xs'
                 : 'bg-white text-[#23313A] hover:bg-[#F6F1E8]'
@@ -492,7 +492,7 @@ export default function AdminDashboard() {
           <button
             type="button"
             onClick={() => setActiveTab('orders')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`px-4 py-2.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
               activeTab === 'orders'
                 ? 'bg-[#2F6B4F] text-white shadow-xs'
                 : 'bg-white text-[#23313A] hover:bg-[#F6F1E8]'
@@ -503,7 +503,7 @@ export default function AdminDashboard() {
           <button
             type="button"
             onClick={() => setActiveTab('messages')}
-            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
               activeTab === 'messages'
                 ? 'bg-[#2F6B4F] text-white shadow-xs'
                 : 'bg-white text-[#23313A] hover:bg-[#F6F1E8]'
@@ -514,7 +514,7 @@ export default function AdminDashboard() {
           </button>
         </div>
 
-        {/* Tab 1: Product Card Box Grid with Consistent Fonts */}
+        {/* Tab 1: Product Card Box Grid (font-serif titles + font-mono data) */}
         {activeTab === 'inventory' && (
           <div className="space-y-6">
             
@@ -528,14 +528,14 @@ export default function AdminDashboard() {
                     placeholder="Search piece, brand, category..."
                     value={searchFilter}
                     onChange={(e) => setSearchFilter(e.target.value)}
-                    className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl pl-9 pr-3.5 py-2 text-xs focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
+                    className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl pl-9 pr-3.5 py-2 text-xs font-mono focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
                   />
                 </div>
 
                 <select
                   value={categoryFilter}
                   onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3 py-2 text-xs font-bold text-[#23313A] focus:outline-none focus:border-[#2F6B4F]"
+                  className="bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3 py-2 text-xs font-mono font-bold text-[#23313A] focus:outline-none focus:border-[#2F6B4F]"
                 >
                   <option value="ALL">All Categories</option>
                   {categoriesList.map((c) => (
@@ -546,7 +546,7 @@ export default function AdminDashboard() {
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3 py-2 text-xs font-bold text-[#23313A] focus:outline-none focus:border-[#2F6B4F]"
+                  className="bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3 py-2 text-xs font-mono font-bold text-[#23313A] focus:outline-none focus:border-[#2F6B4F]"
                 >
                   <option value="ALL">All Statuses</option>
                   <option value="AVAILABLE">Available</option>
@@ -554,7 +554,7 @@ export default function AdminDashboard() {
                 </select>
               </div>
 
-              <p className="text-[11px] text-[#A8C3A0] font-semibold">
+              <p className="text-[11px] font-mono text-[#A8C3A0] font-semibold">
                 Showing {filteredProducts.length} of {products.length} archive pieces
               </p>
             </div>
@@ -563,8 +563,8 @@ export default function AdminDashboard() {
             {filteredProducts.length === 0 ? (
               <div className="bg-white border border-[#A8C3A0]/30 rounded-3xl p-12 text-center text-[#A8C3A0] space-y-2">
                 <Package size={36} className="mx-auto text-[#2F6B4F] opacity-50" />
-                <p className="font-bold text-sm text-[#23313A]">No garments match your active filters</p>
-                <p className="text-xs">Try clearing the search query or changing category and status filters.</p>
+                <p className="font-serif font-bold text-sm text-[#23313A]">No garments match your active filters</p>
+                <p className="text-xs font-mono">Try clearing the search query or changing category and status filters.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
@@ -586,31 +586,32 @@ export default function AdminDashboard() {
                           className="w-full h-full object-contain drop-shadow-xs"
                         />
 
-                        {/* Top ID Pill */}
+                        {/* Top ID Pill (font-mono) */}
                         <div className="absolute top-3 right-3">
                           <span className="bg-[#23313A]/80 backdrop-blur-xs text-white text-[10px] font-mono font-bold px-2 py-0.5 rounded-md shadow-xs">
                             ID #{id}
                           </span>
                         </div>
 
-                        {/* Brand Tag */}
+                        {/* Brand Tag (font-mono) */}
                         <div className="absolute bottom-3 left-3">
-                          <span className="bg-white/95 backdrop-blur-xs text-[#23313A] border border-[#A8C3A0]/30 text-[10px] font-bold px-2.5 py-1 rounded-lg shadow-xs">
+                          <span className="bg-white/95 backdrop-blur-xs text-[#23313A] border border-[#A8C3A0]/30 text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg shadow-xs">
                             {item.brand || 'Vintage Archive'}
                           </span>
                         </div>
                       </div>
 
-                      {/* Content Section with Standardized Font Hierarchies */}
+                      {/* Content Section */}
                       <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-3">
                         <div className="space-y-1.5">
-                          <div className="flex items-center justify-between text-xs font-semibold text-[#A8C3A0]">
+                          <div className="flex items-center justify-between text-xs font-mono font-medium text-[#A8C3A0]">
                             <span>{resolvedCategory}</span>
                             <span className="font-bold text-[#23313A] bg-[#F6F1E8] border border-[#A8C3A0]/30 px-2 py-0.5 rounded-md text-[10px]">
                               Size {item.size}
                             </span>
                           </div>
 
+                          {/* Garment Title in ThriftLoop font-serif */}
                           <h3 
                             className="font-serif font-bold text-base text-[#23313A] line-clamp-1"
                             title={item.name}
@@ -623,27 +624,26 @@ export default function AdminDashboard() {
                           </div>
                         </div>
 
-                        {/* Standardized Price Section */}
-                        <div className="pt-2 border-t border-[#A8C3A0]/15 flex items-baseline justify-between">
+                        {/* Price Section */}
+                        <div className="pt-2 border-t border-[#A8C3A0]/15 flex items-baseline justify-between font-mono">
                           <span className="text-[10px] uppercase font-bold text-[#A8C3A0] tracking-wider">
                             Price
                           </span>
-                          <span className="font-serif font-bold text-base sm:text-lg text-[#2F6B4F]">
+                          <span className="font-bold text-base sm:text-lg text-[#2F6B4F]">
                             ₱{parseFloat(item.price || 0).toFixed(2)}
                           </span>
                         </div>
                       </div>
 
-                      {/* Action Footer with Locked Delete Protection */}
-                      <div className="p-3 sm:p-4 border-t border-[#A8C3A0]/20 bg-[#F6F1E8]/30 flex items-center gap-2">
+                      {/* Action Footer: Dot removed from AVAILABLE/SOLD badge */}
+                      <div className="p-3 sm:p-4 border-t border-[#A8C3A0]/20 bg-[#F6F1E8]/30 flex items-center gap-2 font-mono">
                         <div
-                          className={`flex-1 py-2 px-3 rounded-xl text-[11px] font-bold text-center tracking-wider uppercase border flex items-center justify-center gap-1.5 ${
+                          className={`flex-1 py-2 px-3 rounded-xl text-[11px] font-bold text-center tracking-wider uppercase border flex items-center justify-center ${
                             isSold
                               ? 'bg-[#E67E5F]/15 text-[#E67E5F] border-[#E67E5F]/35'
                               : 'bg-[#2F6B4F]/15 text-[#2F6B4F] border-[#2F6B4F]/35'
                           }`}
                         >
-                          <span className={`w-1.5 h-1.5 rounded-full ${isSold ? 'bg-[#E67E5F]' : 'bg-[#2F6B4F]'}`} />
                           <span>{isSold ? 'Sold' : 'Available'}</span>
                         </div>
 
@@ -657,7 +657,7 @@ export default function AdminDashboard() {
                           <Pencil size={15} />
                         </button>
 
-                        {/* Data Integrity Protected Delete Button */}
+                        {/* Protected Delete Button for Unsold Inventory */}
                         <button
                           type="button"
                           disabled={isSold}
@@ -688,14 +688,14 @@ export default function AdminDashboard() {
             {orders.length === 0 ? (
               <div className="py-16 text-center text-[#A8C3A0]">
                 <ShoppingBag size={32} className="mx-auto mb-2 opacity-50 text-[#2F6B4F]" />
-                <p className="font-bold text-sm text-[#23313A]">No Customer Orders Yet</p>
-                <p className="text-xs text-[#A8C3A0] mt-1">
+                <p className="font-serif font-bold text-sm text-[#23313A]">No Customer Orders Yet</p>
+                <p className="text-xs font-mono mt-1">
                   Customer orders placed via PayMongo or COD will automatically appear here.
                 </p>
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
+                <table className="w-full text-left text-xs font-mono border-collapse">
                   <thead>
                     <tr className="bg-[#F6F1E8]/50 border-b border-[#A8C3A0]/20 text-[#23313A]/70 uppercase tracking-wider text-[10px]">
                       <th className="py-3.5 px-4 font-bold">Order ID & Courier</th>
@@ -712,7 +712,7 @@ export default function AdminDashboard() {
                       return (
                         <tr key={orderId} className="hover:bg-[#F6F1E8]/30">
                           <td className="py-3 px-4">
-                            <span className="font-mono font-bold text-[#23313A] block">#{orderId}</span>
+                            <span className="font-bold text-[#23313A] block">#{orderId}</span>
                             <span className="text-[10px] text-[#A8C3A0] flex items-center gap-1 mt-0.5">
                               <Truck size={12} className="text-[#2F6B4F]" />
                               {ord.courier || 'J&T Express'} ({ord.tracking_number || 'Pending'})
@@ -725,7 +725,7 @@ export default function AdminDashboard() {
                           <td className="py-3 px-4 text-[#23313A]/70 max-w-[200px] truncate">
                             {[ord.shipping_address, ord.city, ord.province].filter(Boolean).join(', ')}
                           </td>
-                          <td className="py-3 px-4 font-serif font-bold text-[#2F6B4F]">
+                          <td className="py-3 px-4 font-bold text-[#2F6B4F]">
                             ₱{parseFloat(ord.total_amount || 0).toFixed(2)}
                           </td>
                           <td className="py-3 px-4 uppercase font-bold text-[10px] text-[#23313A]/70">
@@ -735,7 +735,7 @@ export default function AdminDashboard() {
                             <select
                               value={ord.status || 'pending'}
                               onChange={(e) => handleUpdateOrderStatus(orderId, e.target.value)}
-                              className="bg-[#F6F1E8] border border-[#A8C3A0]/40 rounded-xl px-2.5 py-1 text-[11px] font-bold text-[#23313A] focus:outline-none focus:border-[#2F6B4F]"
+                              className="bg-[#F6F1E8] border border-[#A8C3A0]/40 rounded-xl px-2.5 py-1 text-[11px] font-mono font-bold text-[#23313A] focus:outline-none focus:border-[#2F6B4F]"
                             >
                               <option value="pending">Pending</option>
                               <option value="processing">Processing</option>
@@ -761,7 +761,7 @@ export default function AdminDashboard() {
 
       </div>
 
-      {/* Spacious 2-Column Product Modal */}
+      {/* 2-Column Product Modal */}
       {isModalOpen && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
@@ -782,7 +782,7 @@ export default function AdminDashboard() {
           <div className="fixed inset-0 bg-[#23313A]/60 backdrop-blur-xs pointer-events-none" />
 
           <div 
-            className="relative z-10 bg-white border border-[#A8C3A0]/30 rounded-3xl p-6 sm:p-8 md:p-10 max-w-4xl w-full shadow-2xl max-h-[92vh] overflow-y-auto my-auto animate-in fade-in zoom-in-95 duration-150"
+            className="relative z-10 bg-white border border-[#A8C3A0]/30 rounded-3xl p-6 sm:p-8 md:p-10 max-w-4xl w-full shadow-2xl max-h-[92vh] overflow-y-auto my-auto animate-in fade-in zoom-in-95 duration-150 font-mono"
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onMouseUp={(e) => e.stopPropagation()}
@@ -791,13 +791,13 @@ export default function AdminDashboard() {
           >
             <div className="flex items-center justify-between pb-4 sm:pb-5 border-b border-[#A8C3A0]/20 mb-6">
               <div>
-                <span className="text-[10px] uppercase font-bold text-[#A8C3A0] tracking-wider flex items-center gap-1">
+                <span className="text-[10px] uppercase font-mono font-bold text-[#A8C3A0] tracking-wider flex items-center gap-1">
                   <Sparkles size={11} className="text-[#E67E5F]" /> 1-of-1 Catalog Curator
                 </span>
                 <h3 className="font-serif font-bold text-2xl sm:text-3xl text-[#23313A] mt-0.5">
                   {editingItem ? 'Edit Vintage Listing' : 'Add 1-of-1 Vintage Listing'}
                 </h3>
-                <p className="text-xs text-[#23313A]/60 font-medium mt-1">
+                <p className="text-xs font-mono text-[#23313A]/60 mt-1">
                   {editingItem 
                     ? `Updating archive piece #${editingItem.product_id || editingItem.id}` 
                     : 'Upload photos, select condition, specify measurements, and publish drops to ThriftLoop.'}
@@ -903,7 +903,7 @@ export default function AdminDashboard() {
                             <UploadCloud size={26} />
                           </div>
                           <div>
-                            <p className="font-bold text-xs sm:text-sm text-[#23313A]">Click to browse or drag & drop</p>
+                            <p className="font-bold text-xs text-[#23313A]">Click to browse or drag & drop</p>
                             <p className="text-[10px] text-[#A8C3A0] mt-0.5">High-res JPG, PNG, WEBP auto-compressed</p>
                           </div>
                         </div>
@@ -919,7 +919,7 @@ export default function AdminDashboard() {
                           setForm({ ...form, image_url: e.target.value });
                           setPreviewUrl(e.target.value);
                         }}
-                        className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] text-[#23313A] text-xs"
+                        className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] text-[#23313A] text-xs font-mono"
                       />
                       {previewUrl ? (
                         <div className="relative w-full h-56 sm:h-64 rounded-2xl overflow-hidden border border-[#A8C3A0]/30 bg-[#F6F1E8]">
@@ -948,7 +948,7 @@ export default function AdminDashboard() {
                       placeholder="Specify single-stitch hem details, wash distressing, pit-to-pit flat lay notes, and tag provenance..."
                       value={form.description}
                       onChange={(e) => setForm({ ...form, description: e.target.value })}
-                      className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl p-3 focus:outline-none focus:border-[#2F6B4F] text-[#23313A] leading-relaxed resize-none text-xs"
+                      className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl p-3 focus:outline-none focus:border-[#2F6B4F] text-[#23313A] leading-relaxed resize-none text-xs font-mono"
                     />
                   </div>
                 </div>
@@ -965,7 +965,7 @@ export default function AdminDashboard() {
                       placeholder="e.g. 90s Vintage Single-Stitch Band Tee"
                       value={form.name}
                       onChange={(e) => setForm({ ...form, name: e.target.value })}
-                      className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] text-[#23313A] font-bold"
+                      className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] text-[#23313A] font-serif font-bold text-sm"
                     />
                   </div>
 
@@ -979,7 +979,7 @@ export default function AdminDashboard() {
                         placeholder="e.g. Brockum, Levi's, Carhartt"
                         value={form.brand}
                         onChange={(e) => setForm({ ...form, brand: e.target.value })}
-                        className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
+                        className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] text-[#23313A] font-mono"
                       />
                     </div>
 
@@ -994,7 +994,7 @@ export default function AdminDashboard() {
                         placeholder="450.00"
                         value={form.price}
                         onChange={(e) => setForm({ ...form, price: e.target.value })}
-                        className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] text-[#23313A] font-bold"
+                        className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] text-[#23313A] font-mono font-bold"
                       />
                     </div>
                   </div>
@@ -1007,7 +1007,7 @@ export default function AdminDashboard() {
                       <select
                         value={form.category_name}
                         onChange={(e) => handleCategoryChange(e.target.value)}
-                        className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 font-bold focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
+                        className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 font-mono font-bold focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
                       >
                         {categoriesList.map((c) => (
                           <option key={c} value={c}>{c}</option>
@@ -1022,7 +1022,7 @@ export default function AdminDashboard() {
                       <select
                         value={form.size}
                         onChange={(e) => setForm({ ...form, size: e.target.value })}
-                        className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 font-bold focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
+                        className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 font-mono font-bold focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
                       >
                         {getSizeOptions(form.category_name).map((s) => (
                           <option key={s} value={s}>{s}</option>
@@ -1038,14 +1038,14 @@ export default function AdminDashboard() {
                     <select
                       value={form.condition_grade}
                       onChange={(e) => setForm({ ...form, condition_grade: e.target.value })}
-                      className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 font-bold focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
+                      className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 font-mono font-bold focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
                     >
                       {conditions.map((g) => (
                         <option key={g} value={g}>{g}</option>
                       ))}
                     </select>
 
-                    <div className="mt-2 p-3 bg-[#F6F1E8]/40 border border-[#A8C3A0]/20 rounded-xl text-[11px] text-[#23313A]/70 leading-relaxed">
+                    <div className="mt-2 p-3 bg-[#F6F1E8]/40 border border-[#A8C3A0]/20 rounded-xl text-[11px] font-mono text-[#23313A]/70 leading-relaxed">
                       {form.condition_grade === 'Excellent' && '✨ Flawless archive piece with crisp fabric and no visible signs of wear.'}
                       {form.condition_grade === 'Good' && '👌 Well-preserved vintage piece with gentle, natural character and firm structure.'}
                       {form.condition_grade === 'Used but not abused' && '🧥 Authentic pre-loved vintage garment. Broken in comfortably with no tears or heavy stains.'}
@@ -1053,7 +1053,7 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
-                  <div className="pt-4 border-t border-[#A8C3A0]/20 flex items-center justify-end gap-3">
+                  <div className="pt-4 border-t border-[#A8C3A0]/20 flex items-center justify-end gap-3 font-mono">
                     <button
                       type="button"
                       onClick={() => setIsModalOpen(false)}
