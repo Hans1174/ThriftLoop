@@ -399,7 +399,6 @@ export default function Navbar({ onOpenLogin }) {
                       <Settings size={14} /> My Account
                     </Link>
 
-                    {/* Fixed Dedicated Orders Route */}
                     <button
                       type="button"
                       onClick={handleOrdersClick}
@@ -407,15 +406,6 @@ export default function Navbar({ onOpenLogin }) {
                     >
                       <Package size={14} /> My Orders
                     </button>
-
-                    <Link to="/messages" onClick={handleMessagesClick} className="flex items-center justify-between px-4 py-2 hover:bg-[#F6F1E8] font-bold text-[#23313A]">
-                      <span className="flex items-center gap-2">
-                        <MessageSquare size={14} /> Messages
-                      </span>
-                      {hasUnreadMessages && (
-                        <span className="w-2 h-2 rounded-full bg-[#E67E5F] animate-pulse" />
-                      )}
-                    </Link>
 
                     {isAdmin && (
                       <Link to="/admin" className="flex items-center gap-2 px-4 py-2 hover:bg-[#F6F1E8] font-bold text-[#2F6B4F]">
@@ -491,12 +481,6 @@ export default function Navbar({ onOpenLogin }) {
             </Link>
             {currentUser && (
               <>
-                <Link to="/messages" onClick={handleMessagesClick} className="py-2 border-b border-[#F6F1E8] flex items-center justify-between">
-                  <span>Messages</span>
-                  {hasUnreadMessages && (
-                    <span className="w-2 h-2 rounded-full bg-[#E67E5F] animate-pulse" />
-                  )}
-                </Link>
                 <button
                   type="button"
                   onClick={handleOrdersClick}
