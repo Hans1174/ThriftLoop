@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
 import bcrypt from 'bcryptjs';
@@ -24,6 +25,68 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const TELEGRAM_BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
 const TELEGRAM_CHANNEL = (process.env.TELEGRAM_CHANNEL || '').trim();
 
+// ==========================================
+// AES-256-GCM FIELD-LEVEL ENCRYPTION ENGINE
+// ==========================================
+const ENCRYPTION_SECRET = process.env.FIELD_ENCRYPTION_KEY || JWT_SECRET;
+const ENCRYPTION_KEY = crypto.createHash('sha256').update(String(ENCRYPTION_SECRET)).digest();
+const CIPHER_ALGO = 'aes-256-gcm';
+
+export const encryptField = (value) => {
+  if (!value || typeof value !== 'string') return value;
+  try {
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv(CIPHER_ALGO, ENCRYPTION_KEY, iv);
+    let encrypted = cipher.update(value, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    const authTag = cipher.getAuthTag().toString('hex');
+    return `enc:${iv.toString('hex')}:${authTag}:${encrypted}`;
+  } catch (err) {
+    console.error('Encryption error:', err.message);
+    return value;
+  }
+};
+
+export const decryptField = (value) => {
+  if (!value || typeof value !== 'string' || !value.startsWith('enc:')) {
+    return value;
+  }
+  try {
+    const parts = value.split(':');
+    if (parts.length !== 4) return value;
+    const [, ivHex, tagHex, cipherHex] = parts;
+    const iv = Buffer.from(ivHex, 'hex');
+    const authTag = Buffer.from(tagHex, 'hex');
+    const decipher = crypto.createDecipheriv(CIPHER_ALGO, ENCRYPTION_KEY, iv);
+    decipher.setAuthTag(authTag);
+    let decrypted = decipher.update(cipherHex, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch {
+    return value;
+  }
+};
+
+export const decryptOrder = (order) => {
+  if (!order) return order;
+  return {
+    ...order,
+    phone: decryptField(order.phone),
+    shipping_address: decryptField(order.shipping_address),
+    city: decryptField(order.city),
+    province: decryptField(order.province),
+    postal_code: decryptField(order.postal_code),
+  };
+};
+
+export const decryptMessage = (msg) => {
+  if (!msg) return msg;
+  return {
+    ...msg,
+    message_text: decryptField(msg.message_text),
+  };
+};
+
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -37,10 +100,10 @@ export const supabase = createClient(supabaseUrl || 'https://placeholder.supabas
   auth: { persistSession: false },
 });
 
-console.log('✅ Connected to Supabase Cloud PostgreSQL');
+console.log('✅ Connected to Supabase Cloud PostgreSQL (Service Role Secured)');
 
 app.get('/', (req, res) => {
-  res.send('🌿 ThriftLoop Backend API is running on Supabase!');
+  res.send('🌿 ThriftLoop Backend API is running with AES-256 Field-Level Encryption & RLS!');
 });
 
 const cleanedGeminiKey = (process.env.GEMINI_API_KEY || '').trim().replace(/^["']|["']$/g, '');
@@ -158,10 +221,9 @@ export const sendEmailNotification = async ({ to, userId, subject, type, data = 
       subject: subject || 'ThriftLoop Notification',
       html: htmlContent,
     });
-    console.log(`✉️ [Nodemailer] Dispatched "${type}" email to ${recipientEmail}`);
     return { success: true, messageId: info.messageId, deliveredTo: recipientEmail };
   } catch (err) {
-    console.warn(`⚠️ [Nodemailer] Delivery failed to ${recipientEmail}:`, err.message);
+    console.warn(`⚠️ Delivery failed to ${recipientEmail}:`, err.message);
     return { success: false, error: err.message };
   }
 };
@@ -187,10 +249,7 @@ const postToTelegram = async (product) => {
   const token = (process.env.TELEGRAM_BOT_TOKEN || TELEGRAM_BOT_TOKEN).trim();
   const channel = (process.env.TELEGRAM_CHANNEL || TELEGRAM_CHANNEL).trim();
 
-  if (!token || !channel) {
-    console.warn('⚠️ [Telegram Integration] Skipped: TELEGRAM_BOT_TOKEN or TELEGRAM_CHANNEL not configured.');
-    return;
-  }
+  if (!token || !channel) return;
 
   const escapeHtml = (str = '') =>
     String(str)
@@ -246,13 +305,10 @@ ${safeDesc}🛍️ <a href="${FRONTEND_URL}/product/${product.product_id}">View 
       });
 
       const data = await response.json();
-      if (data.ok) {
-        console.log(`📢 [Telegram Integration] Successfully published photo drop "${product.name}" to channel ${channel}`);
-        return;
-      }
+      if (data.ok) return;
     }
 
-    const textResponse = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -261,13 +317,6 @@ ${safeDesc}🛍️ <a href="${FRONTEND_URL}/product/${product.product_id}">View 
         parse_mode: 'HTML',
       }),
     });
-
-    const textData = await textResponse.json();
-    if (textData.ok) {
-      console.log(`📢 [Telegram Integration] Published text drop "${product.name}" to channel ${channel}`);
-    } else {
-      console.warn(`⚠️ [Telegram Integration] Telegram API error:`, textData.description);
-    }
   } catch (err) {
     console.warn('⚠️ [Telegram Integration] Failed to post to Telegram:', err.message);
   }
@@ -392,7 +441,6 @@ app.post('/api/auth/google', async (req, res) => {
           if (decoded && decoded.email && (decoded.iss === 'https://accounts.google.com' || decoded.iss === 'accounts.google.com')) {
             email = decoded.email;
             name = decoded.name;
-            console.log('✅ Identity recovered from Google ID token payload:', email);
           } else {
             throw verifyErr;
           }
@@ -448,6 +496,8 @@ app.post('/api/auth/google', async (req, res) => {
     const { password_hash, ...safeUser } = user;
     safeUser.user_id = userId;
     safeUser.id = userId;
+    safeUser.phone = decryptField(safeUser.phone);
+    safeUser.street_address = decryptField(safeUser.street_address);
 
     res.json({ message: 'Google login successful', user: safeUser, token });
   } catch (err) {
@@ -475,6 +525,9 @@ app.post('/api/auth/login', async (req, res) => {
     const { password_hash, ...safeUser } = user;
     safeUser.user_id = userId;
     safeUser.id = userId;
+    safeUser.phone = decryptField(safeUser.phone);
+    safeUser.street_address = decryptField(safeUser.street_address);
+
     res.json({ message: 'Login successful', user: safeUser, token });
   } catch (err) {
     res.status(500).json({ error: 'Login process failed.' });
@@ -501,11 +554,11 @@ app.post('/api/auth/register', async (req, res) => {
         full_name: full_name.trim(),
         email: email.trim(),
         password_hash: hashedPassword,
-        phone: phone || '',
-        street_address: street_address || '',
-        city: city || '',
-        province: province || '',
-        postal_code: postal_code || '',
+        phone: encryptField(phone || ''),
+        street_address: encryptField(street_address || ''),
+        city: encryptField(city || ''),
+        province: encryptField(province || ''),
+        postal_code: encryptField(postal_code || ''),
         role: 'customer',
       }])
       .select()
@@ -518,6 +571,9 @@ app.post('/api/auth/register', async (req, res) => {
     const { password_hash, ...safeUser } = newUser;
     safeUser.user_id = userId;
     safeUser.id = userId;
+    safeUser.phone = phone || '';
+    safeUser.street_address = street_address || '';
+
     res.status(201).json({
       message: 'Account registered successfully',
       user: safeUser,
@@ -789,7 +845,6 @@ app.put('/api/products/:id', async (req, res) => {
   }
 });
 
-// Protect data integrity: block deleting sold garments or pieces associated with orders[cite: 37]
 app.delete('/api/products/:id', async (req, res) => {
   const productId = req.params.id;
   try {
@@ -829,7 +884,6 @@ app.delete('/api/products/:id', async (req, res) => {
     if (deleteErr) throw deleteErr;
     res.json({ message: `Listing for "${product.name}" removed successfully.` });
   } catch (err) {
-    console.error('❌ Deletion restriction error:', err.message);
     res.status(500).json({ error: err.message || 'Failed to remove listing.' });
   }
 });
@@ -845,7 +899,6 @@ app.patch('/api/products/:id/status', async (req, res) => {
   }
 });
 
-// Bulk condition normalizer for legacy items[cite: 37]
 app.post('/api/admin/inventory/migrate-conditions', async (req, res) => {
   try {
     const { data: allProducts, error } = await supabase
@@ -889,10 +942,9 @@ app.post('/api/admin/inventory/migrate-conditions', async (req, res) => {
 });
 
 // ==========================================
-// UNIFIED MESSAGING, READ RECEIPTS & IMAGES[cite: 37]
+// UNIFIED MESSAGING, READ RECEIPTS & ENCRYPTED CHATS
 // ==========================================
 
-// 1. Unified 1:1 Conversation Initializer per Buyer (Merges all inquiries)[cite: 37]
 app.post('/api/messages/conversations', async (req, res) => {
   const { buyer_id, seller_id, product_id } = req.body;
   if (!buyer_id) return res.status(400).json({ error: 'Buyer ID is required.' });
@@ -920,7 +972,6 @@ app.post('/api/messages/conversations', async (req, res) => {
       }
     }
 
-    // Look for existing thread between buyer and store admin[cite: 37]
     const { data: existing } = await supabase
       .from('conversations')
       .select(`
@@ -986,7 +1037,6 @@ app.post('/api/messages/conversations', async (req, res) => {
   }
 });
 
-// 2. Fetch User Threads (Deduplicated 1 thread per customer partner)[cite: 37]
 app.get('/api/messages/conversations/user/:userId', async (req, res) => {
   const { userId } = req.params;
 
@@ -1013,7 +1063,10 @@ app.get('/api/messages/conversations/user/:userId', async (req, res) => {
     (convos || []).forEach((c) => {
       const partnerId = String(c.buyer_id) === String(userId) ? c.seller_id : c.buyer_id;
       if (!uniqueMap.has(partnerId)) {
-        uniqueMap.set(partnerId, c);
+        uniqueMap.set(partnerId, {
+          ...c,
+          last_message: decryptField(c.last_message),
+        });
       }
     });
 
@@ -1023,7 +1076,6 @@ app.get('/api/messages/conversations/user/:userId', async (req, res) => {
   }
 });
 
-// 3. Retrieve Messages (Merges all legacy messages between this buyer and seller)[cite: 37]
 app.get('/api/messages/:conversationId', async (req, res) => {
   const { conversationId } = req.params;
   try {
@@ -1057,18 +1109,20 @@ app.get('/api/messages/:conversationId', async (req, res) => {
 
     const { data: messages, error } = await query;
     if (error) throw error;
-    res.json(messages || []);
+
+    const decrypted = (messages || []).map(decryptMessage);
+    res.json(decrypted);
   } catch {
     const { data: rawMessages } = await supabase
       .from('messages')
       .select('*')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: true });
-    res.json(rawMessages || []);
+    res.json((rawMessages || []).map(decryptMessage));
   }
 });
 
-// 4. Send Message with Seen = false & Dedicated Image Support[cite: 37]
+// AES-256 Encrypted Message Dispatch
 app.post('/api/messages', async (req, res) => {
   const { conversation_id, sender_id, receiver_id, message_text, image_url } = req.body;
   if (!conversation_id || !sender_id || (!message_text?.trim() && !image_url)) {
@@ -1089,12 +1143,13 @@ app.post('/api/messages', async (req, res) => {
     }
 
     const cleanText = (message_text || '').trim();
+    const encryptedText = encryptField(cleanText);
 
     const payload = {
       conversation_id,
       sender_id,
       receiver_id: resolvedReceiverId || null,
-      message_text: cleanText,
+      message_text: encryptedText,
       is_read: false,
     };
     if (image_url) payload.image_url = image_url;
@@ -1105,13 +1160,12 @@ app.post('/api/messages', async (req, res) => {
       .select('*, sender:users!sender_id(user_id, full_name, role, email)')
       .single();
 
-    // Fallback if image_url column is not present in Supabase table[cite: 37]
     if (msgErr && image_url) {
       const fallbackPayload = {
         conversation_id,
         sender_id,
         receiver_id: resolvedReceiverId || null,
-        message_text: `[IMAGE]${image_url}[/IMAGE] ${cleanText}`.trim(),
+        message_text: encryptField(`[IMAGE]${image_url}[/IMAGE] ${cleanText}`.trim()),
       };
       const resFallback = await supabase
         .from('messages')
@@ -1127,19 +1181,18 @@ app.post('/api/messages', async (req, res) => {
     await supabase
       .from('conversations')
       .update({
-        last_message: cleanText || (image_url ? '📷 Sent an image' : 'Inquiry update'),
+        last_message: encryptField(cleanText || (image_url ? '📷 Sent an image' : 'Inquiry update')),
         last_message_at: new Date().toISOString(),
       })
       .eq('conversation_id', conversation_id);
 
-    res.status(201).json(newMsg);
+    res.status(201).json(decryptMessage(newMsg));
   } catch (err) {
     console.error('❌ Message delivery error:', err.message || err);
     res.status(500).json({ error: err.message || 'Message failed to send.' });
   }
 });
 
-// 5. Mark Messages as Seen[cite: 37]
 app.patch('/api/messages/conversations/:convoId/read', async (req, res) => {
   const { convoId } = req.params;
   const { userId } = req.body;
@@ -1176,7 +1229,6 @@ app.patch('/api/messages/conversations/:convoId/read', async (req, res) => {
   }
 });
 
-// 6. Unread Badge Polling[cite: 37]
 app.get('/api/messages/unread-status/:userId', async (req, res) => {
   const { userId } = req.params;
   try {
@@ -1207,7 +1259,7 @@ app.get('/api/messages/unread-status/:userId', async (req, res) => {
 });
 
 // ==========================================
-// CHECKOUT & ORDERS CRUD (SECURED & SCOPED)
+// CHECKOUT & ORDERS CRUD (AES-256 ENCRYPTED)
 // ==========================================
 
 app.post('/api/checkout/paymongo', async (req, res) => {
@@ -1270,17 +1322,18 @@ app.post('/api/checkout/paymongo', async (req, res) => {
       }
     }
 
+    // Encrypt customer address & phone at rest
     const { data: newOrder, error: orderErr } = await supabase
       .from('orders')
       .insert([{
         user_id: validUserId,
         customer_name: customer?.fullName || 'Customer',
         email: registeredEmail,
-        phone: customer?.phone || '',
-        shipping_address: deliveryAddress?.streetAddress || '',
-        city: deliveryAddress?.city || '',
-        province: deliveryAddress?.province || '',
-        postal_code: deliveryAddress?.postalCode || '',
+        phone: encryptField(customer?.phone || ''),
+        shipping_address: encryptField(deliveryAddress?.streetAddress || ''),
+        city: encryptField(deliveryAddress?.city || ''),
+        province: encryptField(deliveryAddress?.province || ''),
+        postal_code: encryptField(deliveryAddress?.postalCode || ''),
         courier: courier || 'J&T Express',
         payment_method: 'PayMongo',
         subtotal,
@@ -1306,6 +1359,7 @@ app.post('/api/checkout/paymongo', async (req, res) => {
     }));
     await supabase.from('order_items').insert(orderItemsPayload);
 
+    // Encrypt transaction reference at rest
     try {
       await supabase.from('payments').insert([{
         order_id: orderId,
@@ -1313,7 +1367,7 @@ app.post('/api/checkout/paymongo', async (req, res) => {
         payment_method: 'PayMongo',
         amount: totalAmount,
         status: 'pending',
-        transaction_reference: referenceNumber || `PM-${orderId}`,
+        transaction_reference: encryptField(referenceNumber || `PM-${orderId}`),
       }]);
     } catch (paymentErr) {
       console.warn('⚠️ Non-fatal payment record insert notice:', paymentErr.message);
@@ -1520,17 +1574,18 @@ app.post('/api/orders', async (req, res) => {
       }
     }
 
+    // Encrypt customer address & contact details at rest
     const { data: newOrder, error: orderErr } = await supabase
       .from('orders')
       .insert([{
         user_id: validUserId,
         customer_name,
         email: registeredEmail,
-        phone: phone || '',
-        shipping_address,
-        city: city || '',
-        province: province || '',
-        postal_code: postal_code || '',
+        phone: encryptField(phone || ''),
+        shipping_address: encryptField(shipping_address),
+        city: encryptField(city || ''),
+        province: encryptField(province || ''),
+        postal_code: encryptField(postal_code || ''),
         courier: courier || 'J&T Express',
         payment_method: payment_method || 'Cash on Delivery (COD)',
         subtotal,
@@ -1556,6 +1611,7 @@ app.post('/api/orders', async (req, res) => {
     }));
     await supabase.from('order_items').insert(orderItemsPayload);
 
+    // Encrypt transaction reference at rest
     try {
       await supabase.from('payments').insert([{
         order_id: orderId,
@@ -1563,7 +1619,7 @@ app.post('/api/orders', async (req, res) => {
         payment_method: 'Cash on Delivery (COD)',
         amount: total_amount,
         status: 'pending',
-        transaction_reference: `COD-${orderId}`,
+        transaction_reference: encryptField(`COD-${orderId}`),
       }]);
     } catch (paymentErr) {
       console.warn('⚠️ Non-fatal COD payment record notice:', paymentErr.message);
@@ -1592,7 +1648,7 @@ app.post('/api/orders', async (req, res) => {
   }
 });
 
-// Single Route to fetch user-scoped orders (Accepts either email or numeric user_id)[cite: 37]
+// Decrypt orders on fetch for customer view
 app.get('/api/orders/user/:identifier', async (req, res) => {
   const { identifier } = req.params;
   if (!identifier) return res.json([]);
@@ -1612,7 +1668,9 @@ app.get('/api/orders/user/:identifier', async (req, res) => {
 
     const { data: orders, error } = await query;
     if (error) throw error;
-    res.json(orders || []);
+
+    const decryptedOrders = (orders || []).map(decryptOrder);
+    res.json(decryptedOrders);
   } catch (err) {
     console.error('Fetch user orders error:', err.message);
     res.status(500).json({ error: 'Failed to fetch user orders.' });
@@ -1628,7 +1686,7 @@ app.get('/api/track/:id', async (req, res) => {
       .single();
 
     if (error || !order) return res.status(404).json({ error: 'Order not found' });
-    res.json(order);
+    res.json(decryptOrder(order));
   } catch {
     res.status(500).json({ error: 'Database error' });
   }
@@ -1680,7 +1738,7 @@ app.get('/api/admin/stats', async (req, res) => {
   }
 });
 
-// Admin Orders Feed with embedded line items and garment details for invoices[cite: 37]
+// Decrypt addresses and contacts for the Admin Order management view
 app.get('/api/admin/orders', async (req, res) => {
   try {
     const { data: orders, error } = await supabase
@@ -1690,11 +1748,14 @@ app.get('/api/admin/orders', async (req, res) => {
 
     if (error) throw error;
 
-    const formatted = orders.map((o) => ({
-      ...o,
-      customer_name: o.customer_name || o.users?.full_name || 'Guest Customer',
-      customer_email: o.users?.email || o.email || '',
-    }));
+    const formatted = orders.map((o) => {
+      const decrypted = decryptOrder(o);
+      return {
+        ...decrypted,
+        customer_name: decrypted.customer_name || decrypted.users?.full_name || 'Guest Customer',
+        customer_email: decrypted.users?.email || decrypted.email || '',
+      };
+    });
     res.json(formatted);
   } catch {
     res.json([]);
@@ -1778,7 +1839,7 @@ app.delete('/api/admin/orders/:id', async (req, res) => {
 });
 
 // ==========================================
-// AI CONCIERGE (LOCKED STRICTLY TO GEMINI-3.8-FLASH)[cite: 37]
+// AI CONCIERGE (LOCKED STRICTLY TO GEMINI-3.8-FLASH)
 // ==========================================
 app.post('/api/chat', async (req, res) => {
   const { message, user_id, email, current_order_id, image } = req.body;
