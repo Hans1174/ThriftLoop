@@ -4,7 +4,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Search, ShoppingBag, User, LogOut, Shield, 
   Package, ChevronDown, Settings, X,
-  MessageSquare, Menu
+  MessageSquare, Menu, Megaphone
 } from 'lucide-react';
 import { useCart } from './context/CartContext';
 
@@ -49,6 +49,10 @@ export default function Navbar({ onOpenLogin }) {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
 
+  // Dynamic Announcement State
+  const [announcement, setAnnouncement] = useState({ text: '', is_active: false });
+  const [isAnnouncementDismissed, setIsAnnouncementDismissed] = useState(false);
+
   // Sync auth state changes across tabs and modals
   useEffect(() => {
     const handleAuthSync = () => {
@@ -65,6 +69,26 @@ export default function Navbar({ onOpenLogin }) {
       window.removeEventListener('auth-change', handleAuthSync);
       window.removeEventListener('storage', handleAuthSync);
     };
+  }, []);
+
+  // Fetch live store announcement
+  useEffect(() => {
+    const fetchAnnouncement = async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/announcement`);
+        if (res.ok) {
+          const data = await res.json();
+          setAnnouncement(data);
+        }
+      } catch {
+        // Fallback default
+        setAnnouncement({ 
+          text: 'AUTOMATIC AGING MARKDOWNS ACTIVE ON UNSOLD VINTAGE', 
+          is_active: true 
+        });
+      }
+    };
+    fetchAnnouncement();
   }, []);
 
   // Poll for incoming unread seller/buyer messages
@@ -100,7 +124,6 @@ export default function Navbar({ onOpenLogin }) {
     return () => clearInterval(interval);
   }, [currentUser, location.pathname]);
 
-  // Clear unread indicator when viewing the messages page
   useEffect(() => {
     const userId = currentUser?.user_id || currentUser?.id;
     if (location.pathname === '/messages' && userId) {
@@ -244,6 +267,25 @@ export default function Navbar({ onOpenLogin }) {
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#A8C3A0]/30 shadow-xs transition-all">
+      
+      {/* Dynamic Announcement Banner */}
+      {announcement?.is_active && announcement?.text && !isAnnouncementDismissed && (
+        <div className="bg-[#2F6B4F] text-white text-[11px] sm:text-xs font-mono font-bold py-2 px-4 flex items-center justify-between tracking-wide border-b border-[#23313A]/20 transition-all">
+          <div className="flex-1 flex items-center justify-center gap-2 text-center truncate">
+            <Megaphone size={14} className="shrink-0" />
+            <span className="truncate uppercase">{announcement.text}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsAnnouncementDismissed(true)}
+            className="text-white/80 hover:text-white p-1 rounded-md transition-colors cursor-pointer shrink-0 ml-2"
+            title="Dismiss Announcement"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3">
         
         {/* Brand Logo & Desktop Nav Links */}
@@ -395,27 +437,43 @@ export default function Navbar({ onOpenLogin }) {
                       <p className="text-[10px] text-[#A8C3A0] truncate">{currentUser.email}</p>
                     </div>
 
-                    <Link to="/account" className="flex items-center gap-2 px-4 py-2 hover:bg-[#F6F1E8] font-bold text-[#23313A]">
-                      <Settings size={14} /> My Account
-                    </Link>
-
-                    <button
-                      type="button"
-                      onClick={handleOrdersClick}
-                      className="w-full flex items-center gap-2 px-4 py-2 hover:bg-[#F6F1E8] font-bold text-[#23313A] text-left cursor-pointer"
-                    >
-                      <Package size={14} /> My Orders
-                    </button>
-
-                    {isAdmin && (
-                      <Link to="/admin" className="flex items-center gap-2 px-4 py-2 hover:bg-[#F6F1E8] font-bold text-[#2F6B4F]">
+                    {/* Role-Specific Dropdown Items */}
+                    {isAdmin ? (
+                      <Link 
+                        to="/admin" 
+                        onClick={() => setIsProfileOpen(false)}
+                        className="flex items-center gap-2 px-4 py-2 hover:bg-[#F6F1E8] font-bold text-[#2F6B4F]"
+                      >
                         <Shield size={14} /> Admin Dashboard
                       </Link>
+                    ) : (
+                      <>
+                        <Link 
+                          to="/account" 
+                          onClick={() => setIsProfileOpen(false)}
+                          className="flex items-center gap-2 px-4 py-2 hover:bg-[#F6F1E8] font-bold text-[#23313A]"
+                        >
+                          <Settings size={14} /> My Account
+                        </Link>
+
+                        <button
+                          type="button"
+                          onClick={handleOrdersClick}
+                          className="w-full flex items-center gap-2 px-4 py-2 hover:bg-[#F6F1E8] font-bold text-[#23313A] text-left cursor-pointer"
+                        >
+                          <Package size={14} /> My Orders
+                        </button>
+                      </>
                     )}
 
-                    <button onClick={handleLogout} className="w-full flex items-center gap-2 px-4 py-2 text-[#E67E5F] hover:bg-red-50 font-bold text-left cursor-pointer">
-                      <LogOut size={14} /> Sign Out
-                    </button>
+                    <div className="border-t border-[#A8C3A0]/15 mt-1 pt-1">
+                      <button 
+                        onClick={handleLogout} 
+                        className="w-full flex items-center gap-2 px-4 py-2 text-[#E67E5F] hover:bg-red-50 font-bold text-left cursor-pointer"
+                      >
+                        <LogOut size={14} /> Sign Out
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -480,23 +538,24 @@ export default function Navbar({ onOpenLogin }) {
               Track Parcel
             </Link>
             {currentUser && (
-              <>
-                <button
-                  type="button"
-                  onClick={handleOrdersClick}
-                  className="py-2 border-b border-[#F6F1E8] text-left font-bold"
-                >
-                  My Orders
-                </button>
-                <Link to="/account" onClick={() => setIsMobileMenuOpen(false)} className="py-2 border-b border-[#F6F1E8]">
-                  My Account
+              isAdmin ? (
+                <Link to="/admin" onClick={() => setIsMobileMenuOpen(false)} className="py-2 border-b border-[#F6F1E8] text-[#2F6B4F]">
+                  Admin Dashboard
                 </Link>
-                {isAdmin && (
-                  <Link to="/admin" onClick={() => setIsMobileMenuOpen(false)} className="py-2 text-[#2F6B4F]">
-                    Admin Dashboard
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleOrdersClick}
+                    className="py-2 border-b border-[#F6F1E8] text-left font-bold"
+                  >
+                    My Orders
+                  </button>
+                  <Link to="/account" onClick={() => setIsMobileMenuOpen(false)} className="py-2 border-b border-[#F6F1E8]">
+                    My Account
                   </Link>
-                )}
-              </>
+                </>
+              )
             )}
           </nav>
 

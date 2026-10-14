@@ -243,6 +243,53 @@ app.post('/api/notifications/email', async (req, res) => {
 });
 
 // ==========================================
+// STORE ANNOUNCEMENT BROADCAST ENGINE
+// ==========================================
+app.get('/api/announcement', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('store_settings')
+      .select('value')
+      .eq('key', 'announcement')
+      .maybeSingle();
+
+    if (error || !data) {
+      return res.json({ 
+        text: 'AUTOMATIC AGING MARKDOWNS ACTIVE ON UNSOLD VINTAGE', 
+        is_active: true 
+      });
+    }
+    res.json(data.value);
+  } catch {
+    res.json({ 
+      text: 'AUTOMATIC AGING MARKDOWNS ACTIVE ON UNSOLD VINTAGE', 
+      is_active: true 
+    });
+  }
+});
+
+app.post('/api/admin/announcement', async (req, res) => {
+  const { text, is_active } = req.body;
+  try {
+    const payload = {
+      text: (text || '').trim(),
+      is_active: Boolean(is_active),
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
+      .from('store_settings')
+      .upsert({ key: 'announcement', value: payload });
+
+    if (error) throw error;
+    res.json({ message: 'Broadcast updated successfully.', announcement: payload });
+  } catch (err) {
+    console.error('Announcement update error:', err.message);
+    res.status(500).json({ error: 'Failed to update store announcement.' });
+  }
+});
+
+// ==========================================
 // AUTOMATED TELEGRAM DROP POSTING ENGINE
 // ==========================================
 const postToTelegram = async (product) => {
@@ -884,6 +931,7 @@ app.delete('/api/products/:id', async (req, res) => {
     if (deleteErr) throw deleteErr;
     res.json({ message: `Listing for "${product.name}" removed successfully.` });
   } catch (err) {
+    console.error('❌ Deletion restriction error:', err.message);
     res.status(500).json({ error: err.message || 'Failed to remove listing.' });
   }
 });
@@ -944,7 +992,6 @@ app.post('/api/admin/inventory/migrate-conditions', async (req, res) => {
 // ==========================================
 // UNIFIED MESSAGING, READ RECEIPTS & ENCRYPTED CHATS
 // ==========================================
-
 app.post('/api/messages/conversations', async (req, res) => {
   const { buyer_id, seller_id, product_id } = req.body;
   if (!buyer_id) return res.status(400).json({ error: 'Buyer ID is required.' });
@@ -1322,7 +1369,6 @@ app.post('/api/checkout/paymongo', async (req, res) => {
       }
     }
 
-    // Encrypt customer address & phone at rest
     const { data: newOrder, error: orderErr } = await supabase
       .from('orders')
       .insert([{
@@ -1359,7 +1405,6 @@ app.post('/api/checkout/paymongo', async (req, res) => {
     }));
     await supabase.from('order_items').insert(orderItemsPayload);
 
-    // Encrypt transaction reference at rest
     try {
       await supabase.from('payments').insert([{
         order_id: orderId,
@@ -1574,7 +1619,6 @@ app.post('/api/orders', async (req, res) => {
       }
     }
 
-    // Encrypt customer address & contact details at rest
     const { data: newOrder, error: orderErr } = await supabase
       .from('orders')
       .insert([{
@@ -1611,7 +1655,6 @@ app.post('/api/orders', async (req, res) => {
     }));
     await supabase.from('order_items').insert(orderItemsPayload);
 
-    // Encrypt transaction reference at rest
     try {
       await supabase.from('payments').insert([{
         order_id: orderId,
@@ -1648,7 +1691,6 @@ app.post('/api/orders', async (req, res) => {
   }
 });
 
-// Decrypt orders on fetch for customer view
 app.get('/api/orders/user/:identifier', async (req, res) => {
   const { identifier } = req.params;
   if (!identifier) return res.json([]);
@@ -1738,7 +1780,6 @@ app.get('/api/admin/stats', async (req, res) => {
   }
 });
 
-// Decrypt addresses and contacts for the Admin Order management view
 app.get('/api/admin/orders', async (req, res) => {
   try {
     const { data: orders, error } = await supabase

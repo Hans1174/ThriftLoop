@@ -3,7 +3,8 @@ import {
   Package, Plus, Trash2, CheckCircle, 
   ShoppingBag, DollarSign, Tag, AlertCircle, 
   X, Search, UploadCloud, Pencil, Truck, Check, MessageSquare,
-  ImageIcon, ShieldCheck, Lock, Eye, Printer, MapPin, Phone, Mail, Calendar, ExternalLink
+  ImageIcon, ShieldCheck, Lock, Eye, Printer, MapPin, Phone, Mail, Calendar, ExternalLink,
+  Megaphone, Radio
 } from 'lucide-react';
 import AdminInbox from './components/AdminInbox';
 
@@ -35,6 +36,11 @@ export default function AdminDashboard() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState(null);
+
+  // Announcement Broadcast State
+  const [announcementText, setAnnouncementText] = useState('');
+  const [isAnnouncementActive, setIsAnnouncementActive] = useState(true);
+  const [savingAnnouncement, setSavingAnnouncement] = useState(false);
 
   const storedUser = localStorage.getItem('thriftloop_user');
   const currentUser = storedUser ? JSON.parse(storedUser) : null;
@@ -107,7 +113,43 @@ export default function AdminDashboard() {
     }));
   };
 
-  // Automated background data fetch (silent polling avoids UI flickering)
+  // Fetch Announcement on Load
+  useEffect(() => {
+    fetch(`${API_URL}/api/announcement`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data) {
+          setAnnouncementText(data.text || '');
+          setIsAnnouncementActive(Boolean(data.is_active));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSaveAnnouncement = async (e) => {
+    if (e) e.preventDefault();
+    setSavingAnnouncement(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/announcement`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: announcementText,
+          is_active: isAnnouncementActive,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update announcement.');
+
+      showToast('Store announcement broadcast updated!');
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setSavingAnnouncement(false);
+    }
+  };
+
   const fetchData = async (isSilent = false) => {
     if (!isSilent) setLoading(true);
     try {
@@ -325,12 +367,10 @@ export default function AdminDashboard() {
     }
   };
 
-  // Open Full Order Details & Invoice View
   const handleOpenOrderDetails = async (order) => {
     setViewingOrder(order);
     const orderId = order.order_id || order.id;
 
-    // If order_items are not embedded, fetch deep tracking relation
     if (!order.order_items || order.order_items.length === 0) {
       setLoadingOrderDetail(true);
       try {
@@ -375,7 +415,6 @@ export default function AdminDashboard() {
     );
   };
 
-  // Metrics
   const totalStock = products.length;
   const soldCount = products.filter((p) => p.status === 'sold').length;
   const availableCount = totalStock - soldCount;
@@ -383,7 +422,6 @@ export default function AdminDashboard() {
     .filter((p) => p.status !== 'sold')
     .reduce((sum, p) => sum + (parseFloat(p.price) || 0), 0);
 
-  // Filters for Products
   const filteredProducts = products.filter((p) => {
     const q = searchFilter.toLowerCase();
     const rawCat = p.categories?.name || p.category_name || '';
@@ -406,7 +444,6 @@ export default function AdminDashboard() {
     return matchesSearch && matchesCategory && matchesStatus;
   });
 
-  // Filters for Orders
   const filteredOrders = orders.filter((o) => {
     const q = orderSearchFilter.toLowerCase();
     const orderId = String(o.order_id || o.id || '');
@@ -459,6 +496,75 @@ export default function AdminDashboard() {
             <Plus size={15} />
             <span>Add Products</span>
           </button>
+        </div>
+
+        {/* Store Announcement Broadcast Control Card */}
+        <div className="bg-white border border-[#A8C3A0]/30 rounded-3xl p-5 sm:p-6 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#A8C3A0]/20">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-[#2F6B4F]/10 text-[#2F6B4F] flex items-center justify-center shrink-0">
+                <Megaphone size={16} />
+              </div>
+              <div>
+                <h3 className="font-serif font-bold text-sm sm:text-base text-[#23313A]">
+                  Storewide Announcement Broadcast
+                </h3>
+                <p className="text-[11px] text-[#A8C3A0]">
+                  Controls the top notification banner across all store pages
+                </p>
+              </div>
+            </div>
+
+            {/* Toggle Status Pill */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsAnnouncementActive(!isAnnouncementActive)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  isAnnouncementActive
+                    ? 'bg-[#2F6B4F] text-white shadow-xs'
+                    : 'bg-[#F6F1E8] text-[#23313A]/60 border border-[#A8C3A0]/30'
+                }`}
+              >
+                <Radio size={12} className={isAnnouncementActive ? 'animate-pulse text-white' : ''} />
+                <span>{isAnnouncementActive ? 'Live & Visible' : 'Banner Paused'}</span>
+              </button>
+            </div>
+          </div>
+
+          <form onSubmit={handleSaveAnnouncement} className="flex flex-col sm:flex-row gap-3 items-center">
+            <input
+              type="text"
+              placeholder="Enter announcement text (e.g. FLASH DROP: 20% OFF WITH CODE VINTAGE20)..."
+              value={announcementText}
+              onChange={(e) => setAnnouncementText(e.target.value)}
+              className="flex-1 w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-4 py-2.5 text-xs text-[#23313A] focus:outline-none focus:border-[#2F6B4F]"
+            />
+
+            <button
+              type="submit"
+              disabled={savingAnnouncement}
+              className="w-full sm:w-auto bg-[#2F6B4F] hover:bg-[#23313A] text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs active:scale-95 cursor-pointer disabled:opacity-50 shrink-0"
+            >
+              {savingAnnouncement ? 'Broadcasting...' : 'Save Broadcast'}
+            </button>
+          </form>
+
+          {/* Live Preview Bar */}
+          {announcementText.trim() && (
+            <div className="pt-2">
+              <span className="text-[10px] uppercase font-bold text-[#A8C3A0] block mb-1">
+                Live Banner Preview
+              </span>
+              <div className={`p-2 rounded-xl text-[11px] font-bold text-center tracking-wide transition-all ${
+                isAnnouncementActive 
+                  ? 'bg-[#2F6B4F] text-white shadow-xs' 
+                  : 'bg-gray-200 text-gray-500 border border-gray-300'
+              }`}>
+                {announcementText}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Analytics Summary Cards */}
@@ -547,8 +653,6 @@ export default function AdminDashboard() {
         {/* Tab 1: Product Card Box Grid */}
         {activeTab === 'inventory' && (
           <div className="space-y-6">
-            
-            {/* Filter Toolbar Card */}
             <div className="bg-white border border-[#A8C3A0]/30 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
               <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
                 <div className="relative w-full sm:w-64">
@@ -589,7 +693,6 @@ export default function AdminDashboard() {
               </p>
             </div>
 
-            {/* Product Card Boxes */}
             {filteredProducts.length === 0 ? (
               <div className="bg-white border border-[#A8C3A0]/30 rounded-3xl p-12 text-center text-[#A8C3A0] space-y-2">
                 <Package size={36} className="mx-auto text-[#2F6B4F] opacity-50" />
@@ -609,7 +712,6 @@ export default function AdminDashboard() {
                       key={id}
                       className="bg-white border border-[#A8C3A0]/35 rounded-3xl overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
                     >
-                      {/* Photo Canvas */}
                       <div className="relative h-56 sm:h-60 w-full bg-[#F6F1E8] overflow-hidden border-b border-[#A8C3A0]/20 flex items-center justify-center p-3">
                         <img
                           src={item.image_url || 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=400'}
@@ -617,14 +719,12 @@ export default function AdminDashboard() {
                           className="w-full h-full object-contain drop-shadow-xs"
                         />
 
-                        {/* Top ID Pill */}
                         <div className="absolute top-3 right-3">
                           <span className="bg-[#23313A]/80 backdrop-blur-xs text-white text-[10px] font-mono font-bold px-2 py-0.5 rounded-md shadow-xs">
                             ID #{id}
                           </span>
                         </div>
 
-                        {/* Brand Tag */}
                         <div className="absolute bottom-3 left-3">
                           <span className="bg-white/95 backdrop-blur-xs text-[#23313A] border border-[#A8C3A0]/30 text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg shadow-xs">
                             {item.brand || 'Vintage Archive'}
@@ -632,7 +732,6 @@ export default function AdminDashboard() {
                         </div>
                       </div>
 
-                      {/* Content Section */}
                       <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-3">
                         <div className="space-y-1.5">
                           <div className="flex items-center justify-between text-xs font-mono font-medium text-[#A8C3A0]">
@@ -654,7 +753,6 @@ export default function AdminDashboard() {
                           </div>
                         </div>
 
-                        {/* Price Section */}
                         <div className="pt-2 border-t border-[#A8C3A0]/15 flex items-baseline justify-between font-mono">
                           <span className="text-[10px] uppercase font-bold text-[#A8C3A0] tracking-wider">
                             Price
@@ -665,7 +763,6 @@ export default function AdminDashboard() {
                         </div>
                       </div>
 
-                      {/* Action Footer */}
                       <div className="p-3 sm:p-4 border-t border-[#A8C3A0]/20 bg-[#F6F1E8]/30 flex items-center gap-2 font-mono">
                         <div
                           className={`flex-1 py-2 px-3 rounded-xl text-[11px] font-bold text-center tracking-wider uppercase border flex items-center justify-center ${
@@ -706,15 +803,12 @@ export default function AdminDashboard() {
                 })}
               </div>
             )}
-
           </div>
         )}
 
-        {/* Tab 2: Customer Orders Card Box Grid (Matching Inventory UI) */}
+        {/* Tab 2: Customer Orders Card Box Grid */}
         {activeTab === 'orders' && (
           <div className="space-y-6">
-            
-            {/* Order Filter Toolbar */}
             <div className="bg-white border border-[#A8C3A0]/30 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
               <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
                 <div className="relative w-full sm:w-72">
@@ -747,7 +841,6 @@ export default function AdminDashboard() {
               </p>
             </div>
 
-            {/* Individual Customer Order Card Boxes */}
             {filteredOrders.length === 0 ? (
               <div className="bg-white border border-[#A8C3A0]/30 rounded-3xl p-12 text-center text-[#A8C3A0] space-y-2">
                 <ShoppingBag size={36} className="mx-auto text-[#2F6B4F] opacity-50" />
@@ -771,7 +864,6 @@ export default function AdminDashboard() {
                       key={orderId}
                       className="bg-white border border-[#A8C3A0]/35 rounded-3xl overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
                     >
-                      {/* Top Visual Area */}
                       <div className="relative h-56 sm:h-60 w-full bg-[#F6F1E8] overflow-hidden border-b border-[#A8C3A0]/20 flex items-center justify-center p-3">
                         {firstItem?.image_url ? (
                           <img
@@ -788,14 +880,12 @@ export default function AdminDashboard() {
                           </div>
                         )}
 
-                        {/* Order #ID Pill */}
                         <div className="absolute top-3 right-3">
                           <span className="bg-[#23313A]/80 backdrop-blur-xs text-white text-[10px] font-mono font-bold px-2 py-0.5 rounded-md shadow-xs">
                             #{orderId}
                           </span>
                         </div>
 
-                        {/* Courier Badge */}
                         <div className="absolute top-3 left-3">
                           <span className="bg-white/95 backdrop-blur-xs text-[#23313A] border border-[#A8C3A0]/30 text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-md shadow-xs flex items-center gap-1">
                             <Truck size={12} className="text-[#2F6B4F]" />
@@ -803,7 +893,6 @@ export default function AdminDashboard() {
                           </span>
                         </div>
 
-                        {/* City Destination Pill */}
                         <div className="absolute bottom-3 left-3 max-w-[85%]">
                           <span className="bg-white/95 backdrop-blur-xs text-[#23313A] border border-[#A8C3A0]/30 text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg shadow-xs truncate block">
                             {ord.city ? `${ord.city}, ${ord.province || ''}` : ord.shipping_address || 'Cavite'}
@@ -811,7 +900,6 @@ export default function AdminDashboard() {
                         </div>
                       </div>
 
-                      {/* Content Section */}
                       <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-3">
                         <div className="space-y-1.5">
                           <div className="flex items-center justify-between text-xs font-mono font-medium text-[#A8C3A0]">
@@ -821,7 +909,6 @@ export default function AdminDashboard() {
                             </span>
                           </div>
 
-                          {/* Customer Name */}
                           <h3 
                             className="font-serif font-bold text-base text-[#23313A] line-clamp-1"
                             title={ord.customer_name || 'Customer'}
@@ -829,7 +916,6 @@ export default function AdminDashboard() {
                             {ord.customer_name || 'Member'}
                           </h3>
 
-                          {/* Contact & Tracking Snippet */}
                           <p className="text-[11px] font-mono text-[#23313A]/60 truncate">
                             {ord.email || ord.customer_email || 'No email provided'}
                           </p>
@@ -842,7 +928,6 @@ export default function AdminDashboard() {
                           </div>
                         </div>
 
-                        {/* Price & Payment Section */}
                         <div className="pt-2 border-t border-[#A8C3A0]/15 flex items-baseline justify-between font-mono">
                           <div>
                             <span className="text-[9px] uppercase font-bold text-[#A8C3A0] block">
@@ -853,7 +938,6 @@ export default function AdminDashboard() {
                             </span>
                           </div>
 
-                          {/* Quick Status Select */}
                           <select
                             value={ord.status || 'pending'}
                             onChange={(e) => handleUpdateOrderStatus(orderId, e.target.value)}
@@ -868,7 +952,6 @@ export default function AdminDashboard() {
                         </div>
                       </div>
 
-                      {/* Action Footer: View Full Details / Invoice Button */}
                       <div className="p-3 sm:p-4 border-t border-[#A8C3A0]/20 bg-[#F6F1E8]/30 flex items-center gap-2 font-mono">
                         <button
                           type="button"
@@ -885,7 +968,6 @@ export default function AdminDashboard() {
                 })}
               </div>
             )}
-
           </div>
         )}
 
@@ -1170,7 +1252,6 @@ export default function AdminDashboard() {
             onClick={(e) => e.stopPropagation()}
             id="printable-invoice"
           >
-            {/* Modal Header */}
             <div className="flex items-center justify-between pb-5 border-b border-[#A8C3A0]/20 mb-6">
               <div>
                 <span className="text-[10px] uppercase font-bold text-[#A8C3A0] tracking-wider block">
@@ -1201,7 +1282,6 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Invoice Meta Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-6 border-b border-[#A8C3A0]/20 text-xs">
               <div className="space-y-1.5 bg-[#F6F1E8]/40 p-4 rounded-2xl border border-[#A8C3A0]/20">
                 <span className="text-[10px] uppercase font-bold text-[#A8C3A0] block">Customer Details</span>
@@ -1258,7 +1338,6 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Line Items Breakdown */}
             <div className="py-6 space-y-3">
               <span className="text-[10px] uppercase font-bold text-[#A8C3A0] tracking-wider block">
                 Purchased Pieces ({viewingOrder.order_items?.length || 1})
@@ -1299,7 +1378,6 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Invoice Total Calculation Breakdown */}
             <div className="pt-4 border-t border-[#A8C3A0]/20 space-y-2 text-xs">
               <div className="flex justify-between text-[#23313A]/70">
                 <span>Items Subtotal:</span>
@@ -1328,7 +1406,6 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Footer Close */}
             <div className="pt-6 border-t border-[#A8C3A0]/20 flex items-center justify-end gap-3">
               <button
                 type="button"
