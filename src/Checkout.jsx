@@ -7,6 +7,7 @@ import {
   Tag, X, Check, Info, ChevronDown, ShoppingBag 
 } from 'lucide-react';
 import { useCart } from './context/CartContext';
+import { PHILIPPINES_ADDRESS_DATA } from './data/philippinesAddress';
 
 const BACKEND_URL = API_URL || import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
 
@@ -27,13 +28,30 @@ export default function Checkout() {
   const [voucherLoading, setVoucherLoading] = useState(false);
   const [voucherError, setVoucherError] = useState('');
 
-  // 1. Load authenticated user & pre-filled address
+  // Cascading Address State
+  const [selectedRegion, setSelectedRegion] = useState('Region IV-A (CALABARZON)');
+  const [selectedProvince, setSelectedProvince] = useState('Cavite');
+  const [selectedCity, setSelectedCity] = useState('Dasmariñas');
+
+  // Load authenticated user
   const [currentUser] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('thriftloop_user')) || {};
     } catch {
       return {};
     }
+  });
+
+  const [formData, setFormData] = useState({
+    customer_name: currentUser.full_name || '',
+    email: currentUser.email || '',
+    phone: currentUser.phone || '',
+    shipping_address: currentUser.street_address || '',
+    city: currentUser.city || 'Dasmariñas',
+    province: currentUser.province || 'Cavite',
+    postal_code: currentUser.postal_code || '4114',
+    courier: 'J&T Express',
+    payment_method: 'paymongo',
   });
 
   // Guard: Redirect unauthenticated visitors
@@ -44,6 +62,45 @@ export default function Checkout() {
       navigate('/cart');
     }
   }, [navigate]);
+
+  // Load and autofill profile data from server
+  useEffect(() => {
+    const userId = currentUser.user_id || currentUser.id;
+    if (!userId) return;
+
+    fetch(`${BACKEND_URL}/api/users/${userId}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((profile) => {
+        if (!profile) return;
+        setFormData((prev) => ({
+          ...prev,
+          customer_name: profile.full_name || prev.customer_name,
+          email: profile.email || prev.email,
+          phone: profile.phone || prev.phone,
+          shipping_address: profile.street_address || prev.shipping_address,
+          postal_code: profile.postal_code || prev.postal_code,
+        }));
+
+        if (profile.province) {
+          for (const [reg, provObj] of Object.entries(PHILIPPINES_ADDRESS_DATA)) {
+            if (Object.keys(provObj).includes(profile.province)) {
+              setSelectedRegion(reg);
+              setSelectedProvince(profile.province);
+              const validCities = provObj[profile.province] || [];
+              const matchedCity = validCities.includes(profile.city) ? profile.city : (validCities[0] || '');
+              setSelectedCity(matchedCity);
+              setFormData((prev) => ({
+                ...prev,
+                province: profile.province,
+                city: matchedCity,
+              }));
+              break;
+            }
+          }
+        }
+      })
+      .catch(() => {});
+  }, [currentUser]);
 
   // Automated Inventory Release on Cancelled Sessions
   useEffect(() => {
@@ -59,7 +116,7 @@ export default function Checkout() {
       })
         .then((res) => res.json())
         .then(() => {
-          setInfoMessage('Payment cancelled. Your items have been released back to your bag and you may proceed.');
+          setInfoMessage('Payment cancelled. Your items have been released back to your bag.');
           window.history.replaceState({}, document.title, window.location.pathname);
         })
         .catch((err) => {
@@ -67,18 +124,6 @@ export default function Checkout() {
         });
     }
   }, []);
-
-  const [formData, setFormData] = useState({
-    customer_name: currentUser.full_name || '',
-    email: currentUser.email || '',
-    phone: currentUser.phone || '',
-    shipping_address: currentUser.street_address || '',
-    city: currentUser.city || '',
-    province: currentUser.province || '',
-    postal_code: currentUser.postal_code || '',
-    courier: 'J&T Express',
-    payment_method: 'paymongo',
-  });
 
   // Admin Account Checkout Barrier
   if (currentUser?.role === 'admin' || currentUser?.email === 'admin@thriftloop.com') {
@@ -91,7 +136,7 @@ export default function Checkout() {
           Admin Checkout Prohibited
         </h2>
         <p className="text-xs text-[#23313A]/70 max-w-md mb-6 leading-relaxed font-medium">
-          You are currently logged in with an Administrator profile ({currentUser.email}). Admins are restricted from placing customer orders to prevent conflicts with store inventory and payment records.
+          You are currently logged in with an Administrator profile ({currentUser.email}). Admins are restricted from placing customer orders.
         </p>
         <div className="flex gap-3">
           <Link 
@@ -105,7 +150,53 @@ export default function Checkout() {
     );
   }
 
-  // 2. Pricing, Voucher & Dynamic Shipping Calculation
+  // Address Dropdown Handlers
+  const availableProvinces = Object.keys(PHILIPPINES_ADDRESS_DATA[selectedRegion] || {});
+  const availableCities = PHILIPPINES_ADDRESS_DATA[selectedRegion]?.[selectedProvince] || [];
+
+  const handleRegionChange = (newRegion) => {
+    setSelectedRegion(newRegion);
+    const provinces = Object.keys(PHILIPPINES_ADDRESS_DATA[newRegion] || {});
+    const firstProvince = provinces[0] || '';
+    setSelectedProvince(firstProvince);
+
+    const cities = PHILIPPINES_ADDRESS_DATA[newRegion]?.[firstProvince] || [];
+    const firstCity = cities[0] || '';
+    setSelectedCity(firstCity);
+
+    setFormData((prev) => ({
+      ...prev,
+      province: firstProvince,
+      city: firstCity,
+    }));
+  };
+
+  const handleProvinceChange = (newProvince) => {
+    setSelectedProvince(newProvince);
+    const cities = PHILIPPINES_ADDRESS_DATA[selectedRegion]?.[newProvince] || [];
+    const firstCity = cities[0] || '';
+    setSelectedCity(firstCity);
+
+    setFormData((prev) => ({
+      ...prev,
+      province: newProvince,
+      city: firstCity,
+    }));
+  };
+
+  const handleCityChange = (newCity) => {
+    setSelectedCity(newCity);
+    setFormData((prev) => ({
+      ...prev,
+      city: newCity,
+    }));
+  };
+
+  const handleChange = (e) => {
+    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+
+  // Pricing & Calculations
   const subtotal = cartItems.reduce(
     (sum, item) => sum + Number(item.price || 0) * (item.quantity || 1), 
     0
@@ -115,10 +206,6 @@ export default function Checkout() {
   const shippingFee = (formData.courier === 'J&T Express' && subtotal >= 1500) ? 0 : baseShipping;
   const discountAmount = appliedVoucher ? parseFloat(appliedVoucher.discountAmount || 0) : 0;
   const grandTotal = Math.max(0, subtotal - discountAmount) + shippingFee;
-
-  const handleChange = (e) => {
-    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
-  };
 
   const handleApplyVoucher = async (e) => {
     if (e) e.preventDefault();
@@ -162,9 +249,10 @@ export default function Checkout() {
     if (
       !formData.customer_name?.trim() || 
       !formData.email?.trim() || 
+      !formData.phone?.trim() ||
       !formData.shipping_address?.trim() || 
-      !formData.city?.trim() || 
-      !formData.province?.trim() || 
+      !selectedCity || 
+      !selectedProvince || 
       !formData.postal_code?.trim()
     ) {
       setError('Please fill in all recipient contact and address details.');
@@ -187,17 +275,22 @@ export default function Checkout() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             items: cartItems,
+            cart_items: cartItems,
             customer: {
-              fullName: formData.customer_name,
-              email: formData.email,
-              phone: formData.phone,
+              fullName: formData.customer_name.trim(),
+              email: formData.email.trim(),
+              phone: formData.phone.trim(),
             },
             deliveryAddress: {
-              streetAddress: formData.shipping_address,
-              city: formData.city,
-              province: formData.province,
-              postalCode: formData.postal_code,
+              streetAddress: formData.shipping_address.trim(),
+              city: selectedCity,
+              province: selectedProvince,
+              postalCode: formData.postal_code.trim(),
             },
+            shipping_address: formData.shipping_address.trim(),
+            city: selectedCity,
+            province: selectedProvince,
+            postal_code: formData.postal_code.trim(),
             courier: formData.courier,
             referenceNumber,
             voucherCode: appliedVoucher ? appliedVoucher.code : null,
@@ -219,13 +312,21 @@ export default function Checkout() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             ...formData,
-            user_id: currentUser.user_id || null,
+            customer_name: formData.customer_name.trim(),
+            email: formData.email.trim(),
+            phone: formData.phone.trim(),
+            shipping_address: formData.shipping_address.trim(),
+            city: selectedCity,
+            province: selectedProvince,
+            postal_code: formData.postal_code.trim(),
+            user_id: currentUser.user_id || currentUser.id || null,
             total_amount: grandTotal,
             shipping_fee: shippingFee,
             discount_amount: discountAmount,
             voucher_code: appliedVoucher ? appliedVoucher.code : null,
             reference_number: referenceNumber,
             cart_items: cartItems,
+            items: cartItems,
           }),
         });
 
@@ -287,8 +388,7 @@ export default function Checkout() {
             <span className="sm:hidden">Back to Bag</span>
           </Link>
 
-          {/* Desktop Steps */}
-          <div className="hidden sm:flex items-center gap-2 sm:gap-4 text-[11px] font-bold uppercase tracking-wider">
+          <div className="hidden sm:flex items-center gap-2 sm:gap-4 text-[11px] font-bold uppercase tracking-wider font-mono">
             <Link to="/cart" className="text-[#A8C3A0] hover:text-[#23313A]">1. Bag</Link>
             <span className="text-[#A8C3A0]">•</span>
             <span className="text-[#2F6B4F] underline underline-offset-4">2. Shipping & Payment</span>
@@ -296,14 +396,13 @@ export default function Checkout() {
             <span className="text-[#A8C3A0]">3. Confirmation</span>
           </div>
 
-          {/* Mobile Current Step Tag */}
-          <span className="sm:hidden text-[10px] bg-[#2F6B4F]/10 text-[#2F6B4F] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+          <span className="sm:hidden text-[10px] bg-[#2F6B4F]/10 text-[#2F6B4F] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider font-mono">
             Step 2 of 3
           </span>
         </div>
 
-        {/* Mobile Accordion Order Summary */}
-        <div className="lg:hidden mb-5 bg-white border border-[#A8C3A0]/30 rounded-2xl p-4 shadow-xs">
+        {/* Mobile Accordion Summary */}
+        <div className="lg:hidden mb-5 bg-white border border-[#A8C3A0]/30 rounded-2xl p-4 shadow-xs font-mono">
           <button
             type="button"
             onClick={() => setMobileSummaryOpen(!mobileSummaryOpen)}
@@ -330,11 +429,11 @@ export default function Checkout() {
                       alt={item.name}
                       className="w-11 h-11 rounded-lg object-cover border border-[#A8C3A0]/30 shrink-0 bg-[#F6F1E8]"
                     />
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 font-sans">
                       <p className="font-bold text-xs text-[#23313A] truncate">{item.name}</p>
-                      <p className="text-[10px] text-[#A8C3A0]">Size {item.size || 'OS'} • 1-of-1</p>
+                      <p className="text-[10px] text-[#A8C3A0] font-mono">Size {item.size || 'OS'} • 1-of-1</p>
                     </div>
-                    <span className="text-xs font-bold text-[#2F6B4F] shrink-0">
+                    <span className="text-xs font-bold text-[#2F6B4F] shrink-0 font-mono">
                       ₱{Number(item.price || 0).toFixed(2)}
                     </span>
                   </div>
@@ -378,16 +477,16 @@ export default function Checkout() {
         )}
 
         {/* Checkout Form */}
-        <form noValidate onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-start">
+        <form noValidate onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-start font-mono">
           
-          {/* Left Column: Form Fields */}
+          {/* Left Column: Form Details */}
           <div className="lg:col-span-7 space-y-5 sm:space-y-6">
             
-            {/* Shipping Address */}
+            {/* Recipient Information */}
             <div className="bg-white border border-[#A8C3A0]/30 rounded-2xl sm:rounded-3xl p-4 sm:p-7 shadow-xs space-y-4">
               <h2 className="font-serif text-lg sm:text-xl font-bold text-[#23313A] flex items-center gap-2 pb-3 border-b border-[#A8C3A0]/20">
                 <MapPin size={18} className="text-[#2F6B4F]" />
-                <span>Shipping Address</span>
+                <span>Recipient Details</span>
               </h2>
 
               <div className="space-y-3.5 text-xs">
@@ -401,7 +500,7 @@ export default function Checkout() {
                     value={formData.customer_name}
                     onChange={handleChange}
                     autoComplete="name"
-                    className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 sm:py-2 focus:outline-none focus:border-[#2F6B4F] focus:bg-white text-[#23313A] transition-all shadow-xs text-[16px] sm:text-xs"
+                    className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 sm:py-2 focus:outline-none focus:border-[#2F6B4F] focus:bg-white text-[#23313A] transition-all shadow-xs text-xs font-sans font-bold"
                   />
                 </div>
 
@@ -416,8 +515,8 @@ export default function Checkout() {
                       inputMode="email"
                       autoComplete="email"
                       value={formData.email}
-                      onChange={handleChange}
-                      className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 sm:py-2 focus:outline-none focus:border-[#2F6B4F] focus:bg-white text-[#23313A] transition-all shadow-xs text-[16px] sm:text-xs"
+                      disabled
+                      className="w-full bg-gray-100 border border-gray-200 text-gray-500 rounded-xl px-3.5 py-2.5 sm:py-2 text-xs cursor-not-allowed font-medium"
                     />
                   </div>
                   <div>
@@ -429,59 +528,104 @@ export default function Checkout() {
                       name="phone"
                       inputMode="tel"
                       autoComplete="tel"
-                      placeholder="09XXXXXXXXX"
                       value={formData.phone}
                       onChange={handleChange}
-                      className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 sm:py-2 focus:outline-none focus:border-[#2F6B4F] focus:bg-white text-[#23313A] transition-all shadow-xs text-[16px] sm:text-xs"
+                      className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 sm:py-2 focus:outline-none focus:border-[#2F6B4F] focus:bg-white text-[#23313A] transition-all shadow-xs text-xs font-mono"
                     />
                   </div>
                 </div>
+              </div>
+            </div>
 
+            {/* Delivery Address (Philippine Cascading Dropdowns) */}
+            <div className="bg-white border border-[#A8C3A0]/30 rounded-2xl sm:rounded-3xl p-4 sm:p-7 shadow-xs space-y-4">
+              <h2 className="font-serif text-lg sm:text-xl font-bold text-[#23313A] flex items-center gap-2 pb-3 border-b border-[#A8C3A0]/20">
+                <Truck size={18} className="text-[#2F6B4F]" />
+                <span>Delivery Address</span>
+              </h2>
+
+              <div className="space-y-3.5 text-xs">
+                {/* Country: Locked to Philippines */}
                 <div>
                   <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
-                    House/Unit No., Street, Barangay
+                    Country
                   </label>
                   <input
                     type="text"
-                    name="shipping_address"
-                    value={formData.shipping_address}
-                    onChange={handleChange}
-                    autoComplete="street-address"
-                    placeholder="e.g. Block 4 Lot 12, Vintage Street, Brgy. San Jose"
-                    className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 sm:py-2 focus:outline-none focus:border-[#2F6B4F] focus:bg-white text-[#23313A] transition-all shadow-xs text-[16px] sm:text-xs"
+                    value="Philippines"
+                    disabled
+                    className="w-full bg-gray-100 border border-gray-200 text-gray-600 rounded-xl px-3.5 py-2 text-xs font-bold cursor-not-allowed"
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-3.5">
+                {/* Region Dropdown */}
+                <div>
+                  <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
+                    Region
+                  </label>
+                  <select
+                    value={selectedRegion}
+                    onChange={(e) => handleRegionChange(e.target.value)}
+                    className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3 py-2 text-xs font-bold text-[#23313A] focus:outline-none focus:border-[#2F6B4F] cursor-pointer"
+                  >
+                    {Object.keys(PHILIPPINES_ADDRESS_DATA).map((reg) => (
+                      <option key={reg} value={reg}>{reg}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Province & City Dropdowns */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-3.5">
+                  <div>
+                    <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
+                      Province / District
+                    </label>
+                    <select
+                      value={selectedProvince}
+                      onChange={(e) => handleProvinceChange(e.target.value)}
+                      className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3 py-2 text-xs font-bold text-[#23313A] focus:outline-none focus:border-[#2F6B4F] cursor-pointer"
+                    >
+                      {availableProvinces.map((prov) => (
+                        <option key={prov} value={prov}>{prov}</option>
+                      ))}
+                    </select>
+                  </div>
+
                   <div>
                     <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
                       City / Municipality
                     </label>
-                    <input
-                      type="text"
-                      name="city"
-                      value={formData.city}
-                      onChange={handleChange}
-                      autoComplete="address-level2"
-                      className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 sm:py-2 focus:outline-none focus:border-[#2F6B4F] focus:bg-white text-[#23313A] transition-all shadow-xs text-[16px] sm:text-xs"
-                    />
+                    <select
+                      value={selectedCity}
+                      onChange={(e) => handleCityChange(e.target.value)}
+                      className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3 py-2 text-xs font-bold text-[#23313A] focus:outline-none focus:border-[#2F6B4F] cursor-pointer"
+                    >
+                      {availableCities.map((city) => (
+                        <option key={city} value={city}>{city}</option>
+                      ))}
+                    </select>
                   </div>
-                  <div>
+                </div>
+
+                {/* Street Address & Postal Code */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-3.5">
+                  <div className="sm:col-span-2">
                     <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
-                      Province
+                      House/Unit No., Street, Barangay
                     </label>
                     <input
                       type="text"
-                      name="province"
-                      value={formData.province}
+                      name="shipping_address"
+                      value={formData.shipping_address}
                       onChange={handleChange}
-                      autoComplete="address-level1"
-                      className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 sm:py-2 focus:outline-none focus:border-[#2F6B4F] focus:bg-white text-[#23313A] transition-all shadow-xs text-[16px] sm:text-xs"
+                      autoComplete="street-address"
+                      className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 sm:py-2 focus:outline-none focus:border-[#2F6B4F] focus:bg-white text-[#23313A] transition-all shadow-xs text-xs"
                     />
                   </div>
+
                   <div>
                     <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
-                      Postal / ZIP Code
+                      Postal Code
                     </label>
                     <input
                       type="text"
@@ -490,14 +634,14 @@ export default function Checkout() {
                       autoComplete="postal-code"
                       value={formData.postal_code}
                       onChange={handleChange}
-                      className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 sm:py-2 focus:outline-none focus:border-[#2F6B4F] focus:bg-white text-[#23313A] transition-all shadow-xs text-[16px] sm:text-xs"
+                      className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 sm:py-2 focus:outline-none focus:border-[#2F6B4F] focus:bg-white text-[#23313A] transition-all shadow-xs text-xs font-mono"
                     />
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Courier & Payment Option */}
+            {/* Courier & Payment Provider */}
             <div className="bg-white border border-[#A8C3A0]/30 rounded-2xl sm:rounded-3xl p-4 sm:p-7 shadow-xs space-y-5 sm:space-y-6">
               <div>
                 <h2 className="font-serif text-lg sm:text-xl font-bold text-[#23313A] flex items-center gap-2 pb-3 border-b border-[#A8C3A0]/20 mb-3">
@@ -620,7 +764,7 @@ export default function Checkout() {
             <div className="bg-white border border-[#A8C3A0]/30 rounded-2xl sm:rounded-3xl p-5 sm:p-7 shadow-xs lg:sticky lg:top-24 space-y-4">
               <h2 className="font-serif text-lg sm:text-xl font-bold text-[#23313A] pb-2 border-b border-[#A8C3A0]/20 flex items-center justify-between">
                 <span>Summary</span>
-                <span className="text-xs font-sans text-[#A8C3A0] font-bold">
+                <span className="text-xs font-mono text-[#A8C3A0] font-bold">
                   {cartItems.length} {cartItems.length === 1 ? 'Piece' : 'Pieces'}
                 </span>
               </h2>
@@ -633,13 +777,13 @@ export default function Checkout() {
                       alt={item.name}
                       className="w-12 h-12 rounded-xl object-cover border border-[#A8C3A0]/30 shrink-0 bg-[#F6F1E8]"
                     />
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 font-sans">
                       <p className="font-bold text-xs text-[#23313A] truncate">{item.name}</p>
-                      <p className="text-[10px] text-[#A8C3A0]">
+                      <p className="text-[10px] text-[#A8C3A0] font-mono">
                         Size {item.size || 'OS'} • 1-of-1 Piece
                       </p>
                     </div>
-                    <span className="text-xs font-bold text-[#2F6B4F] shrink-0">
+                    <span className="text-xs font-bold text-[#2F6B4F] shrink-0 font-mono">
                       ₱{Number(item.price || 0).toFixed(2)}
                     </span>
                   </div>
@@ -678,7 +822,6 @@ export default function Checkout() {
                     <div className="flex gap-2">
                       <input
                         type="text"
-                        placeholder="e.g. VINTAGE20"
                         value={voucherInput}
                         onChange={(e) => {
                           setVoucherInput(e.target.value.toUpperCase());
@@ -690,7 +833,7 @@ export default function Checkout() {
                             handleApplyVoucher(e);
                           }
                         }}
-                        className="flex-1 bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3 py-2 text-[16px] sm:text-xs uppercase font-bold focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
+                        className="flex-1 bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3 py-2 text-xs uppercase font-bold focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
                       />
                       <button
                         type="button"
@@ -741,7 +884,7 @@ export default function Checkout() {
 
                 <div className="border-t border-[#A8C3A0]/30 pt-3 flex justify-between text-base font-bold text-[#23313A]">
                   <span>Total Due</span>
-                  <span className="text-[#2F6B4F] text-lg font-bold">₱{grandTotal.toFixed(2)}</span>
+                  <span className="text-[#2F6B4F] text-lg font-bold font-serif">₱{grandTotal.toFixed(2)}</span>
                 </div>
               </div>
 
