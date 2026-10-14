@@ -249,8 +249,6 @@ ${safeDesc}🛍️ <a href="${FRONTEND_URL}/product/${product.product_id}">View 
       if (data.ok) {
         console.log(`📢 [Telegram Integration] Successfully published photo drop "${product.name}" to channel ${channel}`);
         return;
-      } else {
-        console.warn(`⚠️ [Telegram Integration] sendPhoto failed: ${data.description}. Attempting text fallback...`);
       }
     }
 
@@ -267,8 +265,6 @@ ${safeDesc}🛍️ <a href="${FRONTEND_URL}/product/${product.product_id}">View 
     const textData = await textResponse.json();
     if (textData.ok) {
       console.log(`📢 [Telegram Integration] Published text drop "${product.name}" to channel ${channel}`);
-    } else {
-      console.warn(`⚠️ [Telegram Integration] Telegram API error:`, textData.description);
     }
   } catch (err) {
     console.warn('⚠️ [Telegram Integration] Failed to post to Telegram:', err.message);
@@ -394,7 +390,6 @@ app.post('/api/auth/google', async (req, res) => {
           if (decoded && decoded.email && (decoded.iss === 'https://accounts.google.com' || decoded.iss === 'accounts.google.com')) {
             email = decoded.email;
             name = decoded.name;
-            console.log('✅ Identity recovered from Google ID token payload:', email);
           } else {
             throw verifyErr;
           }
@@ -404,9 +399,7 @@ app.post('/api/auth/google', async (req, res) => {
       const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
         headers: { Authorization: `Bearer ${access_token}` },
       });
-      if (!userRes.ok) {
-        throw new Error('Could not fetch user profile from Google using the provided access token.');
-      }
+      if (!userRes.ok) throw new Error('Could not fetch user profile from Google.');
       const profile = await userRes.json();
       email = profile.email;
       name = profile.name;
@@ -455,7 +448,6 @@ app.post('/api/auth/google', async (req, res) => {
 
     res.json({ message: 'Google login successful', user: safeUser, token });
   } catch (err) {
-    console.error('❌ Google identity verification failed:', err.message || err);
     res.status(401).json({ error: `Failed to verify Google identity: ${err.message || 'Unknown error'}` });
   }
 });
@@ -565,13 +557,11 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         </div>
         <div style="padding: 28px 24px; color: #23313A;">
           <p style="font-size: 14px; margin-top: 0;">Hi <strong>${user.full_name || 'Customer'}</strong>,</p>
-          <p style="font-size: 13px; line-height: 1.6;">A password recovery request was initiated for your registered ThriftLoop account (<strong>${user.email}</strong>). Click the link below to set a new password:</p>
-          
+          <p style="font-size: 13px; line-height: 1.6;">Click the link below to set a new password:</p>
           <div style="text-align: center; margin: 28px 0;">
             <a href="${resetLink}" style="display: inline-block; background-color: #2F6B4F; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 14px 28px; border-radius: 12px;">Reset Password</a>
           </div>
-
-          <p style="font-size: 12px; color: #7A8B7B; line-height: 1.4;">This link expires in 1 hour. If you did not request this, you can safely ignore this email.</p>
+          <p style="font-size: 12px; color: #7A8B7B;">This link expires in 1 hour.</p>
         </div>
       </div>
     `;
@@ -591,34 +581,22 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
 app.post('/api/auth/reset-password', async (req, res) => {
   const { token, newPassword } = req.body;
-  if (!token || !newPassword) {
-    return res.status(400).json({ error: 'Reset token and new password are required.' });
-  }
-
-  if (newPassword.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters.' });
-  }
+  if (!token || !newPassword) return res.status(400).json({ error: 'Reset token and new password are required.' });
+  if (newPassword.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters.' });
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    if (decoded.purpose !== 'pwd_reset') {
-      return res.status(400).json({ error: 'Invalid password reset token.' });
-    }
+    if (decoded.purpose !== 'pwd_reset') return res.status(400).json({ error: 'Invalid password reset token.' });
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-
     const { error: updateErr } = await supabase
       .from('users')
       .update({ password_hash: hashedPassword })
       .eq('user_id', decoded.user_id);
 
     if (updateErr) throw updateErr;
-
     res.json({ message: 'Password updated successfully. You can now log in.' });
   } catch (err) {
-    if (err.name === 'TokenExpiredError') {
-      return res.status(400).json({ error: 'This recovery link has expired. Please request a new one.' });
-    }
     res.status(400).json({ error: 'Invalid or expired recovery link.' });
   }
 });
@@ -808,13 +786,47 @@ app.put('/api/products/:id', async (req, res) => {
   }
 });
 
+// Protect data integrity: block deleting sold garments or pieces associated with orders
 app.delete('/api/products/:id', async (req, res) => {
+  const productId = req.params.id;
   try {
-    const { error } = await supabase.from('products').delete().eq('product_id', req.params.id);
-    if (error) throw error;
-    res.json({ message: 'Product listing removed successfully' });
-  } catch {
-    res.status(500).json({ error: 'Failed to remove listing' });
+    const { data: product, error: fetchErr } = await supabase
+      .from('products')
+      .select('name, status')
+      .eq('product_id', productId)
+      .maybeSingle();
+
+    if (fetchErr) throw fetchErr;
+    if (!product) {
+      return res.status(404).json({ error: 'Product listing not found.' });
+    }
+
+    if (product.status === 'sold') {
+      return res.status(409).json({ 
+        error: `Cannot delete "${product.name}": this piece has been sold and is archived in order history.` 
+      });
+    }
+
+    const { count: orderItemsCount } = await supabase
+      .from('order_items')
+      .select('*', { count: 'exact', head: true })
+      .eq('product_id', productId);
+
+    if (orderItemsCount && orderItemsCount > 0) {
+      return res.status(409).json({ 
+        error: `Cannot delete "${product.name}": this item is linked to customer orders.` 
+      });
+    }
+
+    const { error: deleteErr } = await supabase
+      .from('products')
+      .delete()
+      .eq('product_id', productId);
+
+    if (deleteErr) throw deleteErr;
+    res.json({ message: `Listing for "${product.name}" removed successfully.` });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Failed to remove listing.' });
   }
 });
 
@@ -868,14 +880,15 @@ app.post('/api/admin/inventory/migrate-conditions', async (req, res) => {
       updatedCount 
     });
   } catch (err) {
-    console.error('❌ Condition migration error:', err.message);
     res.status(500).json({ error: 'Failed to migrate product conditions.' });
   }
 });
 
 // ==========================================
-// BUYER-TO-SELLER DIRECT MESSAGING & IMAGES
+// UNIFIED MESSAGING, READ RECEIPTS & IMAGES
 // ==========================================
+
+// 1. Unified 1:1 Conversation Initializer per Buyer (Merges all inquiries)
 app.post('/api/messages/conversations', async (req, res) => {
   const { buyer_id, seller_id, product_id } = req.body;
   if (!buyer_id) return res.status(400).json({ error: 'Buyer ID is required.' });
@@ -903,21 +916,48 @@ app.post('/api/messages/conversations', async (req, res) => {
       }
     }
 
-    let query = supabase
+    // Merge into single thread: Look for existing thread between buyer and store admin
+    const { data: existing } = await supabase
       .from('conversations')
-      .select('*, products(name, price, image_url)')
+      .select(`
+        *,
+        buyer:users!buyer_id(user_id, full_name, email, role),
+        seller:users!seller_id(user_id, full_name, email, role),
+        products(product_id, name, price, image_url)
+      `)
       .eq('buyer_id', buyer_id)
-      .eq('seller_id', targetSellerId);
+      .eq('seller_id', targetSellerId)
+      .order('last_message_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    if (product_id) {
-      query = query.eq('product_id', product_id);
-    }
-
-    const { data: existing } = await query.maybeSingle();
     if (existing) {
+      if (product_id && String(existing.product_id) !== String(product_id)) {
+        await supabase
+          .from('conversations')
+          .update({
+            product_id,
+            last_message_at: new Date().toISOString(),
+          })
+          .eq('conversation_id', existing.conversation_id);
+
+        const { data: updatedConvo } = await supabase
+          .from('conversations')
+          .select(`
+            *,
+            buyer:users!buyer_id(user_id, full_name, email, role),
+            seller:users!seller_id(user_id, full_name, email, role),
+            products(product_id, name, price, image_url)
+          `)
+          .eq('conversation_id', existing.conversation_id)
+          .single();
+
+        return res.json(updatedConvo || existing);
+      }
       return res.json(existing);
     }
 
+    // Create the primary conversation thread
     const { data: newConvo, error: createErr } = await supabase
       .from('conversations')
       .insert([{
@@ -927,7 +967,12 @@ app.post('/api/messages/conversations', async (req, res) => {
         last_message: 'Inquiry started',
         last_message_at: new Date().toISOString(),
       }])
-      .select('*, products(name, price, image_url)')
+      .select(`
+        *,
+        buyer:users!buyer_id(user_id, full_name, email, role),
+        seller:users!seller_id(user_id, full_name, email, role),
+        products(product_id, name, price, image_url)
+      `)
       .single();
 
     if (createErr) throw createErr;
@@ -938,6 +983,7 @@ app.post('/api/messages/conversations', async (req, res) => {
   }
 });
 
+// 2. Fetch User Threads (Deduplicated 1 thread per customer account)
 app.get('/api/messages/conversations/user/:userId', async (req, res) => {
   const { userId } = req.params;
 
@@ -951,43 +997,77 @@ app.get('/api/messages/conversations/user/:userId', async (req, res) => {
         product_id,
         last_message,
         last_message_at,
-        buyer:users!buyer_id(user_id, full_name, email),
-        seller:users!seller_id(user_id, full_name, email),
+        buyer:users!buyer_id(user_id, full_name, email, role),
+        seller:users!seller_id(user_id, full_name, email, role),
         products(product_id, name, price, image_url)
       `)
       .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
       .order('last_message_at', { ascending: false });
 
     if (error) throw error;
-    res.json(convos || []);
+
+    // Deduplicate: Exactly 1 thread per chat partner
+    const uniqueMap = new Map();
+    (convos || []).forEach((c) => {
+      const partnerId = String(c.buyer_id) === String(userId) ? c.seller_id : c.buyer_id;
+      if (!uniqueMap.has(partnerId)) {
+        uniqueMap.set(partnerId, c);
+      }
+    });
+
+    res.json(Array.from(uniqueMap.values()));
   } catch {
     res.status(500).json({ error: 'Could not load conversation list.' });
   }
 });
 
+// 3. Retrieve Messages (Merges all legacy messages between this buyer and seller)
 app.get('/api/messages/:conversationId', async (req, res) => {
+  const { conversationId } = req.params;
   try {
-    const { data: messages, error } = await supabase
+    const { data: currentConvo } = await supabase
+      .from('conversations')
+      .select('buyer_id, seller_id')
+      .eq('conversation_id', conversationId)
+      .maybeSingle();
+
+    let query = supabase
       .from('messages')
-      .select('*, sender:users!sender_id(user_id, full_name, role)')
-      .eq('conversation_id', req.params.conversationId)
+      .select('*, sender:users!sender_id(user_id, full_name, role, email)')
       .order('created_at', { ascending: true });
 
-    if (error) {
-      const { data: rawMessages } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', req.params.conversationId)
-        .order('created_at', { ascending: true });
-      return res.json(rawMessages || []);
+    if (currentConvo) {
+      const { data: relatedConvos } = await supabase
+        .from('conversations')
+        .select('conversation_id')
+        .eq('buyer_id', currentConvo.buyer_id)
+        .eq('seller_id', currentConvo.seller_id);
+
+      const allIds = (relatedConvos || []).map((rc) => rc.conversation_id);
+      if (allIds.length > 0) {
+        query = query.in('conversation_id', allIds);
+      } else {
+        query = query.eq('conversation_id', conversationId);
+      }
+    } else {
+      query = query.eq('conversation_id', conversationId);
     }
 
+    const { data: messages, error } = await query;
+    if (error) throw error;
     res.json(messages || []);
   } catch {
-    res.status(500).json({ error: 'Failed to retrieve messages.' });
+    // Fallback query
+    const { data: rawMessages } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: true });
+    res.json(rawMessages || []);
   }
 });
 
+// 4. Send Message with Seen = false & Image Upload
 app.post('/api/messages', async (req, res) => {
   const { conversation_id, sender_id, receiver_id, message_text, image_url } = req.body;
   if (!conversation_id || !sender_id || (!message_text?.trim() && !image_url)) {
@@ -1012,27 +1092,30 @@ app.post('/api/messages', async (req, res) => {
       sender_id,
       receiver_id: resolvedReceiverId || null,
       message_text: (message_text || '').trim() || '📷 Sent an image',
+      is_read: false,
     };
     if (image_url) payload.image_url = image_url;
 
     let { data: newMsg, error: msgErr } = await supabase
       .from('messages')
       .insert([payload])
-      .select('*, sender:users!sender_id(user_id, full_name, role)')
+      .select('*, sender:users!sender_id(user_id, full_name, role, email)')
       .single();
 
-    // Fallback if image_url column is not present in Supabase table
-    if (msgErr && image_url) {
+    // Fallback if is_read or image_url columns are missing in table
+    if (msgErr) {
       const fallbackPayload = {
         conversation_id,
         sender_id,
         receiver_id: resolvedReceiverId || null,
-        message_text: `[IMAGE]${image_url}[/IMAGE] ${(message_text || '').trim()}`.trim(),
+        message_text: image_url 
+          ? `[IMAGE]${image_url}[/IMAGE] ${(message_text || '').trim()}`.trim()
+          : (message_text || '').trim(),
       };
       const resFallback = await supabase
         .from('messages')
         .insert([fallbackPayload])
-        .select('*, sender:users!sender_id(user_id, full_name, role)')
+        .select('*, sender:users!sender_id(user_id, full_name, role, email)')
         .single();
       newMsg = resFallback.data;
       msgErr = resFallback.error;
@@ -1055,7 +1138,44 @@ app.post('/api/messages', async (req, res) => {
   }
 });
 
-// Check for incoming unread messages for navbar dot notification
+// 5. Mark Messages as Seen
+app.patch('/api/messages/conversations/:convoId/read', async (req, res) => {
+  const { convoId } = req.params;
+  const { userId } = req.body;
+  if (!convoId || !userId) return res.json({ success: false });
+
+  try {
+    const { data: currentConvo } = await supabase
+      .from('conversations')
+      .select('buyer_id, seller_id')
+      .eq('conversation_id', convoId)
+      .maybeSingle();
+
+    let allIds = [convoId];
+    if (currentConvo) {
+      const { data: related } = await supabase
+        .from('conversations')
+        .select('conversation_id')
+        .eq('buyer_id', currentConvo.buyer_id)
+        .eq('seller_id', currentConvo.seller_id);
+      if (related && related.length > 0) {
+        allIds = related.map((r) => r.conversation_id);
+      }
+    }
+
+    await supabase
+      .from('messages')
+      .update({ is_read: true })
+      .in('conversation_id', allIds)
+      .neq('sender_id', userId);
+
+    res.json({ success: true });
+  } catch {
+    res.json({ success: false });
+  }
+});
+
+// 6. Unread Badge Polling
 app.get('/api/messages/unread-status/:userId', async (req, res) => {
   const { userId } = req.params;
   try {
@@ -1559,11 +1679,12 @@ app.get('/api/admin/stats', async (req, res) => {
   }
 });
 
+// Admin Orders Feed with embedded line items and garment details for invoices
 app.get('/api/admin/orders', async (req, res) => {
   try {
     const { data: orders, error } = await supabase
       .from('orders')
-      .select('*, users(full_name, email)')
+      .select('*, users(full_name, email), order_items(*, products(*))')
       .order('order_id', { ascending: false });
 
     if (error) throw error;
@@ -1656,7 +1777,7 @@ app.delete('/api/admin/orders/:id', async (req, res) => {
 });
 
 // ==========================================
-// AI CONCIERGE (LOCKED TO GEMINI-3.8-FLASH)
+// AI CONCIERGE (LOCKED STRICTLY TO GEMINI-3.8-FLASH)
 // ==========================================
 app.post('/api/chat', async (req, res) => {
   const { message, user_id, email, current_order_id, image } = req.body;
@@ -1735,7 +1856,6 @@ GUIDELINES:
       });
     }
 
-    // Strictly locked to gemini-3.8-flash per requirement
     const targetModel = 'gemini-3.8-flash';
     let lastError = null;
 

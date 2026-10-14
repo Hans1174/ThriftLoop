@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { 
   MessageSquare, Send, ArrowLeft, Loader2, 
-  Store, ExternalLink, RefreshCw, Image as ImageIcon, X 
+  Store, ExternalLink, RefreshCw, Image as ImageIcon, X, CheckCheck, Check, User
 } from 'lucide-react';
 
 const extractImageAndText = (message) => {
@@ -41,6 +41,8 @@ export default function BuyerMessages() {
 
   const storedUser = localStorage.getItem('thriftloop_user');
   const currentUser = storedUser ? JSON.parse(storedUser) : null;
+  const currentUserId = currentUser?.user_id || currentUser?.id;
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.email === 'admin@thriftloop.com';
 
   useEffect(() => {
     if (!currentUser) {
@@ -49,18 +51,23 @@ export default function BuyerMessages() {
     }
   }, [currentUser, navigate]);
 
+  // Fetch threads with functional state to prevent resetting selected thread
   const fetchConversations = async () => {
-    if (!currentUser?.user_id) return;
+    if (!currentUserId) return;
     try {
-      const res = await fetch(`${API_URL}/api/messages/conversations/user/${currentUser.user_id}`);
+      const res = await fetch(`${API_URL}/api/messages/conversations/user/${currentUserId}`);
       const data = await res.json();
       if (Array.isArray(data)) {
         setConversations(data);
-        if (!activeConvo && data.length > 0 && window.innerWidth >= 768) {
-          setActiveConvo(data[0]);
-        }
+        setActiveConvo((prev) => {
+          if (!prev) {
+            return (data.length > 0 && window.innerWidth >= 768) ? data[0] : null;
+          }
+          const updated = data.find((c) => c.conversation_id === prev.conversation_id);
+          return updated || prev;
+        });
       }
-    } catch (err) {
+    } catch {
       setError('Could not load conversations.');
     } finally {
       setLoading(false);
@@ -71,7 +78,20 @@ export default function BuyerMessages() {
     fetchConversations();
     const interval = setInterval(fetchConversations, 5000);
     return () => clearInterval(interval);
-  }, [currentUser?.user_id]);
+  }, [currentUserId]);
+
+  const markConversationAsRead = async (convoId) => {
+    if (!convoId || !currentUserId) return;
+    try {
+      await fetch(`${API_URL}/api/messages/conversations/${convoId}/read`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUserId }),
+      });
+    } catch {
+      // Non-blocking
+    }
+  };
 
   const fetchMessages = async (convoId) => {
     if (!convoId) return;
@@ -80,6 +100,7 @@ export default function BuyerMessages() {
       const data = await res.json();
       if (Array.isArray(data)) {
         setMessages(data);
+        markConversationAsRead(convoId);
       }
     } catch (err) {
       console.error('Failed to load chat history:', err);
@@ -98,7 +119,7 @@ export default function BuyerMessages() {
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [activeConvo]);
+  }, [activeConvo?.conversation_id]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -147,14 +168,18 @@ export default function BuyerMessages() {
     setImagePreview('');
     setSending(true);
 
+    const targetReceiverId = String(activeConvo.buyer_id) === String(currentUserId)
+      ? activeConvo.seller_id
+      : activeConvo.buyer_id;
+
     try {
       const res = await fetch(`${API_URL}/api/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           conversation_id: activeConvo.conversation_id,
-          sender_id: currentUser.user_id,
-          receiver_id: activeConvo.seller_id,
+          sender_id: currentUserId,
+          receiver_id: targetReceiverId,
           message_text: textToSend,
           image_url: imageToSend,
         }),
@@ -174,283 +199,345 @@ export default function BuyerMessages() {
 
   if (!currentUser) return null;
 
+  // Resolve the other participant's display name and avatar
+  const getThreadPartnerInfo = (convo) => {
+    const isCurrentUserBuyer = String(convo.buyer_id) === String(currentUserId);
+    if (isAdmin || !isCurrentUserBuyer) {
+      const buyerName = convo.buyer?.full_name || convo.buyer?.email || `Buyer #${convo.buyer_id}`;
+      return {
+        name: buyerName,
+        subtitle: convo.products?.name ? `Item: ${convo.products.name}` : convo.buyer?.email || 'Customer',
+        initial: buyerName.charAt(0).toUpperCase(),
+        isAdminPartner: false
+      };
+    }
+    return {
+      name: 'ThriftLoop Support',
+      subtitle: convo.products?.name ? `Inquiry: ${convo.products.name}` : 'Curated Vintage Concierge',
+      initial: 'TL',
+      isAdminPartner: true
+    };
+  };
+
   return (
-    <div className="min-h-[85dvh] bg-[#F6F1E8] py-3 sm:py-6 px-3 sm:px-6">
-      <div className="max-w-5xl mx-auto space-y-3">
+    <div className="h-[calc(100vh-65px)] w-full bg-[#F6F1E8] flex flex-col font-mono overflow-hidden">
+      
+      {/* Full-Bleed Messaging Workspace */}
+      <div className="flex-1 w-full h-full grid grid-cols-1 md:grid-cols-12 bg-white overflow-hidden shadow-xs">
         
-        {/* Top Header */}
-        <div className="flex items-center justify-between px-1">
-          <div className="flex items-center gap-2.5">
-            <Link
-              to="/shop"
-              className="p-1.5 sm:p-2 rounded-xl bg-white border border-[#A8C3A0]/30 text-[#23313A] hover:bg-[#F6F1E8] transition-colors"
-              title="Return to Shop"
-            >
-              <ArrowLeft size={15} />
-            </Link>
+        {/* Left Column: Unified Threads List */}
+        <div className={`md:col-span-4 lg:col-span-3 border-r border-[#A8C3A0]/30 flex flex-col bg-[#F6F1E8]/30 h-full ${
+          activeConvo ? 'hidden md:flex' : 'flex'
+        }`}>
+          {/* Header */}
+          <div className="p-4 border-b border-[#A8C3A0]/20 flex items-center justify-between shrink-0 bg-white">
             <div>
-              <h1 className="font-serif text-lg sm:text-2xl font-bold text-[#23313A]">Conversations</h1>
-              <p className="text-[10px] sm:text-xs text-[#23313A]/60">Your direct buyer inquiries with ThriftLoop</p>
+              <h2 className="font-serif font-bold text-base text-[#23313A]">Inquiries</h2>
+              <p className="text-[10px] text-[#A8C3A0] font-semibold">
+                {isAdmin ? 'Customer Direct Messages' : 'ThriftLoop Conversations'}
+              </p>
             </div>
+            <button
+              onClick={fetchConversations}
+              className="p-1.5 rounded-lg text-[#2F6B4F] hover:bg-[#F6F1E8] transition-colors cursor-pointer"
+              title="Refresh"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            </button>
           </div>
-          <button
-            onClick={fetchConversations}
-            className="p-1.5 sm:p-2 rounded-xl bg-white border border-[#A8C3A0]/30 text-[#2F6B4F] hover:bg-[#F6F1E8] transition-colors cursor-pointer"
-            title="Refresh Threads"
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          </button>
-        </div>
 
-        {/* Messaging Container */}
-        <div className="bg-white border border-[#A8C3A0]/30 rounded-2xl sm:rounded-3xl overflow-hidden shadow-xs grid grid-cols-1 md:grid-cols-12 h-[calc(100dvh-175px)] min-h-[460px]">
-          
-          {/* Thread List */}
-          <div className={`md:col-span-5 border-r border-[#A8C3A0]/20 flex flex-col bg-[#F6F1E8]/30 ${
-            activeConvo ? 'hidden md:flex' : 'flex'
-          }`}>
-            <div className="p-3 border-b border-[#A8C3A0]/20 font-bold text-xs text-[#23313A] flex justify-between items-center">
-              <span>All Threads</span>
-              <span className="text-[10px] text-[#A8C3A0]">({conversations.length})</span>
-            </div>
+          {/* Threads Scrollable Feed */}
+          <div className="flex-1 overflow-y-auto divide-y divide-[#A8C3A0]/15">
+            {loading && conversations.length === 0 ? (
+              <div className="p-8 text-center text-xs text-[#23313A]/50 flex items-center justify-center gap-2">
+                <Loader2 size={16} className="animate-spin text-[#2F6B4F]" />
+                <span>Loading threads...</span>
+              </div>
+            ) : conversations.length === 0 ? (
+              <div className="p-8 text-center text-xs text-[#23313A]/50 space-y-2">
+                <MessageSquare size={28} className="mx-auto text-[#A8C3A0]" />
+                <p className="font-bold text-[#23313A]">No messages yet</p>
+                <p className="text-[11px]">Direct questions asked on garment pages appear here.</p>
+              </div>
+            ) : (
+              conversations.map((convo) => {
+                const isSelected = activeConvo?.conversation_id === convo.conversation_id;
+                const partner = getThreadPartnerInfo(convo);
 
-            <div className="flex-1 overflow-y-auto divide-y divide-[#A8C3A0]/15">
-              {loading ? (
-                <div className="p-8 text-center text-xs text-[#23313A]/50 flex items-center justify-center gap-2">
-                  <Loader2 size={16} className="animate-spin text-[#2F6B4F]" />
-                  <span>Loading threads...</span>
-                </div>
-              ) : conversations.length === 0 ? (
-                <div className="p-6 text-center text-xs text-[#23313A]/50 space-y-2">
-                  <MessageSquare size={26} className="mx-auto text-[#A8C3A0]" />
-                  <p className="font-bold text-[#23313A]">No inquiries found</p>
-                  <p className="text-[11px]">Click "Message Seller" on any garment page to open a thread.</p>
-                  <Link
-                    to="/shop"
-                    className="inline-block mt-2 bg-[#2F6B4F] text-white text-[11px] font-bold px-3.5 py-1.5 rounded-xl"
+                return (
+                  <button
+                    key={convo.conversation_id}
+                    onClick={() => setActiveConvo(convo)}
+                    className={`w-full text-left p-3.5 transition-colors flex items-center gap-3 cursor-pointer ${
+                      isSelected ? 'bg-white border-l-4 border-[#2F6B4F] shadow-xs' : 'hover:bg-white/60'
+                    }`}
                   >
-                    Explore Archive
-                  </Link>
-                </div>
-              ) : (
-                conversations.map((convo) => {
-                  const isSelected = activeConvo?.conversation_id === convo.conversation_id;
-                  return (
-                    <button
-                      key={convo.conversation_id}
-                      onClick={() => setActiveConvo(convo)}
-                      className={`w-full text-left p-3 transition-colors flex items-center gap-2.5 cursor-pointer ${
-                        isSelected ? 'bg-white border-l-4 border-[#2F6B4F]' : 'hover:bg-white/60'
-                      }`}
-                    >
-                      {convo.products?.image_url ? (
-                        <img
-                          src={convo.products.image_url}
-                          alt={convo.products.name}
-                          className="w-10 h-10 rounded-xl object-contain bg-white border border-[#A8C3A0]/30 shrink-0"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 rounded-xl bg-[#2F6B4F]/10 text-[#2F6B4F] flex items-center justify-center shrink-0">
-                          <Store size={18} />
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-1 mb-0.5">
-                          <h4 className="font-bold text-xs text-[#23313A] truncate">
-                            {convo.products?.name || 'Seller Inquiry'}
-                          </h4>
-                          <span className="text-[9px] text-[#23313A]/40 shrink-0">
-                            {new Date(convo.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-[#23313A]/60 truncate">
-                          {convo.last_message || 'Inquiry started'}
-                        </p>
-                      </div>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
+                    <div className="w-10 h-10 rounded-2xl bg-[#2F6B4F]/10 text-[#2F6B4F] flex items-center justify-center font-bold text-xs shrink-0 border border-[#A8C3A0]/30">
+                      {partner.isAdminPartner ? <Store size={18} /> : partner.initial}
+                    </div>
 
-          {/* Active Chat Column */}
-          <div className={`md:col-span-7 flex flex-col h-full bg-[#FAF7F2] ${
-            !activeConvo ? 'hidden md:flex' : 'flex'
-          }`}>
-            {activeConvo ? (
-              <>
-                {/* Active Chat Header */}
-                <div className="p-3 bg-white border-b border-[#A8C3A0]/20 flex items-center justify-between gap-2 shrink-0">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <button
-                      onClick={() => setActiveConvo(null)}
-                      className="md:hidden p-1.5 rounded-lg text-[#23313A] hover:bg-[#F6F1E8] shrink-0"
-                      title="Back to inquiries list"
-                    >
-                      <ArrowLeft size={16} />
-                    </button>
-                    <div>
-                      <h3 className="font-bold text-xs text-[#23313A] truncate max-w-[170px] sm:max-w-xs">
-                        {activeConvo.products?.name || 'ThriftLoop Inquiry'}
-                      </h3>
-                      <p className="text-[10px] text-[#2F6B4F] font-semibold">
-                        {activeConvo.products ? `₱${parseFloat(activeConvo.products.price).toFixed(2)}` : 'Direct Chat'}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1 mb-0.5">
+                        <h4 className="font-serif font-bold text-sm text-[#23313A] truncate">
+                          {partner.name}
+                        </h4>
+                        <span className="text-[9px] text-[#23313A]/40 shrink-0">
+                          {new Date(convo.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-[#2F6B4F] font-semibold truncate mb-0.5">
+                        {partner.subtitle}
+                      </p>
+                      <p className="text-[11px] text-[#23313A]/60 truncate">
+                        {convo.last_message || 'Inquiry started'}
                       </p>
                     </div>
-                  </div>
-
-                  {activeConvo.product_id && (
-                    <Link
-                      to={`/product/${activeConvo.product_id}`}
-                      className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-bold text-[#2F6B4F] hover:text-[#23313A] shrink-0 px-2 py-1 bg-[#F6F1E8] rounded-lg"
-                    >
-                      <span>Item</span>
-                      <ExternalLink size={11} />
-                    </Link>
-                  )}
-                </div>
-
-                {/* Messages Feed */}
-                <div className="flex-1 p-3 overflow-y-auto space-y-2.5">
-                  {messagesLoading ? (
-                    <div className="h-full flex items-center justify-center text-xs text-[#23313A]/60 gap-2">
-                      <Loader2 size={16} className="animate-spin text-[#2F6B4F]" />
-                      <span>Loading messages...</span>
-                    </div>
-                  ) : messages.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-xs text-[#23313A]/50">
-                      <p>Send your questions regarding this piece below.</p>
-                    </div>
-                  ) : (
-                    messages.map((m) => {
-                      const isMine = m.sender_id === currentUser.user_id;
-                      const { imageUrl, text } = extractImageAndText(m);
-
-                      return (
-                        <div
-                          key={m.message_id}
-                          className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}
-                        >
-                          <span className="text-[8px] text-[#23313A]/50 mb-0.5 px-1 font-semibold">
-                            {isMine ? 'You' : 'Seller'}
-                          </span>
-                          <div
-                            className={`max-w-[85%] px-3 py-2 rounded-2xl text-xs leading-relaxed shadow-xs ${
-                              isMine
-                                ? 'bg-[#2F6B4F] text-white rounded-tr-xs'
-                                : 'bg-white text-[#23313A] border border-[#A8C3A0]/30 rounded-tl-xs'
-                            }`}
-                          >
-                            {imageUrl && (
-                              <img
-                                src={imageUrl}
-                                alt="Attachment"
-                                onClick={() => setEnlargedImage(imageUrl)}
-                                className="max-h-52 rounded-xl object-contain mb-1.5 cursor-pointer hover:opacity-95 bg-black/5"
-                              />
-                            )}
-                            {text && text !== '📷 Sent an image' && <p>{text}</p>}
-                          </div>
-                          <span className="text-[8px] text-[#23313A]/40 mt-0.5 px-1">
-                            {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                      );
-                    })
-                  )}
-                  <div ref={messagesEndRef} />
-                </div>
-
-                {/* Image Upload Preview Chip */}
-                {imagePreview && (
-                  <div className="px-3 py-2 bg-[#F6F1E8] border-t border-[#A8C3A0]/30 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <img src={imagePreview} alt="Upload preview" className="w-10 h-10 rounded-lg object-cover border border-[#A8C3A0]/40" />
-                      <span className="text-[11px] text-[#23313A] font-bold">Image attached</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedImage(null);
-                        setImagePreview('');
-                      }}
-                      className="text-[#E67E5F] p-1 rounded-full hover:bg-white"
-                      title="Remove image"
-                    >
-                      <X size={15} />
-                    </button>
-                  </div>
-                )}
-
-                {/* Message Input Bar with Photo Picker */}
-                <form onSubmit={handleSendMessage} className="p-2.5 bg-white border-t border-[#A8C3A0]/20 flex gap-2 items-center shrink-0">
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleImageSelect}
-                  />
-
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="p-2 text-[#A8C3A0] hover:text-[#2F6B4F] hover:bg-[#F6F1E8] rounded-xl transition-colors cursor-pointer"
-                    title="Attach Photo"
-                  >
-                    <ImageIcon size={18} />
                   </button>
-
-                  <input
-                    type="text"
-                    placeholder="Type a message to the seller..."
-                    value={inputMessage}
-                    onChange={(e) => setInputMessage(e.target.value)}
-                    className="flex-1 bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3 py-2 text-xs text-[#23313A] focus:outline-none focus:border-[#2F6B4F]"
-                  />
-
-                  <button
-                    type="submit"
-                    disabled={sending || (!inputMessage.trim() && !selectedImage)}
-                    className="bg-[#2F6B4F] hover:bg-[#23313A] disabled:opacity-40 text-white p-2.5 rounded-xl transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
-                  >
-                    {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-                  </button>
-                </form>
-              </>
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center p-6 text-xs text-[#23313A]/50 space-y-2">
-                <MessageSquare size={32} className="text-[#A8C3A0]" />
-                <h3 className="font-bold text-[#23313A]">Select an inquiry thread</h3>
-                <p className="text-[11px] max-w-xs">
-                  Tap any conversation from the list to view updates or check sizing details.
-                </p>
-              </div>
+                );
+              })
             )}
           </div>
-
         </div>
 
-        {/* Fullscreen Image Lightbox Modal */}
-        {enlargedImage && (
-          <div 
-            onClick={() => setEnlargedImage(null)}
-            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
-          >
-            <div className="relative max-w-3xl max-h-[90vh]">
-              <button
-                onClick={() => setEnlargedImage(null)}
-                className="absolute -top-10 right-0 text-white/80 hover:text-white"
-              >
-                <X size={24} />
-              </button>
-              <img src={enlargedImage} alt="Enlarged" className="max-h-[85vh] max-w-full rounded-2xl object-contain shadow-2xl" />
+        {/* Right Column: Full-Height Chat Workspace */}
+        <div className={`md:col-span-8 lg:col-span-9 flex flex-col h-full bg-[#FAF7F2] ${
+          !activeConvo ? 'hidden md:flex' : 'flex'
+        }`}>
+          {activeConvo ? (
+            <>
+              {/* Active Header */}
+              {(() => {
+                const partner = getThreadPartnerInfo(activeConvo);
+                return (
+                  <div className="p-3.5 sm:p-4 bg-white border-b border-[#A8C3A0]/20 flex items-center justify-between gap-3 shrink-0">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <button
+                        onClick={() => setActiveConvo(null)}
+                        className="md:hidden p-1.5 rounded-lg text-[#23313A] hover:bg-[#F6F1E8] shrink-0"
+                        title="Back to threads"
+                      >
+                        <ArrowLeft size={18} />
+                      </button>
+
+                      <div className="w-10 h-10 rounded-2xl bg-[#2F6B4F]/10 text-[#2F6B4F] flex items-center justify-center font-bold text-xs shrink-0 border border-[#A8C3A0]/30">
+                        {partner.isAdminPartner ? <Store size={18} /> : partner.initial}
+                      </div>
+
+                      <div className="min-w-0">
+                        <h3 className="font-serif font-bold text-sm sm:text-base text-[#23313A] truncate">
+                          {partner.name}
+                        </h3>
+                        <p className="text-[11px] text-[#A8C3A0] truncate">
+                          {activeConvo.buyer?.email || 'Active Customer'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Linked Garment Pill */}
+                    {activeConvo.products && (
+                      <div className="flex items-center gap-2.5 bg-[#F6F1E8] px-3 py-1.5 rounded-2xl border border-[#A8C3A0]/30 shrink-0">
+                        {activeConvo.products.image_url && (
+                          <img
+                            src={activeConvo.products.image_url}
+                            alt={activeConvo.products.name}
+                            className="w-7 h-7 rounded-lg object-contain bg-white border border-[#A8C3A0]/30"
+                          />
+                        )}
+                        <div className="hidden sm:block text-right">
+                          <span className="font-serif font-bold text-xs text-[#23313A] block truncate max-w-[140px]">
+                            {activeConvo.products.name}
+                          </span>
+                          <span className="font-mono text-[10px] text-[#2F6B4F] font-bold">
+                            ₱{parseFloat(activeConvo.products.price).toFixed(2)}
+                          </span>
+                        </div>
+                        <a
+                          href={`/product/${activeConvo.product_id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[#2F6B4F] hover:text-[#23313A] p-1"
+                          title="View Product Page"
+                        >
+                          <ExternalLink size={14} />
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Messages History Feed with Seen Indicator */}
+              <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-3">
+                {messagesLoading ? (
+                  <div className="h-full flex items-center justify-center text-xs text-[#23313A]/60 gap-2">
+                    <Loader2 size={16} className="animate-spin text-[#2F6B4F]" />
+                    <span>Loading messages...</span>
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-xs text-[#23313A]/50 space-y-1">
+                    <p className="font-serif font-bold text-sm text-[#23313A]">No messages yet</p>
+                    <p>Start your conversation regarding sizing, condition, or shipping.</p>
+                  </div>
+                ) : (
+                  messages.map((m, idx) => {
+                    const isMine = String(m.sender_id) === String(currentUserId);
+                    const { imageUrl, text } = extractImageAndText(m);
+                    const isLastFromMe = isMine && idx === messages.map((msg) => String(msg.sender_id)).lastIndexOf(String(currentUserId));
+
+                    // Accurate Respondent Name (Never calls the buyer "Seller")
+                    let senderLabel = 'Customer';
+                    if (isMine) {
+                      senderLabel = 'You';
+                    } else if (m.sender?.role === 'admin' || m.sender?.email === 'admin@thriftloop.com') {
+                      senderLabel = 'ThriftLoop Admin';
+                    } else if (m.sender?.full_name) {
+                      senderLabel = m.sender.full_name;
+                    } else if (activeConvo.buyer?.full_name) {
+                      senderLabel = activeConvo.buyer.full_name;
+                    }
+
+                    return (
+                      <div
+                        key={m.message_id || idx}
+                        className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}
+                      >
+                        <span className="text-[9px] text-[#23313A]/50 mb-0.5 px-1 font-semibold">
+                          {senderLabel}
+                        </span>
+
+                        <div
+                          className={`max-w-[85%] sm:max-w-[70%] px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed shadow-xs ${
+                            isMine
+                              ? 'bg-[#2F6B4F] text-white rounded-tr-xs'
+                              : 'bg-white text-[#23313A] border border-[#A8C3A0]/30 rounded-tl-xs'
+                          }`}
+                        >
+                          {imageUrl && (
+                            <img
+                              src={imageUrl}
+                              alt="Attachment"
+                              onClick={() => setEnlargedImage(imageUrl)}
+                              className="max-h-56 rounded-xl object-contain mb-1.5 cursor-pointer hover:opacity-95 bg-black/5"
+                            />
+                          )}
+                          {text && text !== '📷 Sent an image' && <p>{text}</p>}
+                        </div>
+
+                        {/* Timestamp & Seen Receipt */}
+                        <div className="flex items-center gap-1 text-[9px] text-[#23313A]/40 mt-0.5 px-1 font-mono">
+                          <span>
+                            {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          {isMine && (
+                            <span className="flex items-center gap-0.5 ml-1 text-[#2F6B4F] font-bold">
+                              {m.is_read ? (
+                                <>
+                                  <CheckCheck size={12} className="text-[#2F6B4F]" />
+                                  <span>Seen</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Check size={12} className="text-[#A8C3A0]" />
+                                  <span className="text-[#A8C3A0]">Sent</span>
+                                </>
+                              )}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Attached Image Preview Bar */}
+              {imagePreview && (
+                <div className="px-4 py-2 bg-[#F6F1E8] border-t border-[#A8C3A0]/30 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-2">
+                    <img src={imagePreview} alt="Upload preview" className="w-10 h-10 rounded-lg object-cover border border-[#A8C3A0]/40" />
+                    <span className="text-[11px] text-[#23313A] font-bold">Image ready to send</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedImage(null);
+                      setImagePreview('');
+                    }}
+                    className="text-[#E67E5F] p-1 rounded-full hover:bg-white"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              )}
+
+              {/* Chat Input Bar */}
+              <form onSubmit={handleSendMessage} className="p-3 bg-white border-t border-[#A8C3A0]/20 flex gap-2 items-center shrink-0">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleImageSelect}
+                />
+
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-2.5 text-[#A8C3A0] hover:text-[#2F6B4F] hover:bg-[#F6F1E8] rounded-xl transition-colors cursor-pointer shrink-0"
+                  title="Attach Photo"
+                >
+                  <ImageIcon size={19} />
+                </button>
+
+                <input
+                  type="text"
+                  placeholder={isAdmin ? "Reply to customer inquiry..." : "Type a message to ThriftLoop..."}
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  className="flex-1 bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-4 py-2.5 text-xs text-[#23313A] focus:outline-none focus:border-[#2F6B4F]"
+                />
+
+                <button
+                  type="submit"
+                  disabled={sending || (!inputMessage.trim() && !selectedImage)}
+                  className="bg-[#2F6B4F] hover:bg-[#23313A] disabled:opacity-40 text-white p-2.5 rounded-xl transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
+                >
+                  {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                </button>
+              </form>
+            </>
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center text-center p-8 text-xs text-[#23313A]/50 space-y-2">
+              <MessageSquare size={36} className="text-[#A8C3A0]" />
+              <h3 className="font-serif font-bold text-base text-[#23313A]">Select an inquiry thread</h3>
+              <p className="text-[11px] max-w-xs">
+                Pick a conversation from the left to read buyer questions and consult on archive pieces.
+              </p>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
       </div>
+
+      {/* Lightbox Modal */}
+      {enlargedImage && (
+        <div 
+          onClick={() => setEnlargedImage(null)}
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+        >
+          <div className="relative max-w-3xl max-h-[90vh]">
+            <button
+              onClick={() => setEnlargedImage(null)}
+              className="absolute -top-10 right-0 text-white hover:text-gray-300"
+            >
+              <X size={24} />
+            </button>
+            <img src={enlargedImage} alt="Enlarged" className="max-h-[85vh] max-w-full rounded-2xl object-contain shadow-2xl" />
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
