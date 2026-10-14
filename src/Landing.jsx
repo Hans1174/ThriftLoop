@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChevronRight, ChevronLeft, Check, Sparkles, Tag } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Check, Sparkles, Tag, Package } from 'lucide-react';
 import { useCart } from './context/CartContext';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
@@ -16,13 +16,13 @@ export default function Landing() {
   const cartContext = useCart ? useCart() : {};
   const addToCart = cartContext.addToCart || (() => {});
 
-  // 6 Standardized Official Categories matching Admin & Catalog Taxonomy
+  // 6 Canonical Archive Categories matching Database & Filter Taxonomy
   const categories = [
     { name: 'Tops', slug: 'tops', img: '/res/blackpolo.jpg' },
     { name: 'Bottoms', slug: 'bottoms', img: '/res/bottoms.jpg' },
-    { name: 'Outerwear', slug: 'outerwear', img: 'https://images.unsplash.com/photo-1576995853123-5a10305d93c0?q=80&w=500&auto=format&fit=crop' },
+    { name: 'Outerwear', slug: 'outerwear', img: '/res/outerwear.jpg' },
     { name: 'Dresses', slug: 'dresses', img: '/res/dresses.jpg' },
-    { name: 'Footwear', slug: 'footwear', img: '/res/shoes.jpg' },
+    { name: 'Shoes', slug: 'shoes', img: '/res/shoes.jpg' },
     { name: 'Accessories', slug: 'accessories', img: '/res/bag.jpg' },
   ];
 
@@ -60,8 +60,12 @@ export default function Landing() {
       .then((res) => res.json())
       .then((data) => {
         const catalog = Array.isArray(data) ? data : (data.products || []);
+        // Strict case-insensitive status filtering
         const activeItems = catalog
-          .filter((item) => item.status !== 'sold' && item.status !== 'archived')
+          .filter((item) => {
+            const s = String(item.status || '').toLowerCase().trim();
+            return s === 'active' || (s !== 'sold' && s !== 'archived');
+          })
           .slice(0, 4);
         setNewArrivals(activeItems);
         setLoadingItems(false);
@@ -109,6 +113,8 @@ export default function Landing() {
 
   const handleAddToCart = (e, product) => {
     e.preventDefault();
+    if (String(product.status || '').toLowerCase() === 'sold') return;
+
     const token = localStorage.getItem('thriftloop_token');
     if (!token) {
       window.dispatchEvent(new Event('open-login-modal'));
@@ -201,7 +207,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Categories Grid (Clean layout, no subtext, all 6 official categories) */}
+      {/* Categories Grid */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 py-10 sm:py-14 lg:py-16">
         <h2 className="font-serif text-xl sm:text-2xl md:text-3xl font-bold text-[#23313A] mb-6">
           Shop by Category
@@ -243,7 +249,7 @@ export default function Landing() {
 
         {loadingItems ? (
           <div className="py-12 text-center text-xs text-[#A8C3A0] font-semibold">
-            Loading latest rack drops...
+            Loading latest drops...
           </div>
         ) : newArrivals.length === 0 ? (
           <div className="bg-white border border-[#A8C3A0]/30 rounded-3xl p-8 sm:p-12 text-center space-y-3">
@@ -254,7 +260,7 @@ export default function Landing() {
               All current archive pieces have been claimed
             </h3>
             <p className="text-xs text-[#23313A]/70 max-w-md mx-auto leading-relaxed">
-              Every garment at ThriftLoop is strictly 1-of-1. Check back soon or join our Telegram channel to catch the next curated drop the moment it goes live.
+              Every garment at ThriftLoop is strictly 1-of-1. Check back soon or join our Telegram channel to catch the next curated drop.
             </p>
             <div className="pt-2">
               <a
@@ -280,9 +286,9 @@ export default function Landing() {
                   className="bg-white border border-[#A8C3A0]/30 rounded-2xl overflow-hidden shadow-xs flex flex-col justify-between group hover:border-[#2F6B4F]/40 transition-all"
                 >
                   <Link to={`/product/${id}`} className="block relative">
-                    <div className="h-44 sm:h-56 md:h-64 w-full bg-[#F6F1E8]/50 overflow-hidden relative border-b border-[#A8C3A0]/10">
+                    <div className="h-44 sm:h-56 md:h-64 w-full bg-[#F6F1E8]/50 overflow-hidden relative border-b border-[#A8C3A0]/10 flex items-center justify-center">
                       <span className="absolute top-2 left-2 z-10 bg-[#23313A] text-white text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
-                        {item.brand || 'Vintage'}
+                        {item.brand || 'Archive'}
                       </span>
 
                       {isDiscounted && (
@@ -295,11 +301,15 @@ export default function Landing() {
                         {item.size}
                       </span>
 
-                      <img
-                        src={item.image_url || item.img || 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=500'}
-                        alt={item.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      />
+                      {item.image_url || item.img ? (
+                        <img
+                          src={item.image_url || item.img}
+                          alt={item.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        />
+                      ) : (
+                        <Package size={28} className="text-[#A8C3A0]" />
+                      )}
                     </div>
 
                     <div className="p-3 sm:p-4 bg-white">
