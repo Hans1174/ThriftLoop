@@ -659,6 +659,9 @@ app.post('/api/auth/google', async (req, res) => {
     safeUser.id = userId;
     safeUser.phone = decryptField(safeUser.phone);
     safeUser.street_address = decryptField(safeUser.street_address);
+    safeUser.city = decryptField(safeUser.city);
+    safeUser.province = decryptField(safeUser.province);
+    safeUser.postal_code = decryptField(safeUser.postal_code);
 
     res.json({ message: 'Google login successful', user: safeUser, token });
   } catch (err) {
@@ -688,6 +691,9 @@ app.post('/api/auth/login', async (req, res) => {
     safeUser.id = userId;
     safeUser.phone = decryptField(safeUser.phone);
     safeUser.street_address = decryptField(safeUser.street_address);
+    safeUser.city = decryptField(safeUser.city);
+    safeUser.province = decryptField(safeUser.province);
+    safeUser.postal_code = decryptField(safeUser.postal_code);
 
     res.json({ message: 'Login successful', user: safeUser, token });
   } catch (err) {
@@ -734,6 +740,9 @@ app.post('/api/auth/register', async (req, res) => {
     safeUser.id = userId;
     safeUser.phone = phone || '';
     safeUser.street_address = street_address || '';
+    safeUser.city = city || '';
+    safeUser.province = province || '';
+    safeUser.postal_code = postal_code || '';
 
     res.status(201).json({
       message: 'Account registered successfully',
