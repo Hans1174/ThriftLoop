@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChevronRight, ChevronLeft, Check, X, Megaphone, Sparkles, Tag } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Check, Sparkles, Tag } from 'lucide-react';
 import { useCart } from './context/CartContext';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
 
 export default function Landing() {
   const navigate = useNavigate();
-  const [showAnnouncement, setShowAnnouncement] = useState(true);
   const [addedId, setAddedId] = useState(null);
 
   const [newArrivals, setNewArrivals] = useState([]);
@@ -17,11 +16,13 @@ export default function Landing() {
   const cartContext = useCart ? useCart() : {};
   const addToCart = cartContext.addToCart || (() => {});
 
+  // 6 Standardized Official Categories matching Admin & Catalog Taxonomy
   const categories = [
     { name: 'Tops', slug: 'tops', img: '/res/blackpolo.jpg' },
     { name: 'Bottoms', slug: 'bottoms', img: '/res/bottoms.jpg' },
+    { name: 'Outerwear', slug: 'outerwear', img: 'https://images.unsplash.com/photo-1576995853123-5a10305d93c0?q=80&w=500&auto=format&fit=crop' },
     { name: 'Dresses', slug: 'dresses', img: '/res/dresses.jpg' },
-    { name: 'Shoes', slug: 'shoes', img: '/res/shoes.jpg' },
+    { name: 'Footwear', slug: 'footwear', img: '/res/shoes.jpg' },
     { name: 'Accessories', slug: 'accessories', img: '/res/bag.jpg' },
   ];
 
@@ -59,7 +60,6 @@ export default function Landing() {
       .then((res) => res.json())
       .then((data) => {
         const catalog = Array.isArray(data) ? data : (data.products || []);
-        // Only retain active, unsold archive inventory
         const activeItems = catalog
           .filter((item) => item.status !== 'sold' && item.status !== 'archived')
           .slice(0, 4);
@@ -135,19 +135,6 @@ export default function Landing() {
   return (
     <div className="min-h-screen bg-[#F6F1E8] text-[#23313A] font-sans pb-16 overflow-x-hidden">
       
-      {/* Announcement Ribbon */}
-      {showAnnouncement && (
-        <div className="bg-[#2F6B4F] text-white text-[10px] sm:text-[11px] py-2 px-4 sm:px-6 flex justify-between items-center font-bold tracking-wider uppercase">
-          <div className="flex items-center gap-1.5 truncate pr-2">
-            <Megaphone size={13} className="shrink-0" />
-            <span className="truncate">Automatic aging markdowns active on unsold vintage</span>
-          </div>
-          <button onClick={() => setShowAnnouncement(false)} className="text-white/80 hover:text-white shrink-0 cursor-pointer">
-            <X size={13} />
-          </button>
-        </div>
-      )}
-
       {/* Hero Carousel */}
       <section className="relative w-full h-[460px] sm:h-[540px] md:h-[600px] lg:h-[650px] overflow-hidden group">
         {heroSlides.map((slide, index) => {
@@ -214,20 +201,25 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Categories Grid */}
+      {/* Categories Grid (Clean layout, no subtext, all 6 official categories) */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 py-10 sm:py-14 lg:py-16">
-        <h2 className="font-serif text-xl sm:text-2xl md:text-3xl font-bold text-[#23313A]">Shop by Category</h2>
-        <p className="text-[11px] sm:text-xs text-[#A8C3A0] font-semibold mt-0.5 mb-6">Archive cuts by garment type</p>
+        <h2 className="font-serif text-xl sm:text-2xl md:text-3xl font-bold text-[#23313A] mb-6">
+          Shop by Category
+        </h2>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 md:gap-5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-5">
           {categories.map((cat) => (
             <Link
               key={cat.slug}
               to={`/shop?category=${encodeURIComponent(cat.name)}`}
               className="bg-white border border-[#A8C3A0]/30 rounded-2xl p-4 text-center hover:border-[#2F6B4F] transition-all flex flex-col items-center justify-center gap-3 h-40 sm:h-48 md:h-52 shadow-xs group"
             >
-              <div className="w-18 h-18 sm:w-22 sm:h-22 md:w-24 md:h-24 rounded-full overflow-hidden flex items-center justify-center border border-[#A8C3A0]/20 bg-[#F6F1E8]/50">
-                <img src={cat.img} alt={cat.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+              <div className="w-18 h-18 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full overflow-hidden flex items-center justify-center border border-[#A8C3A0]/20 bg-[#F6F1E8]/50 shrink-0">
+                <img 
+                  src={cat.img} 
+                  alt={cat.name} 
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
+                />
               </div>
               <span className="font-bold text-xs sm:text-sm text-[#23313A]">{cat.name}</span>
             </Link>
@@ -318,7 +310,7 @@ export default function Landing() {
                         {item.name}
                       </h3>
 
-                      <div className="flex items-center gap-1.5 mt-1">
+                      <div className="flex items-center gap-1.5 mt-1 font-mono">
                         <span className="text-[#2F6B4F] font-bold text-xs sm:text-sm">
                           ₱{currentPrice.toFixed(2)}
                         </span>
@@ -334,7 +326,7 @@ export default function Landing() {
                   <div className="px-3 pb-3 sm:px-4 sm:pb-4 bg-white">
                     <button
                       onClick={(e) => handleAddToCart(e, item)}
-                      className="w-full bg-[#2F6B4F] hover:bg-[#23313A] text-white font-bold py-2 rounded-xl text-[11px] sm:text-xs transition-colors flex items-center justify-center gap-1 active:scale-95 cursor-pointer"
+                      className="w-full bg-[#2F6B4F] hover:bg-[#23313A] text-white font-bold py-2 rounded-xl text-[11px] sm:text-xs transition-colors flex items-center justify-center gap-1 active:scale-95 cursor-pointer font-mono"
                     >
                       {isAdded ? <><Check size={13} /> Added</> : 'Add to Cart'}
                     </button>

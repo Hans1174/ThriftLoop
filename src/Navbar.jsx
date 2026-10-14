@@ -4,7 +4,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Search, ShoppingBag, User, LogOut, Shield, 
   Package, ChevronDown, Settings, X,
-  MessageSquare, Menu, Megaphone, Tag, Plus, Trash2, Check, Radio
+  MessageSquare, Menu, Megaphone, Tag, Plus, Trash2, Radio
 } from 'lucide-react';
 import { useCart } from './context/CartContext';
 
@@ -49,16 +49,17 @@ export default function Navbar({ onOpenLogin }) {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
 
-  // Dynamic Announcement Banner
+  // Dynamic Announcement State
   const [announcement, setAnnouncement] = useState({ text: '', is_active: false });
   const [isAnnouncementDismissed, setIsAnnouncementDismissed] = useState(false);
 
-  // Modals for Admin Actions
+  // Admin Announcement Prompt State
   const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false);
   const [announcementInput, setAnnouncementInput] = useState('');
   const [announcementActiveToggle, setAnnouncementActiveToggle] = useState(true);
   const [savingAnnouncement, setSavingAnnouncement] = useState(false);
 
+  // Admin Vouchers Prompt State
   const [isVouchersModalOpen, setIsVouchersModalOpen] = useState(false);
   const [vouchers, setVouchers] = useState([]);
   const [loadingVouchers, setLoadingVouchers] = useState(false);
@@ -188,7 +189,6 @@ export default function Navbar({ onOpenLogin }) {
     }
   };
 
-  // Poll for incoming unread seller/buyer messages
   useEffect(() => {
     const userId = currentUser?.user_id || currentUser?.id;
     if (!userId) {
@@ -362,24 +362,7 @@ export default function Navbar({ onOpenLogin }) {
     <>
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#A8C3A0]/30 shadow-xs transition-all">
         
-        {/* Dynamic Announcement Banner */}
-        {announcement?.is_active && announcement?.text && !isAnnouncementDismissed && (
-          <div className="bg-[#2F6B4F] text-white text-[11px] sm:text-xs font-mono font-bold py-2 px-4 flex items-center justify-between tracking-wide border-b border-[#23313A]/20 transition-all">
-            <div className="flex-1 flex items-center justify-center gap-2 text-center truncate">
-              <Megaphone size={14} className="shrink-0" />
-              <span className="truncate uppercase">{announcement.text}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsAnnouncementDismissed(true)}
-              className="text-white/80 hover:text-white p-1 rounded-md transition-colors cursor-pointer shrink-0 ml-2"
-              title="Dismiss"
-            >
-              <X size={14} />
-            </button>
-          </div>
-        )}
-
+        {/* 1. Main Navigation Row */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3 font-mono">
           
           {/* Logo & Navigation */}
@@ -618,6 +601,24 @@ export default function Navbar({ onOpenLogin }) {
           </div>
         </div>
 
+        {/* 2. Dynamic Announcement Banner: Positioned directly UNDER the navigation bar */}
+        {announcement?.is_active && announcement?.text && !isAnnouncementDismissed && (
+          <div className="bg-[#2F6B4F] text-white text-[11px] sm:text-xs font-mono font-bold py-2.5 px-4 flex items-center justify-between tracking-wide border-t border-[#A8C3A0]/30 transition-all">
+            <div className="flex-1 flex items-center justify-center gap-2 text-center truncate">
+              <Megaphone size={14} className="shrink-0" />
+              <span className="truncate uppercase">{announcement.text}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsAnnouncementDismissed(true)}
+              className="text-white/80 hover:text-white p-1 rounded-md transition-colors cursor-pointer shrink-0 ml-2"
+              title="Dismiss"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
         {/* Mobile Search Input */}
         {isMobileSearchOpen && (
           <div className="md:hidden px-4 pb-3 pt-1 border-t border-[#A8C3A0]/20 bg-white">
@@ -719,7 +720,7 @@ export default function Navbar({ onOpenLogin }) {
         )}
       </header>
 
-      {/* Admin Announcement Prompt Modal */}
+      {/* Admin Announcement Modal */}
       {isAnnouncementModalOpen && (
         <div 
           onClick={() => setIsAnnouncementModalOpen(false)}
@@ -802,7 +803,7 @@ export default function Navbar({ onOpenLogin }) {
         </div>
       )}
 
-      {/* Admin Vouchers Management Modal */}
+      {/* Admin Vouchers Modal */}
       {isVouchersModalOpen && (
         <div 
           onClick={() => setIsVouchersModalOpen(false)}
