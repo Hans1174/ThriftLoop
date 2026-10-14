@@ -57,7 +57,7 @@ export default function App() {
       <CartProvider>
         <Router>
           <div className="min-h-screen flex flex-col justify-between bg-[#F6F1E8]">
-            {/* Global Persistent Header */}
+            {/* Global Persistent Header (Contains the single dynamic announcement bar beneath the nav row) */}
             <Navbar onOpenLogin={() => setIsLoginOpen(true)} />
 
             {/* Main Application Views */}
@@ -158,7 +158,7 @@ export default function App() {
             {/* Global Persistent Footer */}
             <Footer />
 
-            {/* AI Concierge (Loopie) Side Widget */}
+            {/* AI Concierge Side Widget */}
             <ChatWidget />
 
             {/* Global Interactive Login Modal with Role-Based Redirection */}
