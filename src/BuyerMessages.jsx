@@ -7,7 +7,6 @@ import {
 } from 'lucide-react';
 
 const extractImageAndText = (message) => {
-  // 1. Check direct image_url field
   if (message.image_url && typeof message.image_url === 'string' && message.image_url.trim().length > 10) {
     const rawText = (message.message_text || '').trim();
     return {
@@ -16,7 +15,6 @@ const extractImageAndText = (message) => {
     };
   }
 
-  // 2. Parse [IMAGE]...[/IMAGE] from message_text across lines
   const text = message.message_text || '';
   const match = text.match(/[IMAGE]([\s\S]*?)\[\/IMAGE\]/);
   if (match && match[1]) {
@@ -28,7 +26,6 @@ const extractImageAndText = (message) => {
     };
   }
 
-  // 3. Fallback for raw data URI strings
   if (text.startsWith('data:image/')) {
     return { imageUrl: text.trim(), text: '' };
   }
@@ -70,16 +67,15 @@ export default function BuyerMessages() {
   const handleScroll = () => {
     const el = messagesContainerRef.current;
     if (!el) return;
-    const threshold = 120;
+    const threshold = 100;
     isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
   };
 
   const scrollToBottom = (force = false) => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
     if (force || isNearBottomRef.current) {
-      const el = messagesContainerRef.current;
-      if (el) {
-        el.scrollTo({ top: el.scrollHeight, behavior: force ? 'auto' : 'smooth' });
-      }
+      el.scrollTo({ top: el.scrollHeight, behavior: force ? 'auto' : 'smooth' });
     }
   };
 
@@ -134,14 +130,23 @@ export default function BuyerMessages() {
       const res = await fetch(`${API_URL}/api/messages/${convoId}`);
       const data = await res.json();
       if (Array.isArray(data)) {
-        setMessages(data);
+        setMessages((prev) => {
+          const isIdentical = 
+            prev.length === data.length &&
+            prev[prev.length - 1]?.message_id === data[data.length - 1]?.message_id &&
+            prev[prev.length - 1]?.is_read === data[data.length - 1]?.is_read;
+
+          if (isIdentical) return prev;
+
+          setTimeout(() => scrollToBottom(false), 50);
+          return data;
+        });
+
         markConversationAsRead(convoId);
 
         if (isFirstLoadRef.current) {
-          setTimeout(() => scrollToBottom(true), 50);
+          setTimeout(() => scrollToBottom(true), 60);
           isFirstLoadRef.current = false;
-        } else {
-          scrollToBottom(false);
         }
       }
     } catch (err) {
@@ -258,20 +263,20 @@ export default function BuyerMessages() {
   };
 
   return (
-    <div className="h-[calc(100vh-65px)] w-full bg-[#F6F1E8] flex flex-col font-mono overflow-hidden">
+    <div className="h-[calc(100vh-130px)] min-h-[480px] w-full bg-[#F6F1E8] flex flex-col font-mono overflow-hidden">
       
-      {/* Full-Bleed Messaging Grid */}
-      <div className="flex-1 w-full h-full grid grid-cols-1 md:grid-cols-12 bg-white overflow-hidden shadow-xs">
+      {/* Constrained Flex Workspace */}
+      <div className="flex-1 w-full h-full flex overflow-hidden bg-white shadow-xs">
         
-        {/* Left Column: Threads */}
-        <div className={`md:col-span-4 lg:col-span-3 border-r border-[#A8C3A0]/30 flex flex-col bg-[#F6F1E8]/30 h-full ${
+        {/* Left Column: Threads List */}
+        <div className={`w-full md:w-80 lg:w-96 flex flex-col shrink-0 border-r border-[#A8C3A0]/30 bg-[#F6F1E8]/30 h-full overflow-hidden ${
           activeConvo ? 'hidden md:flex' : 'flex'
         }`}>
           <div className="p-4 border-b border-[#A8C3A0]/20 flex items-center justify-between shrink-0 bg-white">
             <h2 className="font-serif font-bold text-base text-[#23313A]">Inquiries</h2>
           </div>
 
-          <div className="flex-1 overflow-y-auto divide-y divide-[#A8C3A0]/15">
+          <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-[#A8C3A0]/15">
             {loading && conversations.length === 0 ? (
               <div className="p-8 text-center text-xs text-[#23313A]/50 flex items-center justify-center gap-2">
                 <Loader2 size={16} className="animate-spin text-[#2F6B4F]" />
@@ -321,7 +326,7 @@ export default function BuyerMessages() {
         </div>
 
         {/* Right Column: Chat Workspace */}
-        <div className={`md:col-span-8 lg:col-span-9 flex flex-col h-full bg-[#FAF7F2] ${
+        <div className={`flex-1 flex flex-col h-full min-w-0 min-h-0 bg-[#FAF7F2] overflow-hidden ${
           !activeConvo ? 'hidden md:flex' : 'flex'
         }`}>
           {activeConvo ? (
@@ -351,7 +356,6 @@ export default function BuyerMessages() {
                       </div>
                     </div>
 
-                    {/* Linked Garment Pill */}
                     {activeConvo.products && (
                       <div className="flex items-center gap-2.5 bg-[#F6F1E8] px-3 py-1.5 rounded-2xl border border-[#A8C3A0]/30 shrink-0">
                         {activeConvo.products.image_url && (
@@ -384,11 +388,11 @@ export default function BuyerMessages() {
                 );
               })()}
 
-              {/* Messages History Feed with Reliable Image Rendering */}
+              {/* Scrollable Messages Pane */}
               <div 
                 ref={messagesContainerRef}
                 onScroll={handleScroll}
-                className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-3"
+                className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-3"
               >
                 {messagesLoading ? (
                   <div className="h-full flex items-center justify-center text-xs text-[#23313A]/60 gap-2">
@@ -436,6 +440,9 @@ export default function BuyerMessages() {
                             <img
                               src={imageUrl}
                               alt="Garment Attachment"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                              }}
                               onClick={() => setEnlargedImage(imageUrl)}
                               className="max-h-64 sm:max-h-72 rounded-xl object-contain mb-1.5 cursor-pointer hover:opacity-95 bg-black/5 block"
                             />
@@ -443,7 +450,7 @@ export default function BuyerMessages() {
                           {text && <p className="break-words">{text}</p>}
                         </div>
 
-                        {/* Timestamp & Seen Indicator */}
+                        {/* Timestamp & Read Receipt */}
                         <div className="flex items-center gap-1 text-[9px] text-[#23313A]/40 mt-0.5 px-1 font-mono">
                           <span>
                             {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -490,7 +497,7 @@ export default function BuyerMessages() {
                 </div>
               )}
 
-              {/* Chat Input Bar without Placeholders */}
+              {/* Input Form without Placeholder */}
               <form onSubmit={handleSendMessage} className="p-3 bg-white border-t border-[#A8C3A0]/20 flex gap-2 items-center shrink-0">
                 <input
                   type="file"
