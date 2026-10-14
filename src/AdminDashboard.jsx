@@ -3,13 +3,12 @@ import {
   Package, Plus, Trash2, CheckCircle, 
   ShoppingBag, DollarSign, Tag, AlertCircle, 
   X, Search, UploadCloud, Pencil, Truck, Check, MessageSquare,
-  ImageIcon, ShieldCheck, Lock
+  ImageIcon, ShieldCheck, Lock, Eye, Printer, MapPin, Phone, Mail, Calendar, ExternalLink
 } from 'lucide-react';
 import AdminInbox from './components/AdminInbox';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
 
-// Fixed official category taxonomy
 const OFFICIAL_CATEGORIES = ['Tops', 'Bottoms', 'Outerwear', 'Dresses', 'Footwear', 'Accessories'];
 
 const normalizeCategory = (cat) => {
@@ -31,7 +30,7 @@ const normalizeCondition = (grade) => {
 };
 
 export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState('inventory');
+  const [activeTab, setActiveTab] = useState('inventory'); // 'inventory' | 'orders' | 'messages'
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -45,7 +44,11 @@ export default function AdminDashboard() {
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
 
-  // Modal State
+  // Orders Filters
+  const [orderSearchFilter, setOrderSearchFilter] = useState('');
+  const [orderStatusFilter, setOrderStatusFilter] = useState('ALL');
+
+  // Modal State (Products)
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -53,6 +56,10 @@ export default function AdminDashboard() {
   const [previewUrl, setPreviewUrl] = useState('');
   const fileInputRef = useRef(null);
   const backdropMouseDownRef = useRef(false);
+
+  // Modal State (Order Details & Invoice)
+  const [viewingOrder, setViewingOrder] = useState(null);
+  const [loadingOrderDetail, setLoadingOrderDetail] = useState(false);
 
   const conditions = ['Excellent', 'Good', 'Used but not abused', 'Flawed'];
 
@@ -100,6 +107,7 @@ export default function AdminDashboard() {
     }));
   };
 
+  // Automated background data fetch (silent polling avoids UI flickering)
   const fetchData = async (isSilent = false) => {
     if (!isSilent) setLoading(true);
     try {
@@ -130,7 +138,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // Automated silent background sync every 4 seconds
   useEffect(() => {
     fetchData(false);
     const syncInterval = setInterval(() => {
@@ -301,14 +308,42 @@ export default function AdminDashboard() {
       });
 
       if (!res.ok) throw new Error('Failed to update fulfillment status.');
+      
       setOrders((prev) =>
         prev.map((ord) =>
-          String(ord.order_id) === String(orderId) ? { ...ord, status: newStatus } : ord
+          String(ord.order_id || ord.id) === String(orderId) ? { ...ord, status: newStatus } : ord
         )
       );
+
+      if (viewingOrder && String(viewingOrder.order_id || viewingOrder.id) === String(orderId)) {
+        setViewingOrder((prev) => ({ ...prev, status: newStatus }));
+      }
+
       showToast(`Order #${orderId} status updated to ${newStatus}.`);
     } catch (err) {
       showToast(err.message, 'error');
+    }
+  };
+
+  // Open Full Order Details & Invoice View
+  const handleOpenOrderDetails = async (order) => {
+    setViewingOrder(order);
+    const orderId = order.order_id || order.id;
+
+    // If order_items are not embedded, fetch deep tracking relation
+    if (!order.order_items || order.order_items.length === 0) {
+      setLoadingOrderDetail(true);
+      try {
+        const res = await fetch(`${API_URL}/api/track/${orderId}`);
+        if (res.ok) {
+          const detailed = await res.json();
+          setViewingOrder(detailed);
+        }
+      } catch (err) {
+        console.warn('Could not load extra order line items:', err);
+      } finally {
+        setLoadingOrderDetail(false);
+      }
     }
   };
 
@@ -321,6 +356,25 @@ export default function AdminDashboard() {
     );
   };
 
+  const renderOrderStatusBadge = (status) => {
+    const s = (status || '').toLowerCase();
+    let badgeStyle = 'bg-amber-50 text-amber-800 border-amber-200';
+
+    if (s === 'delivered') {
+      badgeStyle = 'bg-[#2F6B4F]/15 text-[#2F6B4F] border-[#2F6B4F]/35';
+    } else if (s === 'shipped') {
+      badgeStyle = 'bg-sky-50 text-sky-800 border-sky-200';
+    } else if (s === 'cancelled') {
+      badgeStyle = 'bg-[#E67E5F]/15 text-[#E67E5F] border-[#E67E5F]/35';
+    }
+
+    return (
+      <span className={`px-2.5 py-1 rounded-xl text-[10px] font-mono font-bold uppercase tracking-wider border ${badgeStyle}`}>
+        {status || 'Pending'}
+      </span>
+    );
+  };
+
   // Metrics
   const totalStock = products.length;
   const soldCount = products.filter((p) => p.status === 'sold').length;
@@ -329,7 +383,7 @@ export default function AdminDashboard() {
     .filter((p) => p.status !== 'sold')
     .reduce((sum, p) => sum + (parseFloat(p.price) || 0), 0);
 
-  // Filters
+  // Filters for Products
   const filteredProducts = products.filter((p) => {
     const q = searchFilter.toLowerCase();
     const rawCat = p.categories?.name || p.category_name || '';
@@ -350,6 +404,29 @@ export default function AdminDashboard() {
       (statusFilter === 'SOLD' && p.status === 'sold');
 
     return matchesSearch && matchesCategory && matchesStatus;
+  });
+
+  // Filters for Orders
+  const filteredOrders = orders.filter((o) => {
+    const q = orderSearchFilter.toLowerCase();
+    const orderId = String(o.order_id || o.id || '');
+    const customer = String(o.customer_name || '').toLowerCase();
+    const email = String(o.email || o.customer_email || '').toLowerCase();
+    const tracking = String(o.tracking_number || '').toLowerCase();
+    const address = String(o.shipping_address || '').toLowerCase();
+
+    const matchesSearch = 
+      orderId.includes(q) ||
+      customer.includes(q) ||
+      email.includes(q) ||
+      tracking.includes(q) ||
+      address.includes(q);
+
+    const matchesStatus = 
+      orderStatusFilter === 'ALL' || 
+      String(o.status || 'pending').toLowerCase() === orderStatusFilter.toLowerCase();
+
+    return matchesSearch && matchesStatus;
   });
 
   return (
@@ -633,75 +710,182 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Tab 2: Orders Table */}
+        {/* Tab 2: Customer Orders Card Box Grid (Matching Inventory UI) */}
         {activeTab === 'orders' && (
-          <div className="bg-white border border-[#A8C3A0]/30 rounded-3xl overflow-hidden shadow-xs p-6">
-            {orders.length === 0 ? (
-              <div className="py-16 text-center text-[#A8C3A0]">
-                <ShoppingBag size={32} className="mx-auto mb-2 opacity-50 text-[#2F6B4F]" />
-                <p className="font-serif font-bold text-sm text-[#23313A]">No Customer Orders Yet</p>
-                <p className="text-xs font-mono mt-1">
-                  Customer orders placed via PayMongo or COD will automatically appear here.
-                </p>
+          <div className="space-y-6">
+            
+            {/* Order Filter Toolbar */}
+            <div className="bg-white border border-[#A8C3A0]/30 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+                <div className="relative w-full sm:w-72">
+                  <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#A8C3A0]" />
+                  <input
+                    type="text"
+                    placeholder="Search by customer, #ID, tracking..."
+                    value={orderSearchFilter}
+                    onChange={(e) => setOrderSearchFilter(e.target.value)}
+                    className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl pl-9 pr-3.5 py-2 text-xs font-mono focus:outline-none focus:border-[#2F6B4F] text-[#23313A]"
+                  />
+                </div>
+
+                <select
+                  value={orderStatusFilter}
+                  onChange={(e) => setOrderStatusFilter(e.target.value)}
+                  className="bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3 py-2 text-xs font-mono font-bold text-[#23313A] focus:outline-none focus:border-[#2F6B4F]"
+                >
+                  <option value="ALL">All Statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="processing">Processing</option>
+                  <option value="shipped">Shipped</option>
+                  <option value="delivered">Delivered</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+
+              <p className="text-[11px] font-mono text-[#A8C3A0] font-semibold">
+                Showing {filteredOrders.length} of {orders.length} customer orders
+              </p>
+            </div>
+
+            {/* Individual Customer Order Card Boxes */}
+            {filteredOrders.length === 0 ? (
+              <div className="bg-white border border-[#A8C3A0]/30 rounded-3xl p-12 text-center text-[#A8C3A0] space-y-2">
+                <ShoppingBag size={36} className="mx-auto text-[#2F6B4F] opacity-50" />
+                <p className="font-serif font-bold text-sm text-[#23313A]">No customer orders match your criteria</p>
+                <p className="text-xs font-mono">Customer purchases via PayMongo or COD will automatically appear here.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs font-mono border-collapse">
-                  <thead>
-                    <tr className="bg-[#F6F1E8]/50 border-b border-[#A8C3A0]/20 text-[#23313A]/70 uppercase tracking-wider text-[10px]">
-                      <th className="py-3.5 px-4 font-bold">Order ID & Courier</th>
-                      <th className="py-3.5 px-4 font-bold">Customer</th>
-                      <th className="py-3.5 px-4 font-bold">Destination</th>
-                      <th className="py-3.5 px-4 font-bold">Total</th>
-                      <th className="py-3.5 px-4 font-bold">Payment</th>
-                      <th className="py-3.5 px-4 font-bold">Fulfillment Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#A8C3A0]/15">
-                    {orders.map((ord) => {
-                      const orderId = ord.order_id || ord.id;
-                      return (
-                        <tr key={orderId} className="hover:bg-[#F6F1E8]/30">
-                          <td className="py-3 px-4">
-                            <span className="font-bold text-[#23313A] block">#{orderId}</span>
-                            <span className="text-[10px] text-[#A8C3A0] flex items-center gap-1 mt-0.5">
-                              <Truck size={12} className="text-[#2F6B4F]" />
-                              {ord.courier || 'J&T Express'} ({ord.tracking_number || 'Pending'})
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                {filteredOrders.map((ord) => {
+                  const orderId = ord.order_id || ord.id;
+                  const firstItem = ord.order_items?.[0]?.products || ord.order_items?.[0] || null;
+                  const itemCount = ord.order_items?.length || 1;
+                  const orderDate = new Date(ord.created_at || Date.now()).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric'
+                  });
+
+                  return (
+                    <div
+                      key={orderId}
+                      className="bg-white border border-[#A8C3A0]/35 rounded-3xl overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
+                    >
+                      {/* Top Visual Area */}
+                      <div className="relative h-56 sm:h-60 w-full bg-[#F6F1E8] overflow-hidden border-b border-[#A8C3A0]/20 flex items-center justify-center p-3">
+                        {firstItem?.image_url ? (
+                          <img
+                            src={firstItem.image_url}
+                            alt={firstItem.name || 'Order Piece'}
+                            className="w-full h-full object-contain drop-shadow-xs"
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center text-[#2F6B4F]/40 space-y-2">
+                            <Package size={48} />
+                            <span className="text-[10px] font-mono font-bold text-[#A8C3A0] uppercase">
+                              {ord.courier || 'J&T Express'}
                             </span>
-                          </td>
-                          <td className="py-3 px-4">
-                            <p className="font-bold text-[#23313A]">{ord.customer_name || 'Member'}</p>
-                            <p className="text-[10px] text-[#A8C3A0]">{ord.email || ord.customer_email || 'No email'}</p>
-                          </td>
-                          <td className="py-3 px-4 text-[#23313A]/70 max-w-[200px] truncate">
-                            {[ord.shipping_address, ord.city, ord.province].filter(Boolean).join(', ')}
-                          </td>
-                          <td className="py-3 px-4 font-bold text-[#2F6B4F]">
-                            ₱{parseFloat(ord.total_amount || 0).toFixed(2)}
-                          </td>
-                          <td className="py-3 px-4 uppercase font-bold text-[10px] text-[#23313A]/70">
-                            {ord.payment_method || 'PayMongo'}
-                          </td>
-                          <td className="py-3 px-4">
-                            <select
-                              value={ord.status || 'pending'}
-                              onChange={(e) => handleUpdateOrderStatus(orderId, e.target.value)}
-                              className="bg-[#F6F1E8] border border-[#A8C3A0]/40 rounded-xl px-2.5 py-1 text-[11px] font-mono font-bold text-[#23313A] focus:outline-none focus:border-[#2F6B4F]"
-                            >
-                              <option value="pending">Pending</option>
-                              <option value="processing">Processing</option>
-                              <option value="shipped">Shipped</option>
-                              <option value="delivered">Delivered</option>
-                              <option value="cancelled">Cancelled</option>
-                            </select>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                          </div>
+                        )}
+
+                        {/* Order #ID Pill */}
+                        <div className="absolute top-3 right-3">
+                          <span className="bg-[#23313A]/80 backdrop-blur-xs text-white text-[10px] font-mono font-bold px-2 py-0.5 rounded-md shadow-xs">
+                            #{orderId}
+                          </span>
+                        </div>
+
+                        {/* Courier Badge */}
+                        <div className="absolute top-3 left-3">
+                          <span className="bg-white/95 backdrop-blur-xs text-[#23313A] border border-[#A8C3A0]/30 text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-md shadow-xs flex items-center gap-1">
+                            <Truck size={12} className="text-[#2F6B4F]" />
+                            <span>{ord.courier || 'J&T Express'}</span>
+                          </span>
+                        </div>
+
+                        {/* City Destination Pill */}
+                        <div className="absolute bottom-3 left-3 max-w-[85%]">
+                          <span className="bg-white/95 backdrop-blur-xs text-[#23313A] border border-[#A8C3A0]/30 text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg shadow-xs truncate block">
+                            {ord.city ? `${ord.city}, ${ord.province || ''}` : ord.shipping_address || 'Cavite'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Content Section */}
+                      <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-3">
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between text-xs font-mono font-medium text-[#A8C3A0]">
+                            <span>{orderDate}</span>
+                            <span className="font-bold text-[#23313A] bg-[#F6F1E8] border border-[#A8C3A0]/30 px-2 py-0.5 rounded-md text-[10px]">
+                              {itemCount} {itemCount === 1 ? 'Piece' : 'Pieces'}
+                            </span>
+                          </div>
+
+                          {/* Customer Name */}
+                          <h3 
+                            className="font-serif font-bold text-base text-[#23313A] line-clamp-1"
+                            title={ord.customer_name || 'Customer'}
+                          >
+                            {ord.customer_name || 'Member'}
+                          </h3>
+
+                          {/* Contact & Tracking Snippet */}
+                          <p className="text-[11px] font-mono text-[#23313A]/60 truncate">
+                            {ord.email || ord.customer_email || 'No email provided'}
+                          </p>
+                          <p className="text-[10px] font-mono text-[#A8C3A0] truncate">
+                            Track: {ord.tracking_number || 'Pending Assignment'}
+                          </p>
+
+                          <div className="pt-1">
+                            {renderOrderStatusBadge(ord.status)}
+                          </div>
+                        </div>
+
+                        {/* Price & Payment Section */}
+                        <div className="pt-2 border-t border-[#A8C3A0]/15 flex items-baseline justify-between font-mono">
+                          <div>
+                            <span className="text-[9px] uppercase font-bold text-[#A8C3A0] block">
+                              {ord.payment_method || 'PayMongo'}
+                            </span>
+                            <span className="font-bold text-base sm:text-lg text-[#2F6B4F]">
+                              ₱{parseFloat(ord.total_amount || 0).toFixed(2)}
+                            </span>
+                          </div>
+
+                          {/* Quick Status Select */}
+                          <select
+                            value={ord.status || 'pending'}
+                            onChange={(e) => handleUpdateOrderStatus(orderId, e.target.value)}
+                            className="bg-[#F6F1E8] border border-[#A8C3A0]/40 rounded-xl px-2 py-1 text-[11px] font-mono font-bold text-[#23313A] focus:outline-none focus:border-[#2F6B4F] cursor-pointer"
+                          >
+                            <option value="pending">Pending</option>
+                            <option value="processing">Processing</option>
+                            <option value="shipped">Shipped</option>
+                            <option value="delivered">Delivered</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Action Footer: View Full Details / Invoice Button */}
+                      <div className="p-3 sm:p-4 border-t border-[#A8C3A0]/20 bg-[#F6F1E8]/30 flex items-center gap-2 font-mono">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenOrderDetails(ord)}
+                          className="w-full py-2.5 px-3 rounded-xl text-xs font-mono font-bold bg-[#2F6B4F] hover:bg-[#23313A] text-white transition-all cursor-pointer active:scale-95 shadow-xs flex items-center justify-center gap-2"
+                        >
+                          <Eye size={15} />
+                          <span>View Details & Invoice</span>
+                        </button>
+                      </div>
+
+                    </div>
+                  );
+                })}
               </div>
             )}
+
           </div>
         )}
 
@@ -712,35 +896,24 @@ export default function AdminDashboard() {
 
       </div>
 
-      {/* Clean 2-Column Product Modal */}
+      {/* Product Create/Edit Modal */}
       {isModalOpen && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
           onMouseDown={(e) => {
-            if (e.target === e.currentTarget) {
-              backdropMouseDownRef.current = true;
-            }
+            if (e.target === e.currentTarget) backdropMouseDownRef.current = true;
           }}
           onMouseUp={(e) => {
-            if (backdropMouseDownRef.current && e.target === e.currentTarget) {
-              setIsModalOpen(false);
-            }
+            if (backdropMouseDownRef.current && e.target === e.currentTarget) setIsModalOpen(false);
             backdropMouseDownRef.current = false;
           }}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => e.preventDefault()}
         >
           <div className="fixed inset-0 bg-[#23313A]/60 backdrop-blur-xs pointer-events-none" />
 
           <div 
             className="relative z-10 bg-white border border-[#A8C3A0]/30 rounded-3xl p-6 sm:p-8 md:p-10 max-w-4xl w-full shadow-2xl max-h-[92vh] overflow-y-auto my-auto animate-in fade-in zoom-in-95 duration-150 font-mono"
             onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            onMouseUp={(e) => e.stopPropagation()}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => e.preventDefault()}
           >
-            {/* Clean Modal Header */}
             <div className="flex items-center justify-between pb-4 sm:pb-5 border-b border-[#A8C3A0]/20 mb-6">
               <h3 className="font-serif font-bold text-2xl sm:text-3xl text-[#23313A]">
                 {editingItem ? 'Edit Listing' : 'Add Listing'}
@@ -749,7 +922,6 @@ export default function AdminDashboard() {
                 type="button"
                 onClick={() => setIsModalOpen(false)}
                 className="text-[#A8C3A0] hover:text-[#23313A] p-2 rounded-full hover:bg-[#F6F1E8] transition-colors cursor-pointer"
-                title="Close"
               >
                 <X size={20} />
               </button>
@@ -758,7 +930,6 @@ export default function AdminDashboard() {
             <form onSubmit={handleSubmitProduct} className="text-xs space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-12 gap-6 md:gap-8 items-start">
                 
-                {/* Left Column: Photo Upload & Description */}
                 <div className="md:col-span-5 space-y-4">
                   <div className="flex items-center justify-between">
                     <label className="font-bold text-[#23313A] uppercase tracking-wider text-[10px]">
@@ -794,19 +965,13 @@ export default function AdminDashboard() {
                         accept="image/*"
                         className="hidden"
                         onChange={(e) => {
-                          if (e.target.files && e.target.files[0]) {
-                            handleFileProcess(e.target.files[0]);
-                          }
+                          if (e.target.files && e.target.files[0]) handleFileProcess(e.target.files[0]);
                         }}
                       />
 
                       {previewUrl ? (
                         <div className="relative w-full h-64 sm:h-72 rounded-2xl overflow-hidden border border-[#2F6B4F]/40 bg-[#F6F1E8] group shadow-inner">
-                          <img 
-                            src={previewUrl} 
-                            alt="Preview" 
-                            className="w-full h-full object-contain p-2"
-                          />
+                          <img src={previewUrl} alt="Preview" className="w-full h-full object-contain p-2" />
                           <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                             <button
                               type="button"
@@ -822,7 +987,6 @@ export default function AdminDashboard() {
                                 setForm((prev) => ({ ...prev, image_url: '' }));
                               }}
                               className="bg-[#E67E5F] text-white text-xs font-bold p-2 rounded-xl cursor-pointer shadow-sm hover:bg-[#d67053] transition-colors"
-                              title="Remove photo"
                             >
                               <Trash2 size={16} />
                             </button>
@@ -830,14 +994,6 @@ export default function AdminDashboard() {
                         </div>
                       ) : (
                         <div
-                          onDragOver={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                          }}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                          }}
                           onClick={() => fileInputRef.current?.click()}
                           className="w-full h-64 sm:h-72 border-2 border-dashed border-[#A8C3A0]/60 hover:border-[#2F6B4F] bg-[#F6F1E8]/30 rounded-2xl flex flex-col items-center justify-center gap-3 cursor-pointer transition-all p-6 text-center group hover:bg-[#F6F1E8]/60"
                         >
@@ -863,12 +1019,7 @@ export default function AdminDashboard() {
                       />
                       {previewUrl ? (
                         <div className="relative w-full h-56 sm:h-64 rounded-2xl overflow-hidden border border-[#A8C3A0]/30 bg-[#F6F1E8]">
-                          <img 
-                            src={previewUrl} 
-                            alt="URL Preview" 
-                            className="w-full h-full object-contain p-2"
-                            onError={() => setPreviewUrl('')}
-                          />
+                          <img src={previewUrl} alt="URL Preview" className="w-full h-full object-contain p-2" onError={() => setPreviewUrl('')} />
                         </div>
                       ) : (
                         <div className="w-full h-40 border border-dashed border-[#A8C3A0]/40 rounded-2xl flex flex-col items-center justify-center gap-1.5 text-[#A8C3A0]">
@@ -878,7 +1029,6 @@ export default function AdminDashboard() {
                     </div>
                   )}
 
-                  {/* Description without placeholder */}
                   <div>
                     <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
                       Description & Flat-Lay Notes
@@ -892,7 +1042,6 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                {/* Right Column: Specifications without placeholders */}
                 <div className="md:col-span-7 space-y-4">
                   <div>
                     <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
@@ -935,7 +1084,6 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
-                  {/* Strictly 6 Categories */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     <div>
                       <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
@@ -968,7 +1116,6 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
-                  {/* Condition (Without subtext box) */}
                   <div>
                     <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
                       Garment Condition
@@ -1006,6 +1153,191 @@ export default function AdminDashboard() {
 
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Complete Order Details & Printable Invoice Modal */}
+      {viewingOrder && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
+          onClick={() => setViewingOrder(null)}
+        >
+          <div className="fixed inset-0 bg-[#23313A]/60 backdrop-blur-xs pointer-events-none" />
+
+          <div 
+            className="relative z-10 bg-white border border-[#A8C3A0]/30 rounded-3xl p-6 sm:p-8 md:p-10 max-w-3xl w-full shadow-2xl max-h-[92vh] overflow-y-auto my-auto animate-in fade-in zoom-in-95 duration-150 font-mono"
+            onClick={(e) => e.stopPropagation()}
+            id="printable-invoice"
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-5 border-b border-[#A8C3A0]/20 mb-6">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-[#A8C3A0] tracking-wider block">
+                  Official Order Invoice
+                </span>
+                <h3 className="font-serif font-bold text-2xl sm:text-3xl text-[#23313A] mt-0.5">
+                  Order #{viewingOrder.order_id || viewingOrder.id}
+                </h3>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="p-2 sm:px-3 sm:py-2 rounded-xl text-xs font-mono font-bold text-[#2F6B4F] bg-[#F6F1E8] hover:bg-[#A8C3A0]/25 transition-colors flex items-center gap-1.5 cursor-pointer"
+                  title="Print official receipt"
+                >
+                  <Printer size={15} />
+                  <span className="hidden sm:inline">Print Receipt</span>
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setViewingOrder(null)}
+                  className="text-[#A8C3A0] hover:text-[#23313A] p-2 rounded-full hover:bg-[#F6F1E8] transition-colors cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* Invoice Meta Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-6 border-b border-[#A8C3A0]/20 text-xs">
+              <div className="space-y-1.5 bg-[#F6F1E8]/40 p-4 rounded-2xl border border-[#A8C3A0]/20">
+                <span className="text-[10px] uppercase font-bold text-[#A8C3A0] block">Customer Details</span>
+                <p className="font-serif font-bold text-base text-[#23313A]">
+                  {viewingOrder.customer_name || 'Valued Collector'}
+                </p>
+                <p className="text-xs text-[#23313A]/70 flex items-center gap-1.5">
+                  <Mail size={13} className="text-[#2F6B4F]" />
+                  <span>{viewingOrder.email || viewingOrder.customer_email || 'No email provided'}</span>
+                </p>
+                <p className="text-xs text-[#23313A]/70 flex items-center gap-1.5">
+                  <Phone size={13} className="text-[#2F6B4F]" />
+                  <span>{viewingOrder.phone || '09XXXXXXXXX'}</span>
+                </p>
+                <p className="text-xs text-[#23313A]/70 flex items-start gap-1.5 pt-1">
+                  <MapPin size={13} className="text-[#2F6B4F] shrink-0 mt-0.5" />
+                  <span>{[viewingOrder.shipping_address, viewingOrder.city, viewingOrder.province, viewingOrder.postal_code].filter(Boolean).join(', ')}</span>
+                </p>
+              </div>
+
+              <div className="space-y-1.5 bg-[#F6F1E8]/40 p-4 rounded-2xl border border-[#A8C3A0]/20 flex flex-col justify-between">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-[#A8C3A0] block">Dispatch & Logistics</span>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="font-bold text-[#23313A]">Courier:</span>
+                    <span>{viewingOrder.courier || 'J&T Express'}</span>
+                  </div>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="font-bold text-[#23313A]">Tracking Code:</span>
+                    <span className="font-mono font-bold text-[#2F6B4F]">
+                      {viewingOrder.tracking_number || 'Assigning...'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="font-bold text-[#23313A]">Payment Method:</span>
+                    <span className="uppercase">{viewingOrder.payment_method || 'PayMongo'}</span>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-[#A8C3A0]/20 flex items-center justify-between">
+                  <span className="text-[10px] uppercase font-bold text-[#A8C3A0]">Fulfillment Status:</span>
+                  <select
+                    value={viewingOrder.status || 'pending'}
+                    onChange={(e) => handleUpdateOrderStatus(viewingOrder.order_id || viewingOrder.id, e.target.value)}
+                    className="bg-white border border-[#A8C3A0]/40 rounded-xl px-2.5 py-1 text-xs font-mono font-bold text-[#23313A] focus:outline-none focus:border-[#2F6B4F] cursor-pointer"
+                  >
+                    <option value="pending">Pending</option>
+                    <option value="processing">Processing</option>
+                    <option value="shipped">Shipped</option>
+                    <option value="delivered">Delivered</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Line Items Breakdown */}
+            <div className="py-6 space-y-3">
+              <span className="text-[10px] uppercase font-bold text-[#A8C3A0] tracking-wider block">
+                Purchased Pieces ({viewingOrder.order_items?.length || 1})
+              </span>
+
+              <div className="divide-y divide-[#A8C3A0]/15 border border-[#A8C3A0]/20 rounded-2xl overflow-hidden bg-white">
+                {viewingOrder.order_items && viewingOrder.order_items.length > 0 ? (
+                  viewingOrder.order_items.map((item, idx) => {
+                    const product = item.products || item;
+                    return (
+                      <div key={idx} className="p-3.5 flex items-center justify-between gap-3 text-xs">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <img
+                            src={product.image_url || 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=150'}
+                            alt={product.name || 'Piece'}
+                            className="w-12 h-12 rounded-xl object-contain bg-[#F6F1E8] border border-[#A8C3A0]/30 shrink-0"
+                          />
+                          <div className="truncate">
+                            <p className="font-serif font-bold text-sm text-[#23313A] truncate">
+                              {product.name || 'Vintage Garment'}
+                            </p>
+                            <p className="text-[10px] text-[#A8C3A0] mt-0.5">
+                              Size: {product.size || 'OS'} • ID #{product.product_id || item.product_id || '—'}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="font-serif font-bold text-sm text-[#2F6B4F] shrink-0">
+                          ₱{parseFloat(item.price_at_purchase || product.price || 0).toFixed(2)}
+                        </span>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="p-4 text-center text-xs text-[#A8C3A0]">
+                    1-of-1 Curated Vintage Piece • Order #{viewingOrder.order_id || viewingOrder.id}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Invoice Total Calculation Breakdown */}
+            <div className="pt-4 border-t border-[#A8C3A0]/20 space-y-2 text-xs">
+              <div className="flex justify-between text-[#23313A]/70">
+                <span>Items Subtotal:</span>
+                <span>₱{parseFloat(viewingOrder.subtotal || viewingOrder.total_amount || 0).toFixed(2)}</span>
+              </div>
+
+              {parseFloat(viewingOrder.discount_amount || 0) > 0 && (
+                <div className="flex justify-between text-[#2F6B4F] font-bold">
+                  <span>Voucher Discount {viewingOrder.voucher_code ? `(${viewingOrder.voucher_code})` : ''}:</span>
+                  <span>-₱{parseFloat(viewingOrder.discount_amount).toFixed(2)}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between text-[#23313A]/70">
+                <span>Courier Delivery ({viewingOrder.courier || 'Standard'}):</span>
+                <span>
+                  {parseFloat(viewingOrder.shipping_fee || 0) === 0 ? 'FREE' : `₱${parseFloat(viewingOrder.shipping_fee).toFixed(2)}`}
+                </span>
+              </div>
+
+              <div className="pt-3 border-t border-[#A8C3A0]/30 flex justify-between items-baseline text-sm sm:text-base font-bold text-[#23313A]">
+                <span>Grand Total Settled:</span>
+                <span className="font-serif font-bold text-lg sm:text-xl text-[#2F6B4F]">
+                  ₱{parseFloat(viewingOrder.total_amount || 0).toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            {/* Footer Close */}
+            <div className="pt-6 border-t border-[#A8C3A0]/20 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setViewingOrder(null)}
+                className="bg-[#2F6B4F] hover:bg-[#23313A] text-white text-xs font-mono font-bold px-7 py-3 rounded-xl transition-all shadow-md cursor-pointer active:scale-95"
+              >
+                Close Details
+              </button>
+            </div>
           </div>
         </div>
       )}
