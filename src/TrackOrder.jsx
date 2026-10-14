@@ -10,12 +10,87 @@ import {
 
 const BACKEND_URL = API_URL || import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
 
-// Strategic logistics coordinates around Cavite & Metro Manila
+// Strategic Logistics Hubs & Telemetry
 const LOGISTICS_HUBS = {
   hub: { lat: 14.3294, lng: 120.9367, name: 'ThriftLoop Central Archive Hub (Dasmariñas)' },
   sorting: { lat: 14.3450, lng: 120.9380, name: 'J&T Express Regional Sorting Hub' },
-  transit: { lat: 14.3210, lng: 120.9150, name: 'Active Highway Transit • Governor\'s Drive Delivery Unit' },
-  destinationDefault: { lat: 14.3050, lng: 120.8980, name: 'Customer Delivery Destination (General Trias)' }
+};
+
+// Comprehensive Geo-Coordinates Mapping for Cavite, NCR & Calabarzon
+const CITY_COORDINATES = {
+  // Cavite
+  'tanza': [14.3938, 120.8540],
+  'general trias': [14.3873, 120.8814],
+  'gen trias': [14.3873, 120.8814],
+  'gentri': [14.3873, 120.8814],
+  'dasmariñas': [14.3294, 120.9367],
+  'dasmarinas': [14.3294, 120.9367],
+  'dasma': [14.3294, 120.9367],
+  'imus': [14.4297, 120.9367],
+  'bacoor': [14.4600, 120.9400],
+  'trece martires': [14.2828, 120.8667],
+  'trece': [14.2828, 120.8667],
+  'kawit': [14.4447, 120.9036],
+  'noveleta': [14.4278, 120.8803],
+  'cavite city': [14.4833, 120.9000],
+  'rosario': [14.4150, 120.8578],
+  'naic': [14.3167, 120.7667],
+  'silang': [14.2307, 120.9748],
+  'tagaytay': [14.1153, 120.9621],
+  'maragondon': [14.2750, 120.7333],
+  'ternate': [14.2889, 120.7167],
+  'indang': [14.1950, 120.8767],
+  'alfonso': [14.1417, 120.8533],
+  'amadeo': [14.1706, 120.9239],
+  'mendez': [14.1306, 120.9056],
+  'carmona': [14.3150, 121.0583],
+  'general mariano alvarez': [14.3000, 121.0000],
+  'gma': [14.3000, 121.0000],
+  'magallanes': [14.1889, 120.7389],
+  'bailen': [14.1833, 120.8000],
+
+  // Metro Manila (NCR)
+  'manila': [14.5995, 120.9842],
+  'quezon city': [14.6760, 121.0437],
+  'makati': [14.5547, 121.0244],
+  'taguig': [14.5176, 121.0509],
+  'pasig': [14.5764, 121.0851],
+  'parañaque': [14.4793, 121.0198],
+  'paranaque': [14.4793, 121.0198],
+  'las piñas': [14.4445, 120.9939],
+  'las pinas': [14.4445, 120.9939],
+  'muntinlupa': [14.4081, 121.0415],
+  'pasay': [14.5378, 121.0014],
+  'mandaluyong': [14.5794, 121.0359],
+  'san juan': [14.6019, 121.0355],
+  'caloocan': [14.6416, 120.9762],
+  'malabon': [14.6625, 120.9572],
+  'navotas': [14.6667, 120.9417],
+  'valenzuela': [14.7011, 120.9830],
+  'marikina': [14.6507, 121.1029],
+
+  // Laguna
+  'san pedro': [14.3583, 121.0583],
+  'biñan': [14.3392, 121.0805],
+  'binan': [14.3392, 121.0805],
+  'santa rosa': [14.3122, 121.1114],
+  'cabuyao': [14.2783, 121.1250],
+  'calamba': [14.2144, 121.1656],
+  'los baños': [14.1814, 121.2408],
+  'san pablo': [14.0678, 121.3253],
+
+  // Batangas
+  'batangas city': [13.7565, 121.0583],
+  'lipa': [13.9419, 121.1644],
+  'tanauan': [14.0864, 121.1500],
+  'santo tomas': [14.1089, 121.1417],
+  'nasugbu': [14.0767, 120.6339],
+
+  // Rizal
+  'antipolo': [14.5842, 121.1763],
+  'cainta': [14.5778, 121.1222],
+  'taytay': [14.5683, 121.1328],
+  'san mateo': [14.6961, 121.1219],
 };
 
 export default function TrackOrder() {
@@ -50,30 +125,29 @@ export default function TrackOrder() {
       setTrackingData(data);
     } catch (err) {
       setError(`Order #${orderId} was not found. Please verify your order number or tracking code.`);
-      // Retain fallback data for visual telemetry inspection
       setTrackingData({
         order_id: orderId,
         tracking_number: 'JNT-52438668',
         courier: 'J&T Express',
         status: 'pending',
-        shipping_address: 'B9 L20 Beryl St. TEP, PH2 Tierra Nevada',
-        city: 'General Trias',
+        shipping_address: 'Tanza, Cavite',
+        city: 'Tanza',
         province: 'Cavite',
-        postal_code: '4107',
-        customer_name: 'Hans Castro',
+        postal_code: '4108',
+        customer_name: 'Customer',
         payment_method: 'PayMongo',
-        subtotal: 250,
+        subtotal: 200,
         shipping_fee: 80,
         discount_amount: 0,
-        total_amount: 330,
+        total_amount: 280,
         order_items: [
           {
-            price_at_purchase: 250,
+            price_at_purchase: 200,
             quantity: 1,
             products: {
-              name: 'Vintage Blue Shirt',
-              size: 'M',
-              condition_grade: 'Grade A',
+              name: 'Vintage Cargo Pants',
+              size: '30',
+              condition_grade: 'Used but not abused',
               image_url: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=300'
             }
           }
@@ -89,7 +163,7 @@ export default function TrackOrder() {
       setSearchInput(id);
       fetchLiveOrder(id);
     } else {
-      fetchLiveOrder('7');
+      fetchLiveOrder('20');
     }
   }, [id]);
 
@@ -126,19 +200,31 @@ export default function TrackOrder() {
 
   const currentStep = getStepIndex(trackingData?.status);
 
-  // Dynamically resolve coordinates based on customer city
-  const getDestinationCoords = () => {
-    const city = (trackingData?.city || '').toLowerCase();
-    const province = (trackingData?.province || '').toLowerCase();
+  // Dynamically resolve exact coordinates based on customer city or street
+  const getDestinationCoords = (data) => {
+    const city = (data?.city || '').toLowerCase().trim();
+    const address = (data?.shipping_address || '').toLowerCase().trim();
+    const combined = `${city} ${address}`;
 
-    if (city.includes('dasmariñas') || city.includes('dasma')) return [14.3294, 120.9367];
-    if (city.includes('imus')) return [14.4297, 120.9367];
-    if (city.includes('bacoor')) return [14.4600, 120.9400];
-    if (city.includes('manila') || province.includes('metro manila')) return [14.5995, 120.9842];
-    return [LOGISTICS_HUBS.destinationDefault.lat, LOGISTICS_HUBS.destinationDefault.lng];
+    // 1. Direct or substring matching against known city database
+    for (const [key, coords] of Object.entries(CITY_COORDINATES)) {
+      if (city.includes(key) || combined.includes(key)) {
+        return coords;
+      }
+    }
+
+    // 2. Province-level fallbacks
+    const province = (data?.province || '').toLowerCase();
+    if (province.includes('metro manila') || province.includes('ncr')) return CITY_COORDINATES['manila'];
+    if (province.includes('laguna')) return CITY_COORDINATES['calamba'];
+    if (province.includes('batangas')) return CITY_COORDINATES['batangas city'];
+    if (province.includes('rizal')) return CITY_COORDINATES['antipolo'];
+
+    // 3. Fallback to Tanza / General Trias boundary
+    return [14.3938, 120.8540];
   };
 
-  const originAddress = 'General Trias, Cavite, Philippines';
+  const originAddress = 'Dasmariñas, Cavite, Philippines';
   const destinationAddress = [
     trackingData?.shipping_address,
     trackingData?.city,
@@ -150,22 +236,23 @@ export default function TrackOrder() {
   const externalMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originAddress)}&destination=${encodeURIComponent(destinationAddress)}&travelmode=driving`;
 
   const getLogisticsCheckpoint = (status) => {
+    const destName = trackingData?.city || 'Delivery Destination';
     switch (status?.toLowerCase()) {
       case 'pending':
         return {
-          location: 'ThriftLoop Central Archive Hub (General Trias, Cavite)',
+          location: 'ThriftLoop Central Archive Hub (Dasmariñas, Cavite)',
           eta: 'Packaging & Fabric Sanitization',
           phase: 'Origin Facility',
         };
       case 'processing':
         return {
-          location: 'Cavite Regional Sorting Hub',
+          location: 'Cavite Regional Sorting Hub (Governor\'s Drive)',
           eta: 'Ready for Courier Hand-off',
           phase: 'Dispatch Facility',
         };
       case 'shipped':
         return {
-          location: `En Route via ${trackingData?.courier || 'Courier'} Delivery Unit`,
+          location: `En Route to ${destName} via ${trackingData?.courier || 'Courier'} Delivery Unit`,
           eta: trackingData?.courier === 'Lalamove' ? 'Same-Day (Expected within hours)' : '1 - 2 Business Days',
           phase: 'Active Highway Transit',
         };
@@ -187,7 +274,7 @@ export default function TrackOrder() {
   const checkpoint = getLogisticsCheckpoint(trackingData?.status);
   const items = trackingData?.order_items || trackingData?.items || [];
 
-  // 1. Dynamically Load Leaflet CDN for zero-API-key map rendering
+  // Load Leaflet CDN dynamically
   useEffect(() => {
     if (window.L) {
       setMapReady(true);
@@ -220,7 +307,7 @@ export default function TrackOrder() {
     }
   }, []);
 
-  // 2. Render Functional Interactive Map Placemarkers
+  // Render Leaflet Map with Dynamic Coordinates
   useEffect(() => {
     if (!mapReady || !mapContainerRef.current || !window.L || !trackingData) return;
 
@@ -232,12 +319,25 @@ export default function TrackOrder() {
     }
 
     const originCoords = [LOGISTICS_HUBS.hub.lat, LOGISTICS_HUBS.hub.lng];
-    const destCoords = getDestinationCoords();
+    const destCoords = getDestinationCoords(trackingData);
 
+    // Dynamic Waypoint Interpolation along the route to destination
     let courierCoords = originCoords;
-    if (currentStep === 1) courierCoords = [LOGISTICS_HUBS.sorting.lat, LOGISTICS_HUBS.sorting.lng];
-    if (currentStep === 2) courierCoords = [LOGISTICS_HUBS.transit.lat, LOGISTICS_HUBS.transit.lng];
-    if (currentStep === 3) courierCoords = destCoords;
+    if (currentStep === 1) {
+      // 30% progress along the delivery vector
+      courierCoords = [
+        originCoords[0] + (destCoords[0] - originCoords[0]) * 0.30,
+        originCoords[1] + (destCoords[1] - originCoords[1]) * 0.30,
+      ];
+    } else if (currentStep === 2) {
+      // 70% progress along the delivery vector
+      courierCoords = [
+        originCoords[0] + (destCoords[0] - originCoords[0]) * 0.70,
+        originCoords[1] + (destCoords[1] - originCoords[1]) * 0.70,
+      ];
+    } else if (currentStep === 3) {
+      courierCoords = destCoords;
+    }
 
     const map = L.map(mapContainerRef.current, {
       center: courierCoords,
@@ -251,7 +351,7 @@ export default function TrackOrder() {
       maxZoom: 19,
     }).addTo(map);
 
-    // Placemarker 1: Hub
+    // Placemarker 1: Central Fulfillment Hub
     const hubIcon = L.divIcon({
       className: 'custom-hub-pin',
       html: `
@@ -267,11 +367,11 @@ export default function TrackOrder() {
     hubMarker.bindPopup(`
       <div style="font-family:sans-serif; font-size:12px; padding:2px;">
         <strong style="color:#2F6B4F;">🏬 ThriftLoop Central Archive</strong>
-        <p style="margin:3px 0 0 0; color:#555;">Fulfillment Origin • Authenticated & Sanitized</p>
+        <p style="margin:3px 0 0 0; color:#555;">Dasmariñas Logistics Base • Origin Facility</p>
       </div>
     `);
 
-    // Placemarker 2: Moving Courier with Radar Beacon
+    // Placemarker 2: Live Courier Unit
     const courierIcon = L.divIcon({
       className: 'custom-courier-pin',
       html: `
@@ -296,7 +396,7 @@ export default function TrackOrder() {
       </div>
     `).openPopup();
 
-    // Placemarker 3: Destination
+    // Placemarker 3: Destination Pin (Accurately Placed on Buyer City)
     const destIcon = L.divIcon({
       className: 'custom-dest-pin',
       html: `
@@ -311,13 +411,13 @@ export default function TrackOrder() {
     const destMarker = L.marker(destCoords, { icon: destIcon }).addTo(map);
     destMarker.bindPopup(`
       <div style="font-family:sans-serif; font-size:12px; padding:2px;">
-        <strong style="color:#23313A;">🏡 Delivery Destination</strong>
+        <strong style="color:#23313A;">🏡 Delivery Destination (${trackingData?.city || 'Customer'})</strong>
         <p style="margin:3px 0 0 0; color:#555;">${trackingData?.customer_name || 'Customer'}</p>
         <p style="margin:2px 0 0 0; color:#777; font-size:11px;">${destinationAddress}</p>
       </div>
     `);
 
-    // Route Polyline
+    // Route Polyline Connecting Origin -> Courier -> Real Destination
     L.polyline([originCoords, courierCoords, destCoords], {
       color: '#2F6B4F',
       weight: 4,
@@ -366,14 +466,13 @@ export default function TrackOrder() {
             </p>
           </div>
 
-          {/* Search Order Bar (Zero-zoom on mobile) */}
           <form onSubmit={handleSearch} className="flex gap-2 w-full md:w-auto md:min-w-[360px]">
             <div className="relative flex-1">
               <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#A8C3A0]" />
               <input
                 type="text"
                 inputMode="text"
-                placeholder="Enter Order ID (e.g. 7)"
+                placeholder="Enter Order ID (e.g. 20)"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 className="w-full bg-white border border-[#A8C3A0]/40 rounded-2xl pl-10 pr-4 py-2.5 sm:py-2 text-[16px] sm:text-xs font-bold text-[#23313A] focus:outline-none focus:border-[#2F6B4F] shadow-xs transition-all"
@@ -396,7 +495,7 @@ export default function TrackOrder() {
           </div>
         )}
 
-        {/* Executive 2-Column Dashboard Layout */}
+        {/* Dashboard Layout */}
         {trackingData && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             
@@ -501,7 +600,7 @@ export default function TrackOrder() {
                       <span>Visual Logistics Route</span>
                     </h3>
                     <p className="text-[11px] text-[#A8C3A0] font-semibold">
-                      Automated telemetry from ThriftLoop Hub to delivery point
+                      Automated telemetry to {trackingData.city || 'Destination'}
                     </p>
                   </div>
 
@@ -546,13 +645,13 @@ export default function TrackOrder() {
                   {/* Legend Overlay */}
                   <div className="absolute bottom-2 left-2 z-[400] bg-white/95 backdrop-blur-sm border border-[#A8C3A0]/30 px-3 py-1.5 rounded-xl shadow-xs flex items-center gap-3 text-[10px] font-bold text-[#23313A]">
                     <span className="flex items-center gap-1">
-                      <span className="w-2.5 h-2.5 rounded-full bg-[#2F6B4F]"></span> Hub
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#2F6B4F]"></span> Hub (Dasma)
                     </span>
                     <span className="flex items-center gap-1">
                       <span className="w-2.5 h-2.5 rounded-full bg-[#E67E5F] animate-pulse"></span> Package (Live)
                     </span>
                     <span className="flex items-center gap-1">
-                      <span className="w-2.5 h-2.5 rounded-full bg-[#23313A]"></span> Destination
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#23313A]"></span> Destination ({trackingData.city || 'Tanza'})
                     </span>
                   </div>
                 </div>
