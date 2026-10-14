@@ -21,7 +21,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'thriftloop_super_secret_jwt_key_20
 const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || '1089526724617-1e8fas2jq3noffeigk0kh5v7gfsids1f.apps.googleusercontent.com')
   .trim()
   .replace(/^["']|["']$/g, '');
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+const FRONTEND_URL = (process.env.FRONTEND_URL || 'https://thrift-loop.vercel.app').trim().replace(/\/+$/, '');
 const TELEGRAM_BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
 const TELEGRAM_CHANNEL = (process.env.TELEGRAM_CHANNEL || '').trim();
 
@@ -1466,7 +1466,8 @@ app.get('/api/messages/unread-status/:userId', async (req, res) => {
 app.post('/api/checkout/paymongo', async (req, res) => {
   const { 
     items, cart_items, customer, deliveryAddress, 
-    referenceNumber, voucherCode, discountAmount = 0, courier = 'J&T Express' 
+    referenceNumber, voucherCode, discountAmount = 0, courier = 'J&T Express',
+    origin_url
   } = req.body;
   const secretKey = process.env.PAYMONGO_SECRET_KEY;
 
@@ -1584,8 +1585,6 @@ app.post('/api/checkout/paymongo', async (req, res) => {
       console.warn('⚠️ Non-fatal payment record insert notice:', paymentErr.message);
     }
 
-    // Pieces remain active until payment is successfully confirmed in verify route
-
     const lineItems = productList.map((item) => {
       const itemObj = {
         name: item.name || '1-of-1 Vintage Piece',
@@ -1600,9 +1599,11 @@ app.post('/api/checkout/paymongo', async (req, res) => {
       return itemObj;
     });
 
+    const clientOrigin = (origin_url || FRONTEND_URL || 'https://thrift-loop.vercel.app').trim().replace(/\/+$/, '');
+
     if (!secretKey || secretKey.includes('your_secret_key')) {
       return res.json({ 
-        checkout_url: `${FRONTEND_URL}/confirmation?session_id=mock_cs_${Date.now()}&ref=${referenceNumber}&order_id=${orderId}` 
+        checkout_url: `${clientOrigin}/confirmation?session_id=mock_cs_${Date.now()}&ref=${referenceNumber}&order_id=${orderId}` 
       });
     }
 
@@ -1634,8 +1635,8 @@ app.post('/api/checkout/paymongo', async (req, res) => {
             payment_method_types: ['card', 'gcash', 'paymaya', 'grab_pay'],
             reference_number: referenceNumber,
             description: `ThriftLoop Order #${orderId} | Ref: ${referenceNumber}`,
-            success_url: `${FRONTEND_URL}/confirmation?session_id={CHECKOUT_SESSION_ID}&ref=${referenceNumber}&order_id=${orderId}`,
-            cancel_url: `${FRONTEND_URL}/checkout?cancelled=true&order_id=${orderId}`,
+            success_url: `${clientOrigin}/confirmation?order_id=${orderId}&ref=${referenceNumber}`,
+            cancel_url: `${clientOrigin}/checkout?cancelled=true&order_id=${orderId}`,
           },
         },
       }),
@@ -1644,41 +1645,64 @@ app.post('/api/checkout/paymongo', async (req, res) => {
     const data = await paymongoRes.json();
     if (!paymongoRes.ok) throw new Error(data.errors?.[0]?.detail || 'Failed to initialize PayMongo checkout.');
 
+    const realSessionId = data.data?.id;
+    if (realSessionId) {
+      await supabase.from('payments').update({
+        transaction_reference: encryptField(realSessionId),
+      }).eq('order_id', orderId);
+    }
+
     res.json({ checkout_url: data.data.attributes.checkout_url });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Payment provider error.' });
   }
 });
 
-app.get('/api/checkout/verify/:sessionId', async (req, res) => {
-  const { sessionId } = req.params;
-  const { order_id } = req.query;
+const handlePaymentVerification = async (req, res) => {
+  const { sessionId } = req.params || {};
+  const { order_id } = req.query || {};
   const secretKey = process.env.PAYMONGO_SECRET_KEY;
 
   let isPaid = true;
 
   try {
-    if (!sessionId.startsWith('mock_cs_') && secretKey && !secretKey.includes('your_secret_key')) {
+    let actualSessionId = sessionId;
+
+    if ((!actualSessionId || actualSessionId.includes('{CHECKOUT_SESSION_ID}') || actualSessionId === 'verify') && order_id) {
+      const { data: payRecord } = await supabase
+        .from('payments')
+        .select('transaction_reference')
+        .eq('order_id', order_id)
+        .maybeSingle();
+
+      if (payRecord?.transaction_reference) {
+        const decryptedRef = decryptField(payRecord.transaction_reference);
+        if (decryptedRef && decryptedRef.startsWith('cs_')) {
+          actualSessionId = decryptedRef;
+        }
+      }
+    }
+
+    if (actualSessionId && actualSessionId.startsWith('cs_') && secretKey && !secretKey.includes('your_secret_key')) {
       const basicAuth = Buffer.from(`${secretKey}:`).toString('base64');
-      const paymongoRes = await fetch(`https://api.paymongo.com/v1/checkout_sessions/${sessionId}`, {
+      const paymongoRes = await fetch(`https://api.paymongo.com/v1/checkout_sessions/${actualSessionId}`, {
         headers: { Authorization: `Basic ${basicAuth}` },
       });
       const data = await paymongoRes.json();
+      const sessionStatus = data.data?.attributes?.status;
       const payments = data.data?.attributes?.payments || [];
-      isPaid = payments.some((p) => p.attributes?.status === 'paid');
+      const paymentPaid = payments.some((p) => p.attributes?.status === 'paid');
+      isPaid = sessionStatus === 'paid' || paymentPaid;
     }
 
     if (isPaid && order_id) {
-      // 1. Update order status to processing
       const { data: updatedOrder } = await supabase
         .from('orders')
         .update({ status: 'processing' })
         .eq('order_id', order_id)
-        .eq('status', 'pending')
         .select('*')
         .maybeSingle();
 
-      // 2. Mark payment record as paid
       try {
         await supabase
           .from('payments')
@@ -1688,21 +1712,22 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
         console.warn('⚠️ Payment status update notice:', e.message);
       }
 
-      // 3. 🔒 CRITICAL FIX: Lock purchased pieces to 'sold' in database
+      // 🔒 Instant Inventory Lock
       const { data: orderItems } = await supabase
         .from('order_items')
         .select('product_id')
         .eq('order_id', order_id);
 
       if (orderItems && orderItems.length > 0) {
-        const productIds = orderItems.map((item) => item.product_id);
-        await supabase
-          .from('products')
-          .update({ status: 'sold' })
-          .in('product_id', productIds);
+        const productIds = orderItems.map((item) => item.product_id).filter(Boolean);
+        if (productIds.length > 0) {
+          await supabase
+            .from('products')
+            .update({ status: 'sold' })
+            .in('product_id', productIds);
+        }
       }
 
-      // 4. Dispatch email confirmation
       if (updatedOrder && updatedOrder.email) {
         sendEmailNotification({
           to: updatedOrder.email,
@@ -1726,7 +1751,10 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
     console.error('Payment verification error:', err.message);
     res.status(500).json({ error: 'Could not verify payment session.' });
   }
-});
+};
+
+app.get('/api/checkout/verify/:sessionId', handlePaymentVerification);
+app.get('/api/checkout/verify', handlePaymentVerification);
 
 // COD Immediate Placement (Immediate sold lock)
 app.post('/api/orders', async (req, res) => {
@@ -1905,6 +1933,15 @@ app.get('/api/track/:id', async (req, res) => {
       .single();
 
     if (error || !order) return res.status(404).json({ error: 'Order not found' });
+
+    // Auto-sync items to sold if order is confirmed/paid
+    if (['processing', 'shipped', 'delivered'].includes(order.status)) {
+      const pIds = (order.order_items || []).map((oi) => oi.product_id).filter(Boolean);
+      if (pIds.length > 0) {
+        supabase.from('products').update({ status: 'sold' }).in('product_id', pIds).then(() => {});
+      }
+    }
+
     res.json(decryptOrder(order));
   } catch {
     res.status(500).json({ error: 'Database error' });
@@ -1996,10 +2033,15 @@ app.patch('/api/admin/orders/:id', async (req, res) => {
 
     if (error) throw error;
 
+    const pIds = (order.order_items || []).map((oi) => oi.product_id).filter(Boolean);
+
     if (status === 'cancelled') {
-      const pIds = (order.order_items || []).map((oi) => oi.product_id);
       if (pIds.length > 0) {
         await supabase.from('products').update({ status: 'active' }).in('product_id', pIds);
+      }
+    } else if (['processing', 'shipped', 'delivered'].includes(status)) {
+      if (pIds.length > 0) {
+        await supabase.from('products').update({ status: 'sold' }).in('product_id', pIds);
       }
     }
 

@@ -322,6 +322,7 @@ export default function Checkout() {
             referenceNumber,
             voucherCode: appliedVoucher ? appliedVoucher.code : null,
             discountAmount,
+            origin_url: window.location.origin, // Dynamically redirects back to production Vercel
           }),
         });
 
@@ -387,9 +388,6 @@ export default function Checkout() {
     return (
       <div className="min-h-[70vh] bg-[#F6F1E8] flex flex-col items-center justify-center p-6 text-center font-mono">
         <h2 className="font-serif text-2xl font-bold text-[#23313A] mb-2">Your bag is empty</h2>
-        <p className="text-xs text-[#A8C3A0] mb-5 font-semibold">
-          Select rare 1-of-1 archive garments before checking out.
-        </p>
         <Link 
           to="/shop" 
           className="bg-[#2F6B4F] text-white text-xs font-bold px-6 py-3 rounded-xl hover:bg-[#23313A] transition-colors shadow-xs"
@@ -451,11 +449,13 @@ export default function Checkout() {
               <div className="divide-y divide-[#A8C3A0]/15 max-h-56 overflow-y-auto pr-1">
                 {cartItems.map((item, idx) => (
                   <div key={item.product_id || item.id || idx} className="py-2.5 flex items-center gap-3">
-                    <img
-                      src={item.image_url || item.image || item.img || 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=100'}
-                      alt={item.name}
-                      className="w-11 h-11 rounded-lg object-cover border border-[#A8C3A0]/30 shrink-0 bg-[#F6F1E8]"
-                    />
+                    {item.image_url && (
+                      <img
+                        src={item.image_url}
+                        alt={item.name}
+                        className="w-11 h-11 rounded-lg object-cover border border-[#A8C3A0]/30 shrink-0 bg-[#F6F1E8]"
+                      />
+                    )}
                     <div className="flex-1 min-w-0 font-sans">
                       <p className="font-bold text-xs text-[#23313A] truncate">{item.name}</p>
                       <p className="text-[10px] text-[#A8C3A0] font-mono">Size {item.size || 'OS'} • 1-of-1</p>
@@ -506,7 +506,7 @@ export default function Checkout() {
         {/* Checkout Form */}
         <form noValidate onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-start font-mono">
           
-          {/* Left Column: Input Fields */}
+          {/* Left Column */}
           <div className="lg:col-span-7 space-y-5 sm:space-y-6">
             
             {/* Recipient Information */}
@@ -567,7 +567,7 @@ export default function Checkout() {
               </div>
             </div>
 
-            {/* Delivery Address (Standardized Philippine Selectors) */}
+            {/* Delivery Address */}
             <div className="bg-white border border-[#A8C3A0]/30 rounded-2xl sm:rounded-3xl p-4 sm:p-7 shadow-xs space-y-4">
               <h2 className="font-serif text-lg sm:text-xl font-bold text-[#23313A] flex items-center gap-2 pb-3 border-b border-[#A8C3A0]/20">
                 <Truck size={18} className="text-[#2F6B4F]" />
@@ -575,7 +575,6 @@ export default function Checkout() {
               </h2>
 
               <div className="space-y-3.5 text-xs">
-                {/* Country (Philippines only) */}
                 <div>
                   <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
                     Country
@@ -588,7 +587,6 @@ export default function Checkout() {
                   />
                 </div>
 
-                {/* Region Dropdown */}
                 <div>
                   <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
                     Region
@@ -604,7 +602,6 @@ export default function Checkout() {
                   </select>
                 </div>
 
-                {/* Province & City Dropdowns */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-3.5">
                   <div>
                     <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
@@ -637,7 +634,6 @@ export default function Checkout() {
                   </div>
                 </div>
 
-                {/* Street Address & Postal Code */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-3.5">
                   <div className="sm:col-span-2">
                     <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
@@ -805,11 +801,13 @@ export default function Checkout() {
               <div className="hidden lg:block max-h-56 overflow-y-auto divide-y divide-[#A8C3A0]/15 pr-1">
                 {cartItems.map((item, idx) => (
                   <div key={item.product_id || item.id || idx} className="py-2.5 flex items-center gap-3">
-                    <img
-                      src={item.image_url || item.image || item.img || 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=100'}
-                      alt={item.name}
-                      className="w-12 h-12 rounded-xl object-cover border border-[#A8C3A0]/30 shrink-0 bg-[#F6F1E8]"
-                    />
+                    {item.image_url && (
+                      <img
+                        src={item.image_url}
+                        alt={item.name}
+                        className="w-12 h-12 rounded-xl object-cover border border-[#A8C3A0]/30 shrink-0 bg-[#F6F1E8]"
+                      />
+                    )}
                     <div className="flex-1 min-w-0 font-sans">
                       <p className="font-bold text-xs text-[#23313A] truncate">{item.name}</p>
                       <p className="text-[10px] text-[#A8C3A0] font-mono">
@@ -944,11 +942,6 @@ export default function Checkout() {
                   </>
                 )}
               </button>
-
-              <div className="pt-2 flex items-center justify-center gap-1.5 text-[10px] text-[#A8C3A0] font-semibold">
-                <ShieldCheck size={14} className="text-[#2F6B4F]" />
-                <span>Encrypted 256-Bit SSL Checkout</span>
-              </div>
             </div>
           </div>
 
