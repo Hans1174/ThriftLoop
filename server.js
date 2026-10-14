@@ -103,7 +103,7 @@ export const supabase = createClient(supabaseUrl || 'https://placeholder.supabas
 console.log('✅ Connected to Supabase Cloud PostgreSQL (Service Role Secured)');
 
 app.get('/', (req, res) => {
-  res.send('🌿 ThriftLoop Backend API is running with AES-256 Field Encryption, PH Logistics & RLS!');
+  res.send('🌿 ThriftLoop Backend API is running with AES-256 Field-Level Encryption & RLS!');
 });
 
 const cleanedGeminiKey = (process.env.GEMINI_API_KEY || '').trim().replace(/^["']|["']$/g, '');
@@ -1584,7 +1584,7 @@ app.post('/api/checkout/paymongo', async (req, res) => {
       console.warn('⚠️ Non-fatal payment record insert notice:', paymentErr.message);
     }
 
-    // Products remain active until payment is successfully confirmed in /api/checkout/verify/:sessionId
+    // Pieces remain active until payment is successfully confirmed in verify route
 
     const lineItems = productList.map((item) => {
       const itemObj = {
@@ -1669,6 +1669,7 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
     }
 
     if (isPaid && order_id) {
+      // 1. Update order status to processing
       const { data: updatedOrder } = await supabase
         .from('orders')
         .update({ status: 'processing' })
@@ -1677,6 +1678,7 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
         .select('*')
         .maybeSingle();
 
+      // 2. Mark payment record as paid
       try {
         await supabase
           .from('payments')
@@ -1686,7 +1688,7 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
         console.warn('⚠️ Payment status update notice:', e.message);
       }
 
-      // Mark pieces as SOLD only after PayMongo verifies payment
+      // 3. 🔒 CRITICAL FIX: Lock purchased pieces to 'sold' in database
       const { data: orderItems } = await supabase
         .from('order_items')
         .select('product_id')
@@ -1694,9 +1696,13 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
 
       if (orderItems && orderItems.length > 0) {
         const productIds = orderItems.map((item) => item.product_id);
-        await supabase.from('products').update({ status: 'sold' }).in('product_id', productIds);
+        await supabase
+          .from('products')
+          .update({ status: 'sold' })
+          .in('product_id', productIds);
       }
 
+      // 4. Dispatch email confirmation
       if (updatedOrder && updatedOrder.email) {
         sendEmailNotification({
           to: updatedOrder.email,
@@ -1716,7 +1722,8 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
     }
 
     res.json({ paid: isPaid, status: isPaid ? 'paid' : 'unpaid' });
-  } catch {
+  } catch (err) {
+    console.error('Payment verification error:', err.message);
     res.status(500).json({ error: 'Could not verify payment session.' });
   }
 });
