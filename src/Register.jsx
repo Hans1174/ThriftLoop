@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Lock, Mail, User, Phone, MapPin, Building, 
-  Eye, EyeOff, Loader2, AlertCircle, Sparkles, Check 
+  Eye, EyeOff, Loader2, AlertCircle, Sparkles 
 } from 'lucide-react';
 import { GoogleLogin } from '@react-oauth/google';
 import { PHILIPPINES_ADDRESS_DATA } from './data/philippinesAddress';
@@ -154,7 +154,7 @@ export default function Register() {
 
   return (
     <div className="w-full bg-[#F6F1E8] text-[#23313A] font-sans py-10 sm:py-16 px-4 sm:px-6">
-      <div className="max-w-3xl mx-auto bg-white border border-[#A8C3A0]/40 rounded-3xl p-6 sm:p-12 shadow-sm animate-in fade-in duration-300 font-mono">
+      <div className="max-w-3xl mx-auto bg-white border border-[#A8C3A0]/40 rounded-3xl p-6 sm:p-12 shadow-sm animate-in fade-in duration-300">
         
         {/* Title & Subheading */}
         <div className="text-center mb-8">
@@ -199,7 +199,7 @@ export default function Register() {
 
         <form onSubmit={handleSubmit} className="space-y-6 text-xs">
           
-          {/* Section 1: Account Information */}
+          {/* Section 1: Personal Details */}
           <div>
             <h3 className="font-serif font-bold text-sm text-[#23313A] mb-3 pb-1.5 border-b border-[#A8C3A0]/20 flex items-center gap-2">
               <User size={15} className="text-[#2F6B4F]" />
@@ -268,7 +268,7 @@ export default function Register() {
             </div>
           </div>
 
-          {/* Section 2: Default Delivery Address (Cascading Selectors) */}
+          {/* Section 2: Default Delivery Address */}
           <div>
             <h3 className="font-serif font-bold text-sm text-[#23313A] mb-3 pb-1.5 border-b border-[#A8C3A0]/20 flex items-center gap-2">
               <MapPin size={15} className="text-[#2F6B4F]" />

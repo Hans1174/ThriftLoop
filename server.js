@@ -103,7 +103,7 @@ export const supabase = createClient(supabaseUrl || 'https://placeholder.supabas
 console.log('✅ Connected to Supabase Cloud PostgreSQL (Service Role Secured)');
 
 app.get('/', (req, res) => {
-  res.send('🌿 ThriftLoop Backend API is running with AES-256 Field-Level Encryption & RLS!');
+  res.send('🌿 ThriftLoop Backend API is running with AES-256 Field Encryption, PH Logistics & RLS!');
 });
 
 const cleanedGeminiKey = (process.env.GEMINI_API_KEY || '').trim().replace(/^["']|["']$/g, '');
@@ -145,13 +145,23 @@ export const sendEmailNotification = async ({ to, userId, subject, type, data = 
   if (userId) {
     const { data: registeredUser } = await supabase
       .from('users')
-      .select('email, full_name')
+      .select('email, full_name, notification_preferences')
       .eq('user_id', userId)
       .maybeSingle();
 
-    if (registeredUser?.email) {
-      recipientEmail = registeredUser.email;
-      customerName = customerName || registeredUser.full_name;
+    if (registeredUser) {
+      const prefs = registeredUser.notification_preferences || {};
+      if (
+        (type === 'order_confirmation' || type === 'order_status') &&
+        prefs.order_tracking_email === false
+      ) {
+        return { success: true, skipped: true };
+      }
+
+      if (registeredUser.email) {
+        recipientEmail = registeredUser.email;
+        customerName = customerName || registeredUser.full_name;
+      }
     }
   }
 
@@ -272,7 +282,7 @@ app.post('/api/admin/announcement', async (req, res) => {
   const { text, is_active } = req.body;
   try {
     const payload = {
-      text: (text || '').trim(),
+      text: (text || '').trim().slice(0, 150),
       is_active: Boolean(is_active),
       updated_at: new Date().toISOString(),
     };
@@ -320,7 +330,7 @@ app.post('/api/admin/vouchers', async (req, res) => {
     return res.status(400).json({ error: 'Voucher code and value are required.' });
   }
 
-  const cleanCode = code.trim().toUpperCase().replace(/\s+/g, '');
+  const cleanCode = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 20);
   const cleanType = type === 'fixed' ? 'fixed' : 'percent';
   const cleanValue = parseFloat(value) || 0;
   const cleanMinSpend = parseFloat(min_spend) || 0;
@@ -333,7 +343,7 @@ app.post('/api/admin/vouchers', async (req, res) => {
         type: cleanType,
         value: cleanValue,
         min_spend: cleanMinSpend,
-        description: description?.trim() || `${cleanValue}${cleanType === 'percent' ? '%' : '₱'} off discount`,
+        description: description?.trim().slice(0, 100) || `${cleanValue}${cleanType === 'percent' ? '%' : '₱'} off discount`,
       })
       .select()
       .single();
@@ -363,7 +373,6 @@ app.delete('/api/admin/vouchers/:code', async (req, res) => {
   }
 });
 
-// Dynamic voucher validator with fallback
 app.post('/api/vouchers/validate', async (req, res) => {
   const { code, subtotal } = req.body;
   if (!code) return res.status(400).json({ error: 'Please provide a voucher code.' });
@@ -490,7 +499,7 @@ ${safeDesc}🛍️ <a href="${FRONTEND_URL}/product/${product.product_id}">View 
 };
 
 // ==========================================
-// AUTOMATED AGING PRICING
+// AUTOMATED AGING PRICING CRON
 // ==========================================
 export const runAgingMarkdownUpdate = async () => {
   try {
@@ -550,7 +559,7 @@ app.post('/api/admin/inventory/apply-markdowns', async (req, res) => {
 });
 
 // ==========================================
-// AUTHENTICATION
+// AUTHENTICATION & REGISTRATION
 // ==========================================
 app.post('/api/auth/google', async (req, res) => {
   const { credential, access_token, token: genericToken } = req.body;
@@ -703,7 +712,9 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.post('/api/auth/register', async (req, res) => {
   const { full_name, email, password, phone, street_address, city, province, postal_code } = req.body;
-  if (!full_name || !email || !password) return res.status(400).json({ error: 'Please provide all required fields.' });
+  if (!full_name || !email || !password) {
+    return res.status(400).json({ error: 'Please provide all required fields.' });
+  }
 
   try {
     const { data: existing } = await supabase
@@ -712,37 +723,49 @@ app.post('/api/auth/register', async (req, res) => {
       .ilike('email', email.trim())
       .maybeSingle();
 
-    if (existing) return res.status(400).json({ error: 'An account with this email already exists.' });
+    if (existing) {
+      return res.status(400).json({ error: 'An account with this email already exists.' });
+    }
+
+    const cleanPhone = String(phone || '').replace(/\D/g, '').slice(0, 11);
+    const cleanPostal = String(postal_code || '').replace(/\D/g, '').slice(0, 4);
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const { data: newUser, error } = await supabase
       .from('users')
       .insert([{
-        full_name: full_name.trim(),
+        full_name: full_name.trim().slice(0, 60),
         email: email.trim(),
         password_hash: hashedPassword,
-        phone: encryptField(phone || ''),
-        street_address: encryptField(street_address || ''),
-        city: encryptField(city || ''),
-        province: encryptField(province || ''),
-        postal_code: encryptField(postal_code || ''),
+        phone: encryptField(cleanPhone),
+        street_address: encryptField((street_address || '').trim().slice(0, 150)),
+        city: encryptField((city || '').trim().slice(0, 50)),
+        province: encryptField((province || '').trim().slice(0, 50)),
+        postal_code: encryptField(cleanPostal),
         role: 'customer',
       }])
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ Supabase Registration Insert Error:', error.message);
+      return res.status(400).json({ error: error.message });
+    }
 
     const userId = newUser.user_id || newUser.id;
-    const token = jwt.sign({ user_id: userId, email, role: 'customer' }, JWT_SECRET, { expiresIn: '7d' });
-    const { password_hash, ...safeUser } = newUser;
+    const token = jwt.sign({ user_id: userId, email: newUser.email, role: 'customer' }, JWT_SECRET, { expiresIn: '7d' });
+    
+    const safeUser = {
+      ...newUser,
+      phone: cleanPhone,
+      street_address: street_address || '',
+      city: city || '',
+      province: province || '',
+      postal_code: cleanPostal,
+    };
+    delete safeUser.password_hash;
     safeUser.user_id = userId;
     safeUser.id = userId;
-    safeUser.phone = phone || '';
-    safeUser.street_address = street_address || '';
-    safeUser.city = city || '';
-    safeUser.province = province || '';
-    safeUser.postal_code = postal_code || '';
 
     res.status(201).json({
       message: 'Account registered successfully',
@@ -750,7 +773,8 @@ app.post('/api/auth/register', async (req, res) => {
       token,
     });
   } catch (err) {
-    res.status(500).json({ error: 'Registration failed.' });
+    console.error('❌ Registration Exception:', err.message || err);
+    res.status(500).json({ error: err.message || 'Registration failed.' });
   }
 });
 
@@ -831,7 +855,82 @@ app.post('/api/auth/reset-password', async (req, res) => {
 });
 
 // ==========================================
-// CATALOG & DYNAMIC CATEGORY ROUTES
+// USER PROFILE & PREFERENCES (ENCRYPTED)
+// ==========================================
+app.get('/api/users/:id', async (req, res) => {
+  try {
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('user_id, full_name, email, phone, street_address, city, province, postal_code, role, notification_preferences')
+      .eq('user_id', req.params.id)
+      .single();
+
+    if (error || !user) {
+      return res.status(404).json({ error: 'User profile not found.' });
+    }
+
+    res.json({
+      ...user,
+      phone: decryptField(user.phone),
+      street_address: decryptField(user.street_address),
+      city: decryptField(user.city),
+      province: decryptField(user.province),
+      postal_code: decryptField(user.postal_code),
+      notification_preferences: user.notification_preferences || { order_tracking_email: true, telegram_drops: true },
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to retrieve user profile.' });
+  }
+});
+
+app.put('/api/users/:id', async (req, res) => {
+  const { full_name, phone, street_address, city, province, postal_code, notification_preferences } = req.body;
+  try {
+    const updatePayload = {};
+    if (full_name !== undefined) updatePayload.full_name = full_name.trim().slice(0, 60);
+    
+    if (phone !== undefined) {
+      const cleanPhone = String(phone).replace(/\D/g, '').slice(0, 11);
+      updatePayload.phone = encryptField(cleanPhone);
+    }
+    if (street_address !== undefined) updatePayload.street_address = encryptField(street_address.trim().slice(0, 150));
+    if (city !== undefined) updatePayload.city = encryptField(city.trim().slice(0, 50));
+    if (province !== undefined) updatePayload.province = encryptField(province.trim().slice(0, 50));
+    if (postal_code !== undefined) {
+      const cleanPostal = String(postal_code).replace(/\D/g, '').slice(0, 4);
+      updatePayload.postal_code = encryptField(cleanPostal);
+    }
+    if (notification_preferences !== undefined) updatePayload.notification_preferences = notification_preferences;
+
+    const { data: updated, error } = await supabase
+      .from('users')
+      .update(updatePayload)
+      .eq('user_id', req.params.id)
+      .select('user_id, full_name, email, phone, street_address, city, province, postal_code, role, notification_preferences')
+      .single();
+
+    if (error) throw error;
+
+    const safeUser = {
+      ...updated,
+      phone: decryptField(updated.phone),
+      street_address: decryptField(updated.street_address),
+      city: decryptField(updated.city),
+      province: decryptField(updated.province),
+      postal_code: decryptField(updated.postal_code),
+    };
+
+    res.json({
+      message: 'Account details saved successfully.',
+      user: safeUser,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Failed to update user profile.' });
+  }
+});
+
+// ==========================================
+// CATALOG & PRODUCTS CRUD
 // ==========================================
 app.get('/api/categories', async (req, res) => {
   try {
@@ -1046,48 +1145,6 @@ app.patch('/api/products/:id/status', async (req, res) => {
   }
 });
 
-app.post('/api/admin/inventory/migrate-conditions', async (req, res) => {
-  try {
-    const { data: allProducts, error } = await supabase
-      .from('products')
-      .select('product_id, condition_grade');
-
-    if (error) throw error;
-
-    let updatedCount = 0;
-
-    for (const p of allProducts || []) {
-      const g = (p.condition_grade || '').trim().toLowerCase();
-      let targetGrade = null;
-
-      if (['class a', 'grade a', 'brand new', 'deadstock'].includes(g)) {
-        targetGrade = 'Excellent';
-      } else if (['class b', 'grade b'].includes(g)) {
-        targetGrade = 'Good';
-      } else if (['class c', 'grade c', 'used'].includes(g)) {
-        targetGrade = 'Used but not abused';
-      } else if (['class d', 'grade d', 'flaw'].includes(g)) {
-        targetGrade = 'Flawed';
-      }
-
-      if (targetGrade && targetGrade !== p.condition_grade) {
-        await supabase
-          .from('products')
-          .update({ condition_grade: targetGrade })
-          .eq('product_id', p.product_id);
-        updatedCount++;
-      }
-    }
-
-    res.json({ 
-      message: `Successfully migrated ${updatedCount} items to the new condition taxonomy.`,
-      updatedCount 
-    });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to migrate product conditions.' });
-  }
-});
-
 // ==========================================
 // UNIFIED MESSAGING, READ RECEIPTS & ENCRYPTED CHATS
 // ==========================================
@@ -1268,7 +1325,6 @@ app.get('/api/messages/:conversationId', async (req, res) => {
   }
 });
 
-// AES-256 Encrypted Message Dispatch
 app.post('/api/messages', async (req, res) => {
   const { conversation_id, sender_id, receiver_id, message_text, image_url } = req.body;
   if (!conversation_id || !sender_id || (!message_text?.trim() && !image_url)) {
@@ -1405,7 +1461,7 @@ app.get('/api/messages/unread-status/:userId', async (req, res) => {
 });
 
 // ==========================================
-// CHECKOUT & ORDERS CRUD (AES-256 ENCRYPTED)
+// CHECKOUT & ORDERS (ENCRYPTED & PROTECTED)
 // ==========================================
 app.post('/api/checkout/paymongo', async (req, res) => {
   const { 
@@ -1421,6 +1477,18 @@ app.post('/api/checkout/paymongo', async (req, res) => {
   }
   if (!productList || productList.length === 0) {
     return res.status(400).json({ error: 'Your cart is empty.' });
+  }
+
+  const rawPhone = customer?.phone || '';
+  const cleanPhone = String(rawPhone).replace(/\D/g, '').slice(0, 11);
+  if (cleanPhone.length !== 11 || !cleanPhone.startsWith('09')) {
+    return res.status(400).json({ error: 'Please enter a valid 11-digit Philippine mobile number starting with 09.' });
+  }
+
+  const rawPostal = deliveryAddress?.postalCode || '';
+  const cleanPostal = String(rawPostal).replace(/\D/g, '').slice(0, 4);
+  if (cleanPostal.length !== 4) {
+    return res.status(400).json({ error: 'Postal code must be exactly 4 digits.' });
   }
 
   try {
@@ -1459,7 +1527,7 @@ app.post('/api/checkout/paymongo', async (req, res) => {
       if (user) {
         if (user.role === 'admin' || user.email === 'admin@thriftloop.com') {
           return res.status(403).json({
-            error: 'Administrator accounts cannot place customer orders. Please use a regular customer account.',
+            error: 'Administrator accounts cannot place customer orders.',
           });
         }
         validUserId = user.user_id;
@@ -1471,13 +1539,13 @@ app.post('/api/checkout/paymongo', async (req, res) => {
       .from('orders')
       .insert([{
         user_id: validUserId,
-        customer_name: customer?.fullName || 'Customer',
+        customer_name: (customer?.fullName || 'Customer').trim().slice(0, 60),
         email: registeredEmail,
-        phone: encryptField(customer?.phone || ''),
-        shipping_address: encryptField(deliveryAddress?.streetAddress || ''),
-        city: encryptField(deliveryAddress?.city || ''),
-        province: encryptField(deliveryAddress?.province || ''),
-        postal_code: encryptField(deliveryAddress?.postalCode || ''),
+        phone: encryptField(cleanPhone),
+        shipping_address: encryptField((deliveryAddress?.streetAddress || '').trim().slice(0, 150)),
+        city: encryptField((deliveryAddress?.city || '').trim().slice(0, 50)),
+        province: encryptField((deliveryAddress?.province || '').trim().slice(0, 50)),
+        postal_code: encryptField(cleanPostal),
         courier: courier || 'J&T Express',
         payment_method: 'PayMongo',
         subtotal,
@@ -1516,7 +1584,7 @@ app.post('/api/checkout/paymongo', async (req, res) => {
       console.warn('⚠️ Non-fatal payment record insert notice:', paymentErr.message);
     }
 
-    await supabase.from('products').update({ status: 'sold' }).in('product_id', productIds);
+    // Products remain active until payment is successfully confirmed in /api/checkout/verify/:sessionId
 
     const lineItems = productList.map((item) => {
       const itemObj = {
@@ -1542,17 +1610,15 @@ app.post('/api/checkout/paymongo', async (req, res) => {
     const billing = {
       name: customer.fullName || 'Customer',
       email: registeredEmail,
+      phone: cleanPhone,
       address: {
-        line1: deliveryAddress.streetAddress || 'Metro Manila',
-        city: deliveryAddress.city || 'City',
-        state: deliveryAddress.province || 'Province',
-        postal_code: deliveryAddress.postalCode || '1000',
+        line1: deliveryAddress.streetAddress || 'Cavite',
+        city: deliveryAddress.city || 'Dasmariñas',
+        state: deliveryAddress.province || 'Cavite',
+        postal_code: cleanPostal,
         country: 'PH',
       },
     };
-    if (customer.phone && customer.phone.trim().length >= 7) {
-      billing.phone = customer.phone.trim();
-    }
 
     const paymongoRes = await fetch('https://api.paymongo.com/v1/checkout_sessions', {
       method: 'POST',
@@ -1620,6 +1686,17 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
         console.warn('⚠️ Payment status update notice:', e.message);
       }
 
+      // Mark pieces as SOLD only after PayMongo verifies payment
+      const { data: orderItems } = await supabase
+        .from('order_items')
+        .select('product_id')
+        .eq('order_id', order_id);
+
+      if (orderItems && orderItems.length > 0) {
+        const productIds = orderItems.map((item) => item.product_id);
+        await supabase.from('products').update({ status: 'sold' }).in('product_id', productIds);
+      }
+
       if (updatedOrder && updatedOrder.email) {
         sendEmailNotification({
           to: updatedOrder.email,
@@ -1644,6 +1721,7 @@ app.get('/api/checkout/verify/:sessionId', async (req, res) => {
   }
 });
 
+// COD Immediate Placement (Immediate sold lock)
 app.post('/api/orders', async (req, res) => {
   const { 
     user_id, customer_name, email, phone, shipping_address, city, province, 
@@ -1657,6 +1735,16 @@ app.post('/api/orders', async (req, res) => {
   }
   if (!customer_name || !email || !shipping_address || productList.length === 0) {
     return res.status(400).json({ error: 'Missing required order or shipping details.' });
+  }
+
+  const cleanPhone = String(phone || '').replace(/\D/g, '').slice(0, 11);
+  if (cleanPhone.length !== 11 || !cleanPhone.startsWith('09')) {
+    return res.status(400).json({ error: 'Please enter a valid 11-digit Philippine mobile number starting with 09.' });
+  }
+
+  const cleanPostal = String(postal_code || '').replace(/\D/g, '').slice(0, 4);
+  if (cleanPostal.length !== 4) {
+    return res.status(400).json({ error: 'Postal code must be exactly 4 digits.' });
   }
 
   try {
@@ -1694,26 +1782,10 @@ app.post('/api/orders', async (req, res) => {
       if (registeredUser) {
         if (registeredUser.role === 'admin' || registeredUser.email === 'admin@thriftloop.com') {
           return res.status(403).json({
-            error: 'Administrator accounts cannot place customer orders. Please use a regular customer account.',
+            error: 'Administrator accounts cannot place customer orders.',
           });
         }
         registeredEmail = registeredUser.email;
-      }
-    } else if (registeredEmail) {
-      const { data: userByEmail } = await supabase
-        .from('users')
-        .select('user_id, email, full_name, role')
-        .ilike('email', registeredEmail)
-        .maybeSingle();
-
-      if (userByEmail) {
-        if (userByEmail.role === 'admin' || userByEmail.email === 'admin@thriftloop.com') {
-          return res.status(403).json({
-            error: 'Administrator accounts cannot place customer orders. Please use a regular customer account.',
-          });
-        }
-        validUserId = userByEmail.user_id;
-        registeredEmail = userByEmail.email;
       }
     }
 
@@ -1721,13 +1793,13 @@ app.post('/api/orders', async (req, res) => {
       .from('orders')
       .insert([{
         user_id: validUserId,
-        customer_name,
+        customer_name: customer_name.trim().slice(0, 60),
         email: registeredEmail,
-        phone: encryptField(phone || ''),
-        shipping_address: encryptField(shipping_address),
-        city: encryptField(city || ''),
-        province: encryptField(province || ''),
-        postal_code: encryptField(postal_code || ''),
+        phone: encryptField(cleanPhone),
+        shipping_address: encryptField(shipping_address.trim().slice(0, 150)),
+        city: encryptField((city || '').trim().slice(0, 50)),
+        province: encryptField((province || '').trim().slice(0, 50)),
+        postal_code: encryptField(cleanPostal),
         courier: courier || 'J&T Express',
         payment_method: payment_method || 'Cash on Delivery (COD)',
         subtotal,
@@ -1857,7 +1929,7 @@ app.post('/api/orders/:id/cancel', async (req, res) => {
   }
 });
 
-// --- ADMIN MANAGEMENT & SHIPMENT STATUS DISPATCH ---
+// --- ADMIN MANAGEMENT & STATS ---
 app.get('/api/admin/stats', async (req, res) => {
   try {
     const { count: activeCount } = await supabase.from('products').select('*', { count: 'exact', head: true }).eq('status', 'active');
@@ -1978,7 +2050,7 @@ app.delete('/api/admin/orders/:id', async (req, res) => {
 });
 
 // ==========================================
-// AI CONCIERGE (LOCKED STRICTLY TO GEMINI-3.8-FLASH)
+// AI CONCIERGE (GEMINI-3.8-FLASH)
 // ==========================================
 app.post('/api/chat', async (req, res) => {
   const { message, user_id, email, current_order_id, image } = req.body;
