@@ -290,6 +290,126 @@ app.post('/api/admin/announcement', async (req, res) => {
 });
 
 // ==========================================
+// DYNAMIC VOUCHER MANAGEMENT ENGINE
+// ==========================================
+const DEFAULT_VOUCHERS = {
+  VINTAGE20: { code: 'VINTAGE20', type: 'percent', value: 20, min_spend: 0, description: '20% off all archive pieces' },
+  LOOP100: { code: 'LOOP100', type: 'fixed', value: 100, min_spend: 600, description: '₱100 off on orders ₱600 and above' },
+  FIRSTDROP: { code: 'FIRSTDROP', type: 'percent', value: 15, min_spend: 400, description: '15% welcome discount on first order' },
+};
+
+app.get('/api/vouchers', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('vouchers')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error || !data || data.length === 0) {
+      return res.json(Object.values(DEFAULT_VOUCHERS));
+    }
+    res.json(data);
+  } catch {
+    res.json(Object.values(DEFAULT_VOUCHERS));
+  }
+});
+
+app.post('/api/admin/vouchers', async (req, res) => {
+  const { code, type, value, min_spend, description } = req.body;
+  if (!code || !value) {
+    return res.status(400).json({ error: 'Voucher code and value are required.' });
+  }
+
+  const cleanCode = code.trim().toUpperCase().replace(/\s+/g, '');
+  const cleanType = type === 'fixed' ? 'fixed' : 'percent';
+  const cleanValue = parseFloat(value) || 0;
+  const cleanMinSpend = parseFloat(min_spend) || 0;
+
+  try {
+    const { data, error } = await supabase
+      .from('vouchers')
+      .upsert({
+        code: cleanCode,
+        type: cleanType,
+        value: cleanValue,
+        min_spend: cleanMinSpend,
+        description: description?.trim() || `${cleanValue}${cleanType === 'percent' ? '%' : '₱'} off discount`,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.status(201).json(data);
+  } catch (err) {
+    console.error('Save voucher error:', err.message);
+    res.status(500).json({ error: 'Failed to save voucher.' });
+  }
+});
+
+app.delete('/api/admin/vouchers/:code', async (req, res) => {
+  const { code } = req.params;
+  if (!code) return res.status(400).json({ error: 'Code is required.' });
+
+  try {
+    const { error } = await supabase
+      .from('vouchers')
+      .delete()
+      .eq('code', code.trim().toUpperCase());
+
+    if (error) throw error;
+    res.json({ message: `Voucher ${code} removed successfully.` });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete voucher.' });
+  }
+});
+
+// Dynamic voucher validator with fallback
+app.post('/api/vouchers/validate', async (req, res) => {
+  const { code, subtotal } = req.body;
+  if (!code) return res.status(400).json({ error: 'Please provide a voucher code.' });
+
+  const cleanCode = code.trim().toUpperCase();
+  const numericSubtotal = parseFloat(subtotal) || 0;
+
+  try {
+    const { data: dbVoucher } = await supabase
+      .from('vouchers')
+      .select('*')
+      .eq('code', cleanCode)
+      .maybeSingle();
+
+    const voucher = dbVoucher || DEFAULT_VOUCHERS[cleanCode];
+
+    if (!voucher) {
+      return res.status(404).json({ error: 'Invalid or expired voucher code.' });
+    }
+
+    const minSpend = parseFloat(voucher.min_spend || voucher.minSpend || 0);
+    if (numericSubtotal < minSpend) {
+      return res.status(400).json({ 
+        error: `Minimum spend of ₱${minSpend.toFixed(2)} required for ${voucher.code}.` 
+      });
+    }
+
+    const val = parseFloat(voucher.value);
+    const discountAmount = voucher.type === 'percent' 
+      ? (numericSubtotal * val) / 100 
+      : val;
+
+    res.json({
+      valid: true,
+      code: voucher.code,
+      type: voucher.type,
+      value: val,
+      discountAmount: Math.min(discountAmount, numericSubtotal),
+      description: voucher.description,
+    });
+  } catch {
+    res.status(500).json({ error: 'Could not validate voucher code.' });
+  }
+});
+
+// ==========================================
 // AUTOMATED TELEGRAM DROP POSTING ENGINE
 // ==========================================
 const postToTelegram = async (product) => {
@@ -367,12 +487,6 @@ ${safeDesc}🛍️ <a href="${FRONTEND_URL}/product/${product.product_id}">View 
   } catch (err) {
     console.warn('⚠️ [Telegram Integration] Failed to post to Telegram:', err.message);
   }
-};
-
-const ACTIVE_VOUCHERS = {
-  VINTAGE20: { code: 'VINTAGE20', type: 'percent', value: 20, minSpend: 0, description: 'Flash Drop: 20% off all archive pieces' },
-  LOOP100: { code: 'LOOP100', type: 'fixed', value: 100, minSpend: 600, description: '₱100 off on orders ₱600 and above' },
-  FIRSTDROP: { code: 'FIRSTDROP', type: 'percent', value: 15, minSpend: 400, description: '15% welcome discount on your first order' },
 };
 
 // ==========================================
@@ -705,30 +819,6 @@ app.post('/api/auth/reset-password', async (req, res) => {
   } catch (err) {
     res.status(400).json({ error: 'Invalid or expired recovery link.' });
   }
-});
-
-// --- VOUCHER VALIDATION ---
-app.post('/api/vouchers/validate', (req, res) => {
-  const { code, subtotal } = req.body;
-  if (!code) return res.status(400).json({ error: 'Please provide a voucher code.' });
-
-  const voucher = ACTIVE_VOUCHERS[code.trim().toUpperCase()];
-  if (!voucher) return res.status(404).json({ error: 'Invalid or expired voucher code.' });
-
-  const numericSubtotal = parseFloat(subtotal) || 0;
-  if (numericSubtotal < voucher.minSpend) {
-    return res.status(400).json({ error: `Minimum spend of ₱${voucher.minSpend.toFixed(2)} required for ${voucher.code}.` });
-  }
-
-  const discountAmount = voucher.type === 'percent' ? (numericSubtotal * voucher.value) / 100 : voucher.value;
-  res.json({
-    valid: true,
-    code: voucher.code,
-    type: voucher.type,
-    value: voucher.value,
-    discountAmount: Math.min(discountAmount, numericSubtotal),
-    description: voucher.description,
-  });
 });
 
 // ==========================================
@@ -1308,7 +1398,6 @@ app.get('/api/messages/unread-status/:userId', async (req, res) => {
 // ==========================================
 // CHECKOUT & ORDERS CRUD (AES-256 ENCRYPTED)
 // ==========================================
-
 app.post('/api/checkout/paymongo', async (req, res) => {
   const { 
     items, cart_items, customer, deliveryAddress, 

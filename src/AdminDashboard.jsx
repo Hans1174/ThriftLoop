@@ -2,11 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Package, Plus, Trash2, CheckCircle, 
   ShoppingBag, DollarSign, Tag, AlertCircle, 
-  X, Search, UploadCloud, Pencil, Truck, Check, MessageSquare,
-  ImageIcon, ShieldCheck, Lock, Eye, Printer, MapPin, Phone, Mail, Calendar, ExternalLink,
-  Megaphone, Radio
+  X, Search, UploadCloud, Pencil, Truck, Check,
+  ImageIcon, Lock, Eye, Printer, MapPin, Phone, Mail
 } from 'lucide-react';
-import AdminInbox from './components/AdminInbox';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://thriftloop-api-o7bh.onrender.com';
 
@@ -31,19 +29,11 @@ const normalizeCondition = (grade) => {
 };
 
 export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState('inventory'); // 'inventory' | 'orders' | 'messages'
+  const [activeTab, setActiveTab] = useState('inventory'); // 'inventory' | 'orders'
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState(null);
-
-  // Announcement Broadcast State
-  const [announcementText, setAnnouncementText] = useState('');
-  const [isAnnouncementActive, setIsAnnouncementActive] = useState(true);
-  const [savingAnnouncement, setSavingAnnouncement] = useState(false);
-
-  const storedUser = localStorage.getItem('thriftloop_user');
-  const currentUser = storedUser ? JSON.parse(storedUser) : null;
 
   // Inventory Filters
   const [searchFilter, setSearchFilter] = useState('');
@@ -111,43 +101,6 @@ export default function AdminDashboard() {
       category_name: cat,
       size: newSizes.includes(prev.size) ? prev.size : newSizes[0],
     }));
-  };
-
-  // Fetch Announcement on Load
-  useEffect(() => {
-    fetch(`${API_URL}/api/announcement`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data) {
-          setAnnouncementText(data.text || '');
-          setIsAnnouncementActive(Boolean(data.is_active));
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  const handleSaveAnnouncement = async (e) => {
-    if (e) e.preventDefault();
-    setSavingAnnouncement(true);
-    try {
-      const res = await fetch(`${API_URL}/api/admin/announcement`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: announcementText,
-          is_active: isAnnouncementActive,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to update announcement.');
-
-      showToast('Store announcement broadcast updated!');
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      setSavingAnnouncement(false);
-    }
   };
 
   const fetchData = async (isSilent = false) => {
@@ -470,7 +423,7 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-[#F6F1E8] text-[#23313A] font-mono py-6 sm:py-10 px-4 sm:px-8">
       <div className="max-w-7xl mx-auto space-y-6 sm:space-y-8">
         
-        {/* Toast Alert */}
+        {/* Toast Notification */}
         {notification && (
           <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-2xl shadow-xl border text-xs font-mono font-bold flex items-center gap-2 animate-in fade-in slide-in-from-bottom-3 ${
             notification.type === 'error'
@@ -482,7 +435,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Clean Header Banner */}
+        {/* Dashboard Header Banner */}
         <div className="bg-white border border-[#A8C3A0]/30 rounded-3xl p-6 sm:p-8 shadow-xs flex justify-between items-center gap-4">
           <h1 className="font-serif text-2xl sm:text-3xl font-bold text-[#23313A]">
             Admin Dashboard
@@ -498,76 +451,7 @@ export default function AdminDashboard() {
           </button>
         </div>
 
-        {/* Store Announcement Broadcast Control Card */}
-        <div className="bg-white border border-[#A8C3A0]/30 rounded-3xl p-5 sm:p-6 shadow-xs space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#A8C3A0]/20">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-[#2F6B4F]/10 text-[#2F6B4F] flex items-center justify-center shrink-0">
-                <Megaphone size={16} />
-              </div>
-              <div>
-                <h3 className="font-serif font-bold text-sm sm:text-base text-[#23313A]">
-                  Storewide Announcement Broadcast
-                </h3>
-                <p className="text-[11px] text-[#A8C3A0]">
-                  Controls the top notification banner across all store pages
-                </p>
-              </div>
-            </div>
-
-            {/* Toggle Status Pill */}
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setIsAnnouncementActive(!isAnnouncementActive)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  isAnnouncementActive
-                    ? 'bg-[#2F6B4F] text-white shadow-xs'
-                    : 'bg-[#F6F1E8] text-[#23313A]/60 border border-[#A8C3A0]/30'
-                }`}
-              >
-                <Radio size={12} className={isAnnouncementActive ? 'animate-pulse text-white' : ''} />
-                <span>{isAnnouncementActive ? 'Live & Visible' : 'Banner Paused'}</span>
-              </button>
-            </div>
-          </div>
-
-          <form onSubmit={handleSaveAnnouncement} className="flex flex-col sm:flex-row gap-3 items-center">
-            <input
-              type="text"
-              placeholder="Enter announcement text (e.g. FLASH DROP: 20% OFF WITH CODE VINTAGE20)..."
-              value={announcementText}
-              onChange={(e) => setAnnouncementText(e.target.value)}
-              className="flex-1 w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-4 py-2.5 text-xs text-[#23313A] focus:outline-none focus:border-[#2F6B4F]"
-            />
-
-            <button
-              type="submit"
-              disabled={savingAnnouncement}
-              className="w-full sm:w-auto bg-[#2F6B4F] hover:bg-[#23313A] text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs active:scale-95 cursor-pointer disabled:opacity-50 shrink-0"
-            >
-              {savingAnnouncement ? 'Broadcasting...' : 'Save Broadcast'}
-            </button>
-          </form>
-
-          {/* Live Preview Bar */}
-          {announcementText.trim() && (
-            <div className="pt-2">
-              <span className="text-[10px] uppercase font-bold text-[#A8C3A0] block mb-1">
-                Live Banner Preview
-              </span>
-              <div className={`p-2 rounded-xl text-[11px] font-bold text-center tracking-wide transition-all ${
-                isAnnouncementActive 
-                  ? 'bg-[#2F6B4F] text-white shadow-xs' 
-                  : 'bg-gray-200 text-gray-500 border border-gray-300'
-              }`}>
-                {announcementText}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Analytics Summary Cards */}
+        {/* Analytics Summary */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <div className="bg-white border border-[#A8C3A0]/30 p-5 rounded-2xl shadow-xs space-y-1">
             <div className="flex items-center justify-between text-[#A8C3A0]">
@@ -612,8 +496,8 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* View Switcher Tabs */}
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3 border-b border-[#A8C3A0]/30 pb-3">
+        {/* View Switcher Tabs (Focused Strictly on Catalog & Orders) */}
+        <div className="flex items-center gap-2 sm:gap-3 border-b border-[#A8C3A0]/30 pb-3">
           <button
             type="button"
             onClick={() => setActiveTab('inventory')}
@@ -635,18 +519,6 @@ export default function AdminDashboard() {
             }`}
           >
             Customer Orders ({orders.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('messages')}
-            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
-              activeTab === 'messages'
-                ? 'bg-[#2F6B4F] text-white shadow-xs'
-                : 'bg-white text-[#23313A] hover:bg-[#F6F1E8]'
-            }`}
-          >
-            <MessageSquare size={14} />
-            <span>Buyer Messages / Inbox</span>
           </button>
         </div>
 
@@ -697,7 +569,6 @@ export default function AdminDashboard() {
               <div className="bg-white border border-[#A8C3A0]/30 rounded-3xl p-12 text-center text-[#A8C3A0] space-y-2">
                 <Package size={36} className="mx-auto text-[#2F6B4F] opacity-50" />
                 <p className="font-serif font-bold text-sm text-[#23313A]">No garments match your active filters</p>
-                <p className="text-xs font-mono">Try clearing the search query or changing category and status filters.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
@@ -792,7 +663,7 @@ export default function AdminDashboard() {
                               ? 'text-gray-400 bg-gray-100 border border-gray-200 cursor-not-allowed opacity-50'
                               : 'text-[#E67E5F] bg-white hover:bg-[#E67E5F] hover:text-white border border-[#E67E5F]/30 cursor-pointer active:scale-95'
                           }`}
-                          title={isSold ? 'Sold pieces cannot be deleted (linked to customer orders)' : 'Delete Piece'}
+                          title={isSold ? 'Sold pieces cannot be deleted' : 'Delete Piece'}
                         >
                           {isSold ? <Lock size={15} /> : <Trash2 size={15} />}
                         </button>
@@ -845,7 +716,6 @@ export default function AdminDashboard() {
               <div className="bg-white border border-[#A8C3A0]/30 rounded-3xl p-12 text-center text-[#A8C3A0] space-y-2">
                 <ShoppingBag size={36} className="mx-auto text-[#2F6B4F] opacity-50" />
                 <p className="font-serif font-bold text-sm text-[#23313A]">No customer orders match your criteria</p>
-                <p className="text-xs font-mono">Customer purchases via PayMongo or COD will automatically appear here.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
@@ -969,11 +839,6 @@ export default function AdminDashboard() {
               </div>
             )}
           </div>
-        )}
-
-        {/* Tab 3: Direct Messages / Seller Inbox */}
-        {activeTab === 'messages' && (
-          <AdminInbox currentUser={currentUser} />
         )}
 
       </div>
@@ -1113,7 +978,7 @@ export default function AdminDashboard() {
 
                   <div>
                     <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
-                      Description & Flat-Lay Notes
+                      Description
                     </label>
                     <textarea
                       rows="4"
@@ -1239,7 +1104,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Complete Order Details & Printable Invoice Modal */}
+      {/* Order Details & Invoice Modal */}
       {viewingOrder && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto"

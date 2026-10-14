@@ -4,7 +4,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Search, ShoppingBag, User, LogOut, Shield, 
   Package, ChevronDown, Settings, X,
-  MessageSquare, Menu, Megaphone
+  MessageSquare, Menu, Megaphone, Tag, Plus, Trash2, Check, Radio
 } from 'lucide-react';
 import { useCart } from './context/CartContext';
 
@@ -49,11 +49,30 @@ export default function Navbar({ onOpenLogin }) {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
 
-  // Dynamic Announcement State
+  // Dynamic Announcement Banner
   const [announcement, setAnnouncement] = useState({ text: '', is_active: false });
   const [isAnnouncementDismissed, setIsAnnouncementDismissed] = useState(false);
 
-  // Sync auth state changes across tabs and modals
+  // Modals for Admin Actions
+  const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false);
+  const [announcementInput, setAnnouncementInput] = useState('');
+  const [announcementActiveToggle, setAnnouncementActiveToggle] = useState(true);
+  const [savingAnnouncement, setSavingAnnouncement] = useState(false);
+
+  const [isVouchersModalOpen, setIsVouchersModalOpen] = useState(false);
+  const [vouchers, setVouchers] = useState([]);
+  const [loadingVouchers, setLoadingVouchers] = useState(false);
+  const [newVoucher, setNewVoucher] = useState({
+    code: '',
+    type: 'percent',
+    value: '',
+    min_spend: '',
+    description: '',
+  });
+  const [savingVoucher, setSavingVoucher] = useState(false);
+
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.email === 'admin@thriftloop.com';
+
   useEffect(() => {
     const handleAuthSync = () => {
       try {
@@ -71,25 +90,103 @@ export default function Navbar({ onOpenLogin }) {
     };
   }, []);
 
-  // Fetch live store announcement
-  useEffect(() => {
-    const fetchAnnouncement = async () => {
-      try {
-        const res = await fetch(`${BACKEND_URL}/api/announcement`);
-        if (res.ok) {
-          const data = await res.json();
-          setAnnouncement(data);
-        }
-      } catch {
-        // Fallback default
-        setAnnouncement({ 
-          text: 'AUTOMATIC AGING MARKDOWNS ACTIVE ON UNSOLD VINTAGE', 
-          is_active: true 
-        });
+  const fetchAnnouncement = async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/announcement`);
+      if (res.ok) {
+        const data = await res.json();
+        setAnnouncement(data);
+        setAnnouncementInput(data.text || '');
+        setAnnouncementActiveToggle(Boolean(data.is_active));
       }
-    };
+    } catch {
+      setAnnouncement({ text: 'AUTOMATIC AGING MARKDOWNS ACTIVE ON UNSOLD VINTAGE', is_active: true });
+    }
+  };
+
+  useEffect(() => {
     fetchAnnouncement();
   }, []);
+
+  const fetchVouchers = async () => {
+    setLoadingVouchers(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/vouchers`);
+      if (res.ok) {
+        const data = await res.json();
+        setVouchers(Array.isArray(data) ? data : []);
+      }
+    } catch {
+      setVouchers([]);
+    } finally {
+      setLoadingVouchers(false);
+    }
+  };
+
+  const handleOpenVouchersModal = () => {
+    setIsProfileOpen(false);
+    setIsVouchersModalOpen(true);
+    fetchVouchers();
+  };
+
+  const handleAddVoucher = async (e) => {
+    e.preventDefault();
+    if (!newVoucher.code || !newVoucher.value) return;
+
+    setSavingVoucher(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/admin/vouchers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newVoucher),
+      });
+
+      if (!res.ok) throw new Error('Failed to create voucher.');
+      setNewVoucher({ code: '', type: 'percent', value: '', min_spend: '', description: '' });
+      fetchVouchers();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSavingVoucher(false);
+    }
+  };
+
+  const handleDeleteVoucher = async (code) => {
+    if (!window.confirm(`Delete voucher ${code}?`)) return;
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/admin/vouchers/${code}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) throw new Error('Failed to delete voucher.');
+      setVouchers((prev) => prev.filter((v) => v.code !== code));
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const handleSaveAnnouncementModal = async (e) => {
+    e.preventDefault();
+    setSavingAnnouncement(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/admin/announcement`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: announcementInput.trim(),
+          is_active: announcementActiveToggle,
+        }),
+      });
+
+      if (!res.ok) throw new Error('Failed to save announcement.');
+      setAnnouncement({ text: announcementInput.trim(), is_active: announcementActiveToggle });
+      setIsAnnouncementDismissed(false);
+      setIsAnnouncementModalOpen(false);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSavingAnnouncement(false);
+    }
+  };
 
   // Poll for incoming unread seller/buyer messages
   useEffect(() => {
@@ -114,9 +211,7 @@ export default function Navbar({ onOpenLogin }) {
           }
         }
         setHasUnreadMessages(false);
-      } catch {
-        // Silent catch for network retries
-      }
+      } catch {}
     };
 
     checkUnreadMessages();
@@ -263,323 +358,590 @@ export default function Navbar({ onOpenLogin }) {
     navigate('/');
   };
 
-  const isAdmin = currentUser?.role === 'admin' || currentUser?.email === 'admin@thriftloop.com';
-
   return (
-    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#A8C3A0]/30 shadow-xs transition-all">
-      
-      {/* Dynamic Announcement Banner */}
-      {announcement?.is_active && announcement?.text && !isAnnouncementDismissed && (
-        <div className="bg-[#2F6B4F] text-white text-[11px] sm:text-xs font-mono font-bold py-2 px-4 flex items-center justify-between tracking-wide border-b border-[#23313A]/20 transition-all">
-          <div className="flex-1 flex items-center justify-center gap-2 text-center truncate">
-            <Megaphone size={14} className="shrink-0" />
-            <span className="truncate uppercase">{announcement.text}</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setIsAnnouncementDismissed(true)}
-            className="text-white/80 hover:text-white p-1 rounded-md transition-colors cursor-pointer shrink-0 ml-2"
-            title="Dismiss Announcement"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      )}
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3">
+    <>
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#A8C3A0]/30 shadow-xs transition-all">
         
-        {/* Brand Logo & Desktop Nav Links */}
-        <div className="flex items-center gap-6 lg:gap-10 shrink-0">
-          <Link to="/" className="font-serif text-2xl sm:text-3xl font-black tracking-tighter text-[#23313A]">
-            Thrift<span className="text-[#2F6B4F]">Loop</span>
-          </Link>
-          
-          <nav className="hidden md:flex items-center gap-7 text-xs lg:text-sm font-bold">
-            <Link 
-              to="/" 
-              className={`transition-colors ${
-                location.pathname === '/' ? 'text-[#2F6B4F] border-b-2 border-[#2F6B4F] pb-0.5' : 'text-[#A8C3A0] hover:text-[#23313A]'
-              }`}
+        {/* Dynamic Announcement Banner */}
+        {announcement?.is_active && announcement?.text && !isAnnouncementDismissed && (
+          <div className="bg-[#2F6B4F] text-white text-[11px] sm:text-xs font-mono font-bold py-2 px-4 flex items-center justify-between tracking-wide border-b border-[#23313A]/20 transition-all">
+            <div className="flex-1 flex items-center justify-center gap-2 text-center truncate">
+              <Megaphone size={14} className="shrink-0" />
+              <span className="truncate uppercase">{announcement.text}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsAnnouncementDismissed(true)}
+              className="text-white/80 hover:text-white p-1 rounded-md transition-colors cursor-pointer shrink-0 ml-2"
+              title="Dismiss"
             >
-              Home
-            </Link>
-            <Link 
-              to="/shop" 
-              className={`transition-colors ${
-                location.pathname === '/shop' ? 'text-[#2F6B4F] border-b-2 border-[#2F6B4F] pb-0.5' : 'text-[#A8C3A0] hover:text-[#23313A]'
-              }`}
-            >
-              Shop
-            </Link>
-          </nav>
-        </div>
+              <X size={14} />
+            </button>
+          </div>
+        )}
 
-        {/* Actions Toolbar */}
-        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3 font-mono">
           
-          {/* Desktop Search Bar */}
-          <div className="relative hidden md:block" ref={searchContainerRef}>
-            <form onSubmit={handleSearchSubmit} className="relative">
-              <Search size={14} className="absolute left-3 top-2.5 text-[#A8C3A0]" />
-              <input
-                type="text"
-                placeholder="Search archive pieces..."
-                value={searchQuery}
-                onFocus={() => {
-                  if (searchQuery.trim().length >= 1) runSearch(searchQuery, allProducts);
-                }}
-                onChange={handleInputChange}
-                className="bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-full pl-8 pr-7 py-1.5 text-xs text-[#23313A] placeholder-[#A8C3A0] focus:outline-none focus:border-[#2F6B4F] focus:bg-white w-48 lg:w-64 shadow-xs transition-all"
-              />
-              {searchQuery && (
+          {/* Logo & Navigation */}
+          <div className="flex items-center gap-6 lg:gap-10 shrink-0">
+            <Link to="/" className="font-serif text-2xl sm:text-3xl font-black tracking-tighter text-[#23313A]">
+              Thrift<span className="text-[#2F6B4F]">Loop</span>
+            </Link>
+            
+            <nav className="hidden md:flex items-center gap-7 text-xs lg:text-sm font-bold">
+              <Link 
+                to="/" 
+                className={`transition-colors ${
+                  location.pathname === '/' ? 'text-[#2F6B4F] border-b-2 border-[#2F6B4F] pb-0.5' : 'text-[#A8C3A0] hover:text-[#23313A]'
+                }`}
+              >
+                Home
+              </Link>
+              <Link 
+                to="/shop" 
+                className={`transition-colors ${
+                  location.pathname === '/shop' ? 'text-[#2F6B4F] border-b-2 border-[#2F6B4F] pb-0.5' : 'text-[#A8C3A0] hover:text-[#23313A]'
+                }`}
+              >
+                Shop
+              </Link>
+            </nav>
+          </div>
+
+          {/* Action Toolbar */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+            
+            {/* Desktop Search Bar */}
+            <div className="relative hidden md:block" ref={searchContainerRef}>
+              <form onSubmit={handleSearchSubmit} className="relative">
+                <Search size={14} className="absolute left-3 top-2.5 text-[#A8C3A0]" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onFocus={() => {
+                    if (searchQuery.trim().length >= 1) runSearch(searchQuery, allProducts);
+                  }}
+                  onChange={handleInputChange}
+                  className="bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-full pl-8 pr-7 py-1.5 text-xs text-[#23313A] focus:outline-none focus:border-[#2F6B4F] focus:bg-white w-48 lg:w-60 shadow-xs transition-all"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={handleClearSearch}
+                    className="absolute right-2.5 top-2.5 text-[#A8C3A0] hover:text-[#23313A] cursor-pointer"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </form>
+
+              {isSearchOpen && (
+                <div className="absolute right-0 mt-2 w-80 bg-white border border-[#A8C3A0]/30 rounded-2xl shadow-xl overflow-hidden z-50 text-xs">
+                  <div className="max-h-64 overflow-y-auto divide-y divide-[#A8C3A0]/10">
+                    {searchResults.length > 0 ? (
+                      searchResults.map((item) => (
+                        <div
+                          key={item.product_id || item.id}
+                          onClick={() => handleSelectProduct(item.product_id || item.id)}
+                          className="p-2.5 flex items-center gap-3 hover:bg-[#F6F1E8]/60 cursor-pointer"
+                        >
+                          <img src={item.image_url || item.img} alt={item.name} className="w-10 h-10 rounded-lg object-cover bg-[#F6F1E8]" />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-[#23313A] truncate">{item.name}</p>
+                            <p className="text-[10px] text-[#2F6B4F] font-bold">₱{parseFloat(item.price || 0).toFixed(2)}</p>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="p-4 text-center text-xs text-[#23313A]/60">No items found.</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Mobile Search Toggle */}
+            <button
+              type="button"
+              onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
+              className="md:hidden text-[#23313A] p-2 rounded-xl hover:bg-[#F6F1E8] transition-colors"
+            >
+              {isMobileSearchOpen ? <X size={20} /> : <Search size={20} />}
+            </button>
+
+            {/* Admin-Only Announcement Button */}
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setIsAnnouncementModalOpen(true)}
+                className={`relative p-2 rounded-xl transition-all cursor-pointer shrink-0 ${
+                  announcement?.is_active 
+                    ? 'text-[#2F6B4F] bg-[#2F6B4F]/10 hover:bg-[#2F6B4F]/20' 
+                    : 'text-[#23313A]/50 hover:bg-[#F6F1E8]'
+                }`}
+                title="Announcement Broadcast"
+              >
+                <Megaphone size={19} />
+                {announcement?.is_active && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#2F6B4F] rounded-full ring-2 ring-white" />
+                )}
+              </button>
+            )}
+
+            {/* Inquiries Messages Button */}
+            <button 
+              type="button"
+              onClick={handleMessagesClick} 
+              className={`relative p-2 rounded-xl transition-colors cursor-pointer shrink-0 ${
+                location.pathname === '/messages' 
+                  ? 'text-[#2F6B4F] bg-[#2F6B4F]/10' 
+                  : 'text-[#A8C3A0] hover:text-[#23313A] hover:bg-[#F6F1E8]'
+              }`} 
+              title="Inquiries"
+            >
+              <MessageSquare size={19} />
+              {hasUnreadMessages && (
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#E67E5F] rounded-full ring-2 ring-white animate-pulse" />
+              )}
+            </button>
+
+            {/* Cart Button */}
+            <button 
+              type="button"
+              onClick={handleCartClick} 
+              className="relative text-[#A8C3A0] hover:text-[#23313A] transition-colors p-2 rounded-xl hover:bg-[#F6F1E8] cursor-pointer shrink-0" 
+              title="Cart"
+            >
+              <ShoppingBag size={19} />
+              {currentUser && cartCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-[#E67E5F] text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center font-mono">
+                  {cartCount}
+                </span>
+              )}
+            </button>
+
+            {/* Desktop User Dropdown */}
+            <div className="hidden md:block">
+              {currentUser ? (
+                <div className="relative" ref={dropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsProfileOpen(!isProfileOpen)}
+                    className="flex items-center gap-2 bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-full py-1.5 px-3 transition-all cursor-pointer"
+                  >
+                    <div className="w-6 h-6 rounded-full bg-[#2F6B4F] text-white flex items-center justify-center text-xs font-bold uppercase font-mono">
+                      {currentUser.full_name ? currentUser.full_name[0] : <User size={12} />}
+                    </div>
+                    <span className="text-xs font-bold text-[#23313A] max-w-[90px] truncate">
+                      {currentUser.full_name || 'Account'}
+                    </span>
+                    <ChevronDown size={13} className={`text-[#A8C3A0] transition-transform ${isProfileOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isProfileOpen && (
+                    <div className="absolute right-0 mt-2 w-52 bg-white border border-[#A8C3A0]/30 rounded-2xl shadow-xl py-2 z-50 text-xs animate-in fade-in zoom-in-95 duration-150 font-mono">
+                      <div className="px-4 py-2 border-b border-[#A8C3A0]/20">
+                        <p className="font-bold text-[#23313A] truncate">{currentUser.full_name}</p>
+                        <p className="text-[10px] text-[#A8C3A0] truncate">{currentUser.email}</p>
+                      </div>
+
+                      {isAdmin ? (
+                        <>
+                          <Link 
+                            to="/admin" 
+                            onClick={() => setIsProfileOpen(false)}
+                            className="flex items-center gap-2 px-4 py-2.5 hover:bg-[#F6F1E8] font-bold text-[#2F6B4F]"
+                          >
+                            <Shield size={14} /> Admin Dashboard
+                          </Link>
+
+                          <button
+                            type="button"
+                            onClick={handleOpenVouchersModal}
+                            className="w-full flex items-center gap-2 px-4 py-2.5 hover:bg-[#F6F1E8] font-bold text-[#23313A] text-left cursor-pointer"
+                          >
+                            <Tag size={14} /> Manage Vouchers
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <Link 
+                            to="/account" 
+                            onClick={() => setIsProfileOpen(false)}
+                            className="flex items-center gap-2 px-4 py-2 hover:bg-[#F6F1E8] font-bold text-[#23313A]"
+                          >
+                            <Settings size={14} /> My Account
+                          </Link>
+
+                          <button
+                            type="button"
+                            onClick={handleOrdersClick}
+                            className="w-full flex items-center gap-2 px-4 py-2 hover:bg-[#F6F1E8] font-bold text-[#23313A] text-left cursor-pointer"
+                          >
+                            <Package size={14} /> My Orders
+                          </button>
+                        </>
+                      )}
+
+                      <div className="border-t border-[#A8C3A0]/15 mt-1 pt-1">
+                        <button 
+                          onClick={handleLogout} 
+                          className="w-full flex items-center gap-2 px-4 py-2 text-[#E67E5F] hover:bg-red-50 font-bold text-left cursor-pointer"
+                        >
+                          <LogOut size={14} /> Sign Out
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
                 <button
                   type="button"
-                  onClick={handleClearSearch}
-                  className="absolute right-2.5 top-2.5 text-[#A8C3A0] hover:text-[#23313A] cursor-pointer"
+                  onClick={handleTriggerLogin}
+                  className="flex items-center gap-1.5 bg-[#2F6B4F] hover:bg-[#23313A] text-white text-xs font-bold px-4 py-2 rounded-full transition-all cursor-pointer shadow-xs"
                 >
-                  <X size={12} />
+                  <User size={13} />
+                  <span>Log In</span>
+                </button>
+              )}
+            </div>
+
+            {/* Mobile Hamburger */}
+            <button
+              type="button"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="md:hidden text-[#23313A] p-2 hover:bg-[#F6F1E8] rounded-xl transition-colors"
+            >
+              {isMobileMenuOpen ? <X size={21} /> : <Menu size={21} />}
+            </button>
+
+          </div>
+        </div>
+
+        {/* Mobile Search Input */}
+        {isMobileSearchOpen && (
+          <div className="md:hidden px-4 pb-3 pt-1 border-t border-[#A8C3A0]/20 bg-white">
+            <form onSubmit={handleSearchSubmit} className="relative">
+              <Search size={14} className="absolute left-3.5 top-3 text-[#A8C3A0]" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={handleInputChange}
+                className="w-full bg-[#F6F1E8]/70 border border-[#A8C3A0]/40 rounded-full pl-9 pr-8 py-2 text-xs text-[#23313A] focus:outline-none focus:border-[#2F6B4F]"
+                autoFocus
+              />
+              {searchQuery && (
+                <button type="button" onClick={handleClearSearch} className="absolute right-3 top-2.5 text-[#A8C3A0]">
+                  <X size={14} />
                 </button>
               )}
             </form>
-
-            {isSearchOpen && (
-              <div className="absolute right-0 mt-2 w-80 bg-white border border-[#A8C3A0]/30 rounded-2xl shadow-xl overflow-hidden z-50 text-xs">
-                <div className="p-2.5 border-b border-[#A8C3A0]/20 bg-[#F6F1E8]/40 flex justify-between items-center text-[10px] font-bold text-[#A8C3A0] uppercase">
-                  <span>Results for "{searchQuery}" ({searchResults.length})</span>
-                </div>
-                <div className="max-h-64 overflow-y-auto divide-y divide-[#A8C3A0]/10">
-                  {searchResults.length > 0 ? (
-                    searchResults.map((item) => (
-                      <div
-                        key={item.product_id || item.id}
-                        onClick={() => handleSelectProduct(item.product_id || item.id)}
-                        className="p-2.5 flex items-center gap-3 hover:bg-[#F6F1E8]/60 cursor-pointer"
-                      >
-                        <img src={item.image_url || item.img} alt={item.name} className="w-10 h-10 rounded-lg object-cover bg-[#F6F1E8]" />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-[#23313A] truncate">{item.name}</p>
-                          <p className="text-[10px] text-[#2F6B4F] font-bold">₱{parseFloat(item.price || 0).toFixed(2)}</p>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="p-4 text-center text-xs text-[#23313A]/60">No items found.</div>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
+        )}
 
-          {/* Mobile Search Toggle */}
-          <button
-            type="button"
-            onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
-            className="md:hidden text-[#23313A] p-2 rounded-xl hover:bg-[#F6F1E8] transition-colors"
-            title="Search"
-          >
-            {isMobileSearchOpen ? <X size={20} /> : <Search size={20} />}
-          </button>
+        {/* Mobile Navigation Drawer */}
+        {isMobileMenuOpen && (
+          <div className="md:hidden bg-white border-t border-[#A8C3A0]/20 px-5 py-4 space-y-4 animate-in slide-in-from-top-2 font-mono">
+            <nav className="flex flex-col space-y-2.5 text-xs font-bold text-[#23313A]">
+              <Link to="/" onClick={() => setIsMobileMenuOpen(false)} className="py-2 border-b border-[#F6F1E8]">
+                Home
+              </Link>
+              <Link to="/shop" onClick={() => setIsMobileMenuOpen(false)} className="py-2 border-b border-[#F6F1E8]">
+                Shop Collection
+              </Link>
+              <Link to="/track" onClick={() => setIsMobileMenuOpen(false)} className="py-2 border-b border-[#F6F1E8]">
+                Track Parcel
+              </Link>
+              {currentUser && (
+                isAdmin ? (
+                  <>
+                    <Link to="/admin" onClick={() => setIsMobileMenuOpen(false)} className="py-2 border-b border-[#F6F1E8] text-[#2F6B4F]">
+                      Admin Dashboard
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        handleOpenVouchersModal();
+                      }}
+                      className="py-2 border-b border-[#F6F1E8] text-left font-bold"
+                    >
+                      Manage Vouchers
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        setIsAnnouncementModalOpen(true);
+                      }}
+                      className="py-2 border-b border-[#F6F1E8] text-left font-bold text-[#2F6B4F]"
+                    >
+                      Broadcast Announcement
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleOrdersClick}
+                      className="py-2 border-b border-[#F6F1E8] text-left font-bold"
+                    >
+                      My Orders
+                    </button>
+                    <Link to="/account" onClick={() => setIsMobileMenuOpen(false)} className="py-2 border-b border-[#F6F1E8]">
+                      My Account
+                    </Link>
+                  </>
+                )
+              )}
+            </nav>
 
-          {/* Messages Button with Live Unread Dot */}
-          <button 
-            type="button"
-            onClick={handleMessagesClick} 
-            className={`relative p-2 rounded-xl transition-colors cursor-pointer shrink-0 ${
-              location.pathname === '/messages' 
-                ? 'text-[#2F6B4F] bg-[#2F6B4F]/10' 
-                : 'text-[#A8C3A0] hover:text-[#23313A] hover:bg-[#F6F1E8]'
-            }`} 
-            title="Inquiries"
-          >
-            <MessageSquare size={20} />
-            {hasUnreadMessages && (
-              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-[#E67E5F] rounded-full ring-2 ring-white animate-pulse" />
-            )}
-          </button>
-
-          {/* Cart Icon */}
-          <button 
-            type="button"
-            onClick={handleCartClick} 
-            className="relative text-[#A8C3A0] hover:text-[#23313A] transition-colors p-2 rounded-xl hover:bg-[#F6F1E8] cursor-pointer shrink-0" 
-            title="Shopping Cart"
-          >
-            <ShoppingBag size={20} />
-            {currentUser && cartCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-[#E67E5F] text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
-                {cartCount}
-              </span>
-            )}
-          </button>
-
-          {/* Desktop User Profile Dropdown */}
-          <div className="hidden md:block">
-            {currentUser ? (
-              <div className="relative" ref={dropdownRef}>
+            <div className="pt-2">
+              {currentUser ? (
                 <button
                   type="button"
-                  onClick={() => setIsProfileOpen(!isProfileOpen)}
-                  className="flex items-center gap-2 bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-full py-1.5 px-3 transition-all cursor-pointer"
+                  onClick={handleLogout}
+                  className="w-full py-2.5 bg-red-50 text-[#E67E5F] font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <div className="w-6 h-6 rounded-full bg-[#2F6B4F] text-white flex items-center justify-center text-xs font-bold uppercase">
-                    {currentUser.full_name ? currentUser.full_name[0] : <User size={12} />}
-                  </div>
-                  <span className="text-xs font-bold text-[#23313A] max-w-[90px] truncate">
-                    {currentUser.full_name || 'Account'}
-                  </span>
-                  <ChevronDown size={13} className={`text-[#A8C3A0] transition-transform ${isProfileOpen ? 'rotate-180' : ''}`} />
+                  <LogOut size={14} /> Sign Out ({currentUser.full_name?.split(' ')[0]})
                 </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleTriggerLogin}
+                  className="w-full py-3 bg-[#2F6B4F] text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer active:scale-95"
+                >
+                  Sign In / Register
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </header>
 
-                {isProfileOpen && (
-                  <div className="absolute right-0 mt-2 w-52 bg-white border border-[#A8C3A0]/30 rounded-2xl shadow-xl py-2 z-50 text-xs animate-in fade-in zoom-in-95 duration-150">
-                    <div className="px-4 py-2 border-b border-[#A8C3A0]/20">
-                      <p className="font-bold text-[#23313A] truncate">{currentUser.full_name}</p>
-                      <p className="text-[10px] text-[#A8C3A0] truncate">{currentUser.email}</p>
-                    </div>
+      {/* Admin Announcement Prompt Modal */}
+      {isAnnouncementModalOpen && (
+        <div 
+          onClick={() => setIsAnnouncementModalOpen(false)}
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in font-mono"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white border border-[#A8C3A0]/30 rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl space-y-4"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-[#A8C3A0]/20">
+              <div className="flex items-center gap-2">
+                <Megaphone size={17} className="text-[#2F6B4F]" />
+                <h3 className="font-serif font-bold text-lg text-[#23313A]">Store Announcement</h3>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setIsAnnouncementModalOpen(false)}
+                className="text-[#A8C3A0] hover:text-[#23313A] p-1.5 rounded-full hover:bg-[#F6F1E8]"
+              >
+                <X size={18} />
+              </button>
+            </div>
 
-                    {/* Role-Specific Dropdown Items */}
-                    {isAdmin ? (
-                      <Link 
-                        to="/admin" 
-                        onClick={() => setIsProfileOpen(false)}
-                        className="flex items-center gap-2 px-4 py-2 hover:bg-[#F6F1E8] font-bold text-[#2F6B4F]"
+            <form onSubmit={handleSaveAnnouncementModal} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
+                  Announcement Message
+                </label>
+                <textarea
+                  rows="3"
+                  value={announcementInput}
+                  onChange={(e) => setAnnouncementInput(e.target.value)}
+                  className="w-full bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl p-3 text-xs text-[#23313A] focus:outline-none focus:border-[#2F6B4F] resize-none"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-xs font-bold text-[#23313A]">Visibility</span>
+                <button
+                  type="button"
+                  onClick={() => setAnnouncementActiveToggle(!announcementActiveToggle)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    announcementActiveToggle
+                      ? 'bg-[#2F6B4F] text-white shadow-xs'
+                      : 'bg-[#F6F1E8] text-[#23313A]/60 border border-[#A8C3A0]/30'
+                  }`}
+                >
+                  <Radio size={12} className={announcementActiveToggle ? 'animate-pulse text-white' : ''} />
+                  <span>{announcementActiveToggle ? 'Active' : 'Inactive'}</span>
+                </button>
+              </div>
+
+              {announcementInput.trim() && (
+                <div className={`p-2.5 rounded-xl text-center text-xs font-bold uppercase tracking-wide transition-all ${
+                  announcementActiveToggle ? 'bg-[#2F6B4F] text-white' : 'bg-gray-100 text-gray-400'
+                }`}>
+                  {announcementInput}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#A8C3A0]/20">
+                <button
+                  type="button"
+                  onClick={() => setIsAnnouncementModalOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-[#23313A]/70 hover:text-[#23313A]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingAnnouncement}
+                  className="bg-[#2F6B4F] hover:bg-[#23313A] text-white px-5 py-2 rounded-xl text-xs font-bold shadow-xs active:scale-95 cursor-pointer disabled:opacity-50"
+                >
+                  {savingAnnouncement ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Vouchers Management Modal */}
+      {isVouchersModalOpen && (
+        <div 
+          onClick={() => setIsVouchersModalOpen(false)}
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in font-mono"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white border border-[#A8C3A0]/30 rounded-3xl p-6 sm:p-7 max-w-xl w-full shadow-2xl max-h-[90vh] overflow-y-auto space-y-5"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-[#A8C3A0]/20">
+              <div className="flex items-center gap-2">
+                <Tag size={18} className="text-[#2F6B4F]" />
+                <h3 className="font-serif font-bold text-lg text-[#23313A]">Store Vouchers</h3>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setIsVouchersModalOpen(false)}
+                className="text-[#A8C3A0] hover:text-[#23313A] p-1.5 rounded-full hover:bg-[#F6F1E8]"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Create New Voucher Form */}
+            <form onSubmit={handleAddVoucher} className="bg-[#F6F1E8]/50 border border-[#A8C3A0]/30 p-4 rounded-2xl space-y-3">
+              <span className="text-[10px] uppercase font-bold text-[#2F6B4F] block">Add Voucher</span>
+              
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="col-span-2">
+                  <label className="text-[10px] font-bold text-[#23313A] block mb-0.5">Code</label>
+                  <input
+                    type="text"
+                    required
+                    value={newVoucher.code}
+                    onChange={(e) => setNewVoucher({ ...newVoucher, code: e.target.value.toUpperCase() })}
+                    className="w-full bg-white border border-[#A8C3A0]/40 rounded-xl px-3 py-2 text-xs font-bold text-[#23313A] uppercase"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-[#23313A] block mb-0.5">Type</label>
+                  <select
+                    value={newVoucher.type}
+                    onChange={(e) => setNewVoucher({ ...newVoucher, type: e.target.value })}
+                    className="w-full bg-white border border-[#A8C3A0]/40 rounded-xl px-2 py-2 text-xs font-bold text-[#23313A]"
+                  >
+                    <option value="percent">Percentage (%)</option>
+                    <option value="fixed">Fixed (₱)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-[#23313A] block mb-0.5">Discount</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={newVoucher.value}
+                    onChange={(e) => setNewVoucher({ ...newVoucher, value: e.target.value })}
+                    className="w-full bg-white border border-[#A8C3A0]/40 rounded-xl px-3 py-2 text-xs font-bold text-[#23313A]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-end">
+                <div>
+                  <label className="text-[10px] font-bold text-[#23313A] block mb-0.5">Min Spend (₱)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={newVoucher.min_spend}
+                    onChange={(e) => setNewVoucher({ ...newVoucher, min_spend: e.target.value })}
+                    className="w-full bg-white border border-[#A8C3A0]/40 rounded-xl px-3 py-2 text-xs text-[#23313A]"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <button
+                    type="submit"
+                    disabled={savingVoucher}
+                    className="w-full bg-[#2F6B4F] hover:bg-[#23313A] text-white py-2 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-95 disabled:opacity-50"
+                  >
+                    <Plus size={14} />
+                    <span>{savingVoucher ? 'Adding...' : 'Add Voucher'}</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+
+            {/* Existing Vouchers List */}
+            <div className="space-y-2">
+              <span className="text-[10px] uppercase font-bold text-[#A8C3A0] block">Active Discount Codes</span>
+
+              {loadingVouchers ? (
+                <div className="p-6 text-center text-xs text-[#23313A]/50">Loading vouchers...</div>
+              ) : vouchers.length === 0 ? (
+                <div className="p-6 text-center text-xs text-[#23313A]/50">No vouchers configured yet.</div>
+              ) : (
+                <div className="divide-y divide-[#A8C3A0]/15 max-h-56 overflow-y-auto">
+                  {vouchers.map((v) => (
+                    <div key={v.code} className="py-2.5 flex items-center justify-between gap-3 text-xs">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-[#23313A] tracking-wider">{v.code}</span>
+                          <span className="bg-[#2F6B4F]/10 text-[#2F6B4F] px-2 py-0.5 rounded-md font-bold text-[10px]">
+                            {v.type === 'percent' ? `${v.value}% OFF` : `₱${v.value} OFF`}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[#23313A]/60 mt-0.5">
+                          Min spend: ₱{Number(v.min_spend || v.minSpend || 0).toFixed(2)}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteVoucher(v.code)}
+                        className="text-[#E67E5F] hover:bg-rose-50 p-2 rounded-xl transition-colors cursor-pointer"
+                        title="Delete Voucher"
                       >
-                        <Shield size={14} /> Admin Dashboard
-                      </Link>
-                    ) : (
-                      <>
-                        <Link 
-                          to="/account" 
-                          onClick={() => setIsProfileOpen(false)}
-                          className="flex items-center gap-2 px-4 py-2 hover:bg-[#F6F1E8] font-bold text-[#23313A]"
-                        >
-                          <Settings size={14} /> My Account
-                        </Link>
-
-                        <button
-                          type="button"
-                          onClick={handleOrdersClick}
-                          className="w-full flex items-center gap-2 px-4 py-2 hover:bg-[#F6F1E8] font-bold text-[#23313A] text-left cursor-pointer"
-                        >
-                          <Package size={14} /> My Orders
-                        </button>
-                      </>
-                    )}
-
-                    <div className="border-t border-[#A8C3A0]/15 mt-1 pt-1">
-                      <button 
-                        onClick={handleLogout} 
-                        className="w-full flex items-center gap-2 px-4 py-2 text-[#E67E5F] hover:bg-red-50 font-bold text-left cursor-pointer"
-                      >
-                        <LogOut size={14} /> Sign Out
+                        <Trash2 size={15} />
                       </button>
                     </div>
-                  </div>
-                )}
-              </div>
-            ) : (
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-[#A8C3A0]/20 flex justify-end">
               <button
                 type="button"
-                onClick={handleTriggerLogin}
-                className="flex items-center gap-1.5 bg-[#2F6B4F] hover:bg-[#23313A] text-white text-xs font-bold px-4 py-2 rounded-full transition-all cursor-pointer shadow-xs"
+                onClick={() => setIsVouchersModalOpen(false)}
+                className="bg-[#2F6B4F] hover:bg-[#23313A] text-white px-5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer"
               >
-                <User size={13} />
-                <span>Log In</span>
+                Done
               </button>
-            )}
-          </div>
-
-          {/* Mobile Hamburger Button */}
-          <button
-            type="button"
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="md:hidden text-[#23313A] p-2 hover:bg-[#F6F1E8] rounded-xl transition-colors"
-            title="Menu"
-          >
-            {isMobileMenuOpen ? <X size={21} /> : <Menu size={21} />}
-          </button>
-
-        </div>
-      </div>
-
-      {/* Mobile Search Bar Drawer */}
-      {isMobileSearchOpen && (
-        <div className="md:hidden px-4 pb-3 pt-1 border-t border-[#A8C3A0]/20 bg-white">
-          <form onSubmit={handleSearchSubmit} className="relative">
-            <Search size={14} className="absolute left-3.5 top-3 text-[#A8C3A0]" />
-            <input
-              type="text"
-              placeholder="Search garments, sizes, brands..."
-              value={searchQuery}
-              onChange={handleInputChange}
-              className="w-full bg-[#F6F1E8]/70 border border-[#A8C3A0]/40 rounded-full pl-9 pr-8 py-2 text-xs text-[#23313A] focus:outline-none focus:border-[#2F6B4F]"
-              autoFocus
-            />
-            {searchQuery && (
-              <button type="button" onClick={handleClearSearch} className="absolute right-3 top-2.5 text-[#A8C3A0]">
-                <X size={14} />
-              </button>
-            )}
-          </form>
-        </div>
-      )}
-
-      {/* Mobile Navigation Drawer */}
-      {isMobileMenuOpen && (
-        <div className="md:hidden bg-white border-t border-[#A8C3A0]/20 px-5 py-4 space-y-4 animate-in slide-in-from-top-2">
-          <nav className="flex flex-col space-y-2.5 text-xs font-bold text-[#23313A]">
-            <Link to="/" onClick={() => setIsMobileMenuOpen(false)} className="py-2 border-b border-[#F6F1E8]">
-              Home
-            </Link>
-            <Link to="/shop" onClick={() => setIsMobileMenuOpen(false)} className="py-2 border-b border-[#F6F1E8]">
-              Shop Collection
-            </Link>
-            <Link to="/track" onClick={() => setIsMobileMenuOpen(false)} className="py-2 border-b border-[#F6F1E8]">
-              Track Parcel
-            </Link>
-            {currentUser && (
-              isAdmin ? (
-                <Link to="/admin" onClick={() => setIsMobileMenuOpen(false)} className="py-2 border-b border-[#F6F1E8] text-[#2F6B4F]">
-                  Admin Dashboard
-                </Link>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={handleOrdersClick}
-                    className="py-2 border-b border-[#F6F1E8] text-left font-bold"
-                  >
-                    My Orders
-                  </button>
-                  <Link to="/account" onClick={() => setIsMobileMenuOpen(false)} className="py-2 border-b border-[#F6F1E8]">
-                    My Account
-                  </Link>
-                </>
-              )
-            )}
-          </nav>
-
-          <div className="pt-2">
-            {currentUser ? (
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="w-full py-2.5 bg-red-50 text-[#E67E5F] font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <LogOut size={14} /> Sign Out ({currentUser.full_name?.split(' ')[0]})
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleTriggerLogin}
-                className="w-full py-3 bg-[#2F6B4F] text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer active:scale-95"
-              >
-                Sign In / Register
-              </button>
-            )}
+            </div>
           </div>
         </div>
       )}
-    </header>
+    </>
   );
 }
