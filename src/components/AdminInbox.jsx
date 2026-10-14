@@ -2,22 +2,34 @@ import { API_URL } from '../config';
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   MessageSquare, Send, Loader2, Store, User, 
-  ExternalLink, AlertCircle, RefreshCw, Image as ImageIcon, X, CheckCheck, Check 
+  ExternalLink, RefreshCw, Image as ImageIcon, X, CheckCheck, Check 
 } from 'lucide-react';
 
 const extractImageAndText = (message) => {
-  if (message.image_url) {
-    return { imageUrl: message.image_url, text: message.message_text };
-  }
-  const text = message.message_text || '';
-  const match = text.match(/[IMAGE](.*?)\[\/IMAGE\]/);
-  if (match) {
+  if (message.image_url && typeof message.image_url === 'string' && message.image_url.trim().length > 10) {
+    const rawText = (message.message_text || '').trim();
     return {
-      imageUrl: match[1],
-      text: text.replace(match[0], '').trim()
+      imageUrl: message.image_url.trim(),
+      text: (rawText === '📷 Sent an image' || rawText === '[') ? '' : rawText,
     };
   }
-  return { imageUrl: null, text };
+
+  const text = message.message_text || '';
+  const match = text.match(/[IMAGE]([\s\S]*?)\[\/IMAGE\]/);
+  if (match && match[1]) {
+    const extractedImg = match[1].trim();
+    const cleanedText = text.replace(match[0], '').trim();
+    return {
+      imageUrl: extractedImg,
+      text: (cleanedText === '📷 Sent an image' || cleanedText === '[') ? '' : cleanedText,
+    };
+  }
+
+  if (text.startsWith('data:image/')) {
+    return { imageUrl: text.trim(), text: '' };
+  }
+
+  return { imageUrl: null, text: text === '[' ? '' : text };
 };
 
 export default function AdminInbox({ currentUser }) {
@@ -32,7 +44,6 @@ export default function AdminInbox({ currentUser }) {
   const [loading, setLoading] = useState(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [sending, setSending] = useState(false);
-  const [error, setError] = useState('');
   
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -52,7 +63,7 @@ export default function AdminInbox({ currentUser }) {
         });
       }
     } catch {
-      setError('Failed to load customer inquiries.');
+      // Background sync
     } finally {
       setLoading(false);
     }
@@ -72,9 +83,7 @@ export default function AdminInbox({ currentUser }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: adminId }),
       });
-    } catch {
-      // Non-blocking
-    }
+    } catch {}
   };
 
   const fetchMessages = async (convoId) => {
@@ -119,7 +128,7 @@ export default function AdminInbox({ currentUser }) {
       img.onload = () => {
         const canvas = document.createElement('canvas');
         let { width, height } = img;
-        const maxDim = 900;
+        const maxDim = 1000;
         if (width > height && width > maxDim) {
           height = Math.round((height * maxDim) / width);
           width = maxDim;
@@ -131,7 +140,7 @@ export default function AdminInbox({ currentUser }) {
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
-        const base64 = canvas.toDataURL('image/jpeg', 0.8);
+        const base64 = canvas.toDataURL('image/jpeg', 0.85);
         setSelectedImage(base64);
         setImagePreview(base64);
       };
@@ -170,8 +179,8 @@ export default function AdminInbox({ currentUser }) {
 
       setMessages((prev) => [...prev, newMsg]);
       fetchConversations();
-    } catch (err) {
-      setError(err.message || 'Failed to send reply.');
+    } catch {
+      // Non-blocking
     } finally {
       setSending(false);
     }
@@ -189,7 +198,7 @@ export default function AdminInbox({ currentUser }) {
   return (
     <div className="bg-white border border-[#A8C3A0]/30 rounded-3xl overflow-hidden shadow-xs grid grid-cols-1 md:grid-cols-12 h-[680px] font-mono">
       
-      {/* Left Column: Thread List with Real Buyer Names */}
+      {/* Threads */}
       <div className="md:col-span-4 border-r border-[#A8C3A0]/20 flex flex-col bg-[#F6F1E8]/30">
         <div className="p-4 border-b border-[#A8C3A0]/20 flex items-center justify-between bg-white">
           <div>
@@ -255,11 +264,10 @@ export default function AdminInbox({ currentUser }) {
         </div>
       </div>
 
-      {/* Right Column: Active Conversation */}
+      {/* Messages */}
       <div className="md:col-span-8 flex flex-col h-full bg-[#FAF7F2]">
         {activeConvo ? (
           <>
-            {/* Header */}
             <div className="p-4 bg-white border-b border-[#A8C3A0]/20 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-[#2F6B4F]/10 text-[#2F6B4F] flex items-center justify-center font-bold text-xs border border-[#A8C3A0]/30">
@@ -305,7 +313,6 @@ export default function AdminInbox({ currentUser }) {
               )}
             </div>
 
-            {/* Message History with Seen Receipts */}
             <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-3">
               {messagesLoading ? (
                 <div className="h-full flex items-center justify-center text-xs text-[#23313A]/60 gap-2">
@@ -345,10 +352,10 @@ export default function AdminInbox({ currentUser }) {
                             src={imageUrl}
                             alt="Attachment"
                             onClick={() => setEnlargedImage(imageUrl)}
-                            className="max-h-52 rounded-xl object-contain mb-1.5 cursor-pointer hover:opacity-95 bg-black/5"
+                            className="max-h-64 sm:max-h-72 rounded-xl object-contain mb-1.5 cursor-pointer hover:opacity-95 bg-black/5 block"
                           />
                         )}
-                        {text && text !== '📷 Sent an image' && <p>{text}</p>}
+                        {text && <p className="break-words">{text}</p>}
                       </div>
                       <div className="flex items-center gap-1 text-[8px] text-[#23313A]/40 mt-0.5 px-1">
                         <span>
@@ -377,7 +384,6 @@ export default function AdminInbox({ currentUser }) {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Preview Chip */}
             {imagePreview && (
               <div className="px-4 py-2 bg-[#F6F1E8] border-t border-[#A8C3A0]/30 flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -397,7 +403,7 @@ export default function AdminInbox({ currentUser }) {
               </div>
             )}
 
-            {/* Reply Input */}
+            {/* Input Bar without Placeholders */}
             <form onSubmit={handleSendReply} className="p-3 bg-white border-t border-[#A8C3A0]/20 flex gap-2 items-center">
               <input
                 type="file"
@@ -418,7 +424,6 @@ export default function AdminInbox({ currentUser }) {
 
               <input
                 type="text"
-                placeholder="Type your reply to the customer..."
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 className="flex-1 bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 text-xs text-[#23313A] focus:outline-none focus:border-[#2F6B4F]"
@@ -444,7 +449,6 @@ export default function AdminInbox({ currentUser }) {
         )}
       </div>
 
-      {/* Lightbox Modal */}
       {enlargedImage && (
         <div 
           onClick={() => setEnlargedImage(null)}

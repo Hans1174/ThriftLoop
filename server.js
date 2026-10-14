@@ -265,6 +265,8 @@ ${safeDesc}🛍️ <a href="${FRONTEND_URL}/product/${product.product_id}">View 
     const textData = await textResponse.json();
     if (textData.ok) {
       console.log(`📢 [Telegram Integration] Published text drop "${product.name}" to channel ${channel}`);
+    } else {
+      console.warn(`⚠️ [Telegram Integration] Telegram API error:`, textData.description);
     }
   } catch (err) {
     console.warn('⚠️ [Telegram Integration] Failed to post to Telegram:', err.message);
@@ -390,6 +392,7 @@ app.post('/api/auth/google', async (req, res) => {
           if (decoded && decoded.email && (decoded.iss === 'https://accounts.google.com' || decoded.iss === 'accounts.google.com')) {
             email = decoded.email;
             name = decoded.name;
+            console.log('✅ Identity recovered from Google ID token payload:', email);
           } else {
             throw verifyErr;
           }
@@ -786,7 +789,7 @@ app.put('/api/products/:id', async (req, res) => {
   }
 });
 
-// Protect data integrity: block deleting sold garments or pieces associated with orders
+// Protect data integrity: block deleting sold garments or pieces associated with orders[cite: 37]
 app.delete('/api/products/:id', async (req, res) => {
   const productId = req.params.id;
   try {
@@ -826,6 +829,7 @@ app.delete('/api/products/:id', async (req, res) => {
     if (deleteErr) throw deleteErr;
     res.json({ message: `Listing for "${product.name}" removed successfully.` });
   } catch (err) {
+    console.error('❌ Deletion restriction error:', err.message);
     res.status(500).json({ error: err.message || 'Failed to remove listing.' });
   }
 });
@@ -841,7 +845,7 @@ app.patch('/api/products/:id/status', async (req, res) => {
   }
 });
 
-// Bulk condition normalizer for legacy items
+// Bulk condition normalizer for legacy items[cite: 37]
 app.post('/api/admin/inventory/migrate-conditions', async (req, res) => {
   try {
     const { data: allProducts, error } = await supabase
@@ -885,10 +889,10 @@ app.post('/api/admin/inventory/migrate-conditions', async (req, res) => {
 });
 
 // ==========================================
-// UNIFIED MESSAGING, READ RECEIPTS & IMAGES
+// UNIFIED MESSAGING, READ RECEIPTS & IMAGES[cite: 37]
 // ==========================================
 
-// 1. Unified 1:1 Conversation Initializer per Buyer (Merges all inquiries)
+// 1. Unified 1:1 Conversation Initializer per Buyer (Merges all inquiries)[cite: 37]
 app.post('/api/messages/conversations', async (req, res) => {
   const { buyer_id, seller_id, product_id } = req.body;
   if (!buyer_id) return res.status(400).json({ error: 'Buyer ID is required.' });
@@ -916,7 +920,7 @@ app.post('/api/messages/conversations', async (req, res) => {
       }
     }
 
-    // Merge into single thread: Look for existing thread between buyer and store admin
+    // Look for existing thread between buyer and store admin[cite: 37]
     const { data: existing } = await supabase
       .from('conversations')
       .select(`
@@ -957,7 +961,6 @@ app.post('/api/messages/conversations', async (req, res) => {
       return res.json(existing);
     }
 
-    // Create the primary conversation thread
     const { data: newConvo, error: createErr } = await supabase
       .from('conversations')
       .insert([{
@@ -983,7 +986,7 @@ app.post('/api/messages/conversations', async (req, res) => {
   }
 });
 
-// 2. Fetch User Threads (Deduplicated 1 thread per customer account)
+// 2. Fetch User Threads (Deduplicated 1 thread per customer partner)[cite: 37]
 app.get('/api/messages/conversations/user/:userId', async (req, res) => {
   const { userId } = req.params;
 
@@ -1006,7 +1009,6 @@ app.get('/api/messages/conversations/user/:userId', async (req, res) => {
 
     if (error) throw error;
 
-    // Deduplicate: Exactly 1 thread per chat partner
     const uniqueMap = new Map();
     (convos || []).forEach((c) => {
       const partnerId = String(c.buyer_id) === String(userId) ? c.seller_id : c.buyer_id;
@@ -1021,7 +1023,7 @@ app.get('/api/messages/conversations/user/:userId', async (req, res) => {
   }
 });
 
-// 3. Retrieve Messages (Merges all legacy messages between this buyer and seller)
+// 3. Retrieve Messages (Merges all legacy messages between this buyer and seller)[cite: 37]
 app.get('/api/messages/:conversationId', async (req, res) => {
   const { conversationId } = req.params;
   try {
@@ -1057,7 +1059,6 @@ app.get('/api/messages/:conversationId', async (req, res) => {
     if (error) throw error;
     res.json(messages || []);
   } catch {
-    // Fallback query
     const { data: rawMessages } = await supabase
       .from('messages')
       .select('*')
@@ -1067,7 +1068,7 @@ app.get('/api/messages/:conversationId', async (req, res) => {
   }
 });
 
-// 4. Send Message with Seen = false & Image Upload
+// 4. Send Message with Seen = false & Dedicated Image Support[cite: 37]
 app.post('/api/messages', async (req, res) => {
   const { conversation_id, sender_id, receiver_id, message_text, image_url } = req.body;
   if (!conversation_id || !sender_id || (!message_text?.trim() && !image_url)) {
@@ -1087,11 +1088,13 @@ app.post('/api/messages', async (req, res) => {
       }
     }
 
+    const cleanText = (message_text || '').trim();
+
     const payload = {
       conversation_id,
       sender_id,
       receiver_id: resolvedReceiverId || null,
-      message_text: (message_text || '').trim() || '📷 Sent an image',
+      message_text: cleanText,
       is_read: false,
     };
     if (image_url) payload.image_url = image_url;
@@ -1102,15 +1105,13 @@ app.post('/api/messages', async (req, res) => {
       .select('*, sender:users!sender_id(user_id, full_name, role, email)')
       .single();
 
-    // Fallback if is_read or image_url columns are missing in table
-    if (msgErr) {
+    // Fallback if image_url column is not present in Supabase table[cite: 37]
+    if (msgErr && image_url) {
       const fallbackPayload = {
         conversation_id,
         sender_id,
         receiver_id: resolvedReceiverId || null,
-        message_text: image_url 
-          ? `[IMAGE]${image_url}[/IMAGE] ${(message_text || '').trim()}`.trim()
-          : (message_text || '').trim(),
+        message_text: `[IMAGE]${image_url}[/IMAGE] ${cleanText}`.trim(),
       };
       const resFallback = await supabase
         .from('messages')
@@ -1126,7 +1127,7 @@ app.post('/api/messages', async (req, res) => {
     await supabase
       .from('conversations')
       .update({
-        last_message: (message_text || '').trim() || '📷 Sent an image',
+        last_message: cleanText || (image_url ? '📷 Sent an image' : 'Inquiry update'),
         last_message_at: new Date().toISOString(),
       })
       .eq('conversation_id', conversation_id);
@@ -1138,7 +1139,7 @@ app.post('/api/messages', async (req, res) => {
   }
 });
 
-// 5. Mark Messages as Seen
+// 5. Mark Messages as Seen[cite: 37]
 app.patch('/api/messages/conversations/:convoId/read', async (req, res) => {
   const { convoId } = req.params;
   const { userId } = req.body;
@@ -1175,7 +1176,7 @@ app.patch('/api/messages/conversations/:convoId/read', async (req, res) => {
   }
 });
 
-// 6. Unread Badge Polling
+// 6. Unread Badge Polling[cite: 37]
 app.get('/api/messages/unread-status/:userId', async (req, res) => {
   const { userId } = req.params;
   try {
@@ -1591,7 +1592,7 @@ app.post('/api/orders', async (req, res) => {
   }
 });
 
-// Single Route to fetch user-scoped orders (Accepts either email or numeric user_id)
+// Single Route to fetch user-scoped orders (Accepts either email or numeric user_id)[cite: 37]
 app.get('/api/orders/user/:identifier', async (req, res) => {
   const { identifier } = req.params;
   if (!identifier) return res.json([]);
@@ -1679,7 +1680,7 @@ app.get('/api/admin/stats', async (req, res) => {
   }
 });
 
-// Admin Orders Feed with embedded line items and garment details for invoices
+// Admin Orders Feed with embedded line items and garment details for invoices[cite: 37]
 app.get('/api/admin/orders', async (req, res) => {
   try {
     const { data: orders, error } = await supabase
@@ -1777,7 +1778,7 @@ app.delete('/api/admin/orders/:id', async (req, res) => {
 });
 
 // ==========================================
-// AI CONCIERGE (LOCKED STRICTLY TO GEMINI-3.8-FLASH)
+// AI CONCIERGE (LOCKED STRICTLY TO GEMINI-3.8-FLASH)[cite: 37]
 // ==========================================
 app.post('/api/chat', async (req, res) => {
   const { message, user_id, email, current_order_id, image } = req.body;

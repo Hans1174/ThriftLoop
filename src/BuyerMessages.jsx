@@ -7,18 +7,33 @@ import {
 } from 'lucide-react';
 
 const extractImageAndText = (message) => {
-  if (message.image_url) {
-    return { imageUrl: message.image_url, text: message.message_text };
-  }
-  const text = message.message_text || '';
-  const match = text.match(/[IMAGE](.*?)\[\/IMAGE\]/);
-  if (match) {
+  // 1. Check direct image_url field
+  if (message.image_url && typeof message.image_url === 'string' && message.image_url.trim().length > 10) {
+    const rawText = (message.message_text || '').trim();
     return {
-      imageUrl: match[1],
-      text: text.replace(match[0], '').trim()
+      imageUrl: message.image_url.trim(),
+      text: (rawText === '📷 Sent an image' || rawText === '[') ? '' : rawText,
     };
   }
-  return { imageUrl: null, text };
+
+  // 2. Parse [IMAGE]...[/IMAGE] from message_text across lines
+  const text = message.message_text || '';
+  const match = text.match(/[IMAGE]([\s\S]*?)\[\/IMAGE\]/);
+  if (match && match[1]) {
+    const extractedImg = match[1].trim();
+    const cleanedText = text.replace(match[0], '').trim();
+    return {
+      imageUrl: extractedImg,
+      text: (cleanedText === '📷 Sent an image' || cleanedText === '[') ? '' : cleanedText,
+    };
+  }
+
+  // 3. Fallback for raw data URI strings
+  if (text.startsWith('data:image/')) {
+    return { imageUrl: text.trim(), text: '' };
+  }
+
+  return { imageUrl: null, text: text === '[' ? '' : text };
 };
 
 export default function BuyerMessages() {
@@ -52,16 +67,13 @@ export default function BuyerMessages() {
     }
   }, [currentUser, navigate]);
 
-  // Track if user is scrolling up to read earlier messages
   const handleScroll = () => {
     const el = messagesContainerRef.current;
     if (!el) return;
     const threshold = 120;
-    const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
-    isNearBottomRef.current = isAtBottom;
+    isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
   };
 
-  // Scroll to bottom only if user is already at the bottom or on initial thread load
   const scrollToBottom = (force = false) => {
     if (force || isNearBottomRef.current) {
       const el = messagesContainerRef.current;
@@ -71,7 +83,6 @@ export default function BuyerMessages() {
     }
   };
 
-  // Silent background auto-sync for threads
   const fetchConversations = async (isSilent = false) => {
     if (!currentUserId) return;
     if (!isSilent && conversations.length === 0) setLoading(true);
@@ -90,7 +101,7 @@ export default function BuyerMessages() {
         });
       }
     } catch {
-      // Non-blocking background sync
+      // Background sync
     } finally {
       if (!isSilent) setLoading(false);
     }
@@ -115,7 +126,6 @@ export default function BuyerMessages() {
     } catch {}
   };
 
-  // Silent background auto-sync for active chat messages
   const fetchMessages = async (convoId, isSilent = false) => {
     if (!convoId) return;
     if (!isSilent) setMessagesLoading(true);
@@ -164,7 +174,7 @@ export default function BuyerMessages() {
       img.onload = () => {
         const canvas = document.createElement('canvas');
         let { width, height } = img;
-        const maxDim = 900;
+        const maxDim = 1000;
         if (width > height && width > maxDim) {
           height = Math.round((height * maxDim) / width);
           width = maxDim;
@@ -176,7 +186,7 @@ export default function BuyerMessages() {
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
-        const base64 = canvas.toDataURL('image/jpeg', 0.8);
+        const base64 = canvas.toDataURL('image/jpeg', 0.85);
         setSelectedImage(base64);
         setImagePreview(base64);
       };
@@ -230,7 +240,6 @@ export default function BuyerMessages() {
 
   if (!currentUser) return null;
 
-  // Resolve respondent display name (Never calls the buyer 'Seller')
   const getThreadPartnerInfo = (convo) => {
     const isCurrentUserBuyer = String(convo.buyer_id) === String(currentUserId);
     if (isAdmin || !isCurrentUserBuyer) {
@@ -254,16 +263,14 @@ export default function BuyerMessages() {
       {/* Full-Bleed Messaging Grid */}
       <div className="flex-1 w-full h-full grid grid-cols-1 md:grid-cols-12 bg-white overflow-hidden shadow-xs">
         
-        {/* Left Column: Unified Threads List */}
+        {/* Left Column: Threads */}
         <div className={`md:col-span-4 lg:col-span-3 border-r border-[#A8C3A0]/30 flex flex-col bg-[#F6F1E8]/30 h-full ${
           activeConvo ? 'hidden md:flex' : 'flex'
         }`}>
-          {/* Header without subtext and without manual refresh button */}
           <div className="p-4 border-b border-[#A8C3A0]/20 flex items-center justify-between shrink-0 bg-white">
             <h2 className="font-serif font-bold text-base text-[#23313A]">Inquiries</h2>
           </div>
 
-          {/* Threads List */}
           <div className="flex-1 overflow-y-auto divide-y divide-[#A8C3A0]/15">
             {loading && conversations.length === 0 ? (
               <div className="p-8 text-center text-xs text-[#23313A]/50 flex items-center justify-center gap-2">
@@ -313,13 +320,13 @@ export default function BuyerMessages() {
           </div>
         </div>
 
-        {/* Right Column: Full-Height Chat Workspace */}
+        {/* Right Column: Chat Workspace */}
         <div className={`md:col-span-8 lg:col-span-9 flex flex-col h-full bg-[#FAF7F2] ${
           !activeConvo ? 'hidden md:flex' : 'flex'
         }`}>
           {activeConvo ? (
             <>
-              {/* Clean Active Chat Header: Subtext & Email removed */}
+              {/* Header */}
               {(() => {
                 const partner = getThreadPartnerInfo(activeConvo);
                 return (
@@ -367,7 +374,7 @@ export default function BuyerMessages() {
                           target="_blank"
                           rel="noreferrer"
                           className="text-[#2F6B4F] hover:text-[#23313A] p-1"
-                          title="View Product Page"
+                          title="View Product"
                         >
                           <ExternalLink size={14} />
                         </a>
@@ -377,7 +384,7 @@ export default function BuyerMessages() {
                 );
               })()}
 
-              {/* Messages History Feed with Smart Scroll Handling */}
+              {/* Messages History Feed with Reliable Image Rendering */}
               <div 
                 ref={messagesContainerRef}
                 onScroll={handleScroll}
@@ -428,15 +435,15 @@ export default function BuyerMessages() {
                           {imageUrl && (
                             <img
                               src={imageUrl}
-                              alt="Attachment"
+                              alt="Garment Attachment"
                               onClick={() => setEnlargedImage(imageUrl)}
-                              className="max-h-56 rounded-xl object-contain mb-1.5 cursor-pointer hover:opacity-95 bg-black/5"
+                              className="max-h-64 sm:max-h-72 rounded-xl object-contain mb-1.5 cursor-pointer hover:opacity-95 bg-black/5 block"
                             />
                           )}
-                          {text && text !== '📷 Sent an image' && <p>{text}</p>}
+                          {text && <p className="break-words">{text}</p>}
                         </div>
 
-                        {/* Timestamp & Seen Receipt */}
+                        {/* Timestamp & Seen Indicator */}
                         <div className="flex items-center gap-1 text-[9px] text-[#23313A]/40 mt-0.5 px-1 font-mono">
                           <span>
                             {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -463,7 +470,7 @@ export default function BuyerMessages() {
                 )}
               </div>
 
-              {/* Attached Image Preview Bar */}
+              {/* Preview Bar */}
               {imagePreview && (
                 <div className="px-4 py-2 bg-[#F6F1E8] border-t border-[#A8C3A0]/30 flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-2">
@@ -483,7 +490,7 @@ export default function BuyerMessages() {
                 </div>
               )}
 
-              {/* Chat Input Bar */}
+              {/* Chat Input Bar without Placeholders */}
               <form onSubmit={handleSendMessage} className="p-3 bg-white border-t border-[#A8C3A0]/20 flex gap-2 items-center shrink-0">
                 <input
                   type="file"
@@ -504,7 +511,6 @@ export default function BuyerMessages() {
 
                 <input
                   type="text"
-                  placeholder={isAdmin ? "Reply to customer inquiry..." : "Type a message to ThriftLoop..."}
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}
                   className="flex-1 bg-[#F6F1E8]/50 border border-[#A8C3A0]/40 rounded-xl px-4 py-2.5 text-xs text-[#23313A] focus:outline-none focus:border-[#2F6B4F]"
@@ -536,16 +542,16 @@ export default function BuyerMessages() {
       {enlargedImage && (
         <div 
           onClick={() => setEnlargedImage(null)}
-          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in cursor-pointer"
         >
-          <div className="relative max-w-3xl max-h-[90vh]">
+          <div className="relative max-w-3xl max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={() => setEnlargedImage(null)}
-              className="absolute -top-10 right-0 text-white hover:text-gray-300"
+              className="absolute -top-10 right-0 text-white hover:text-gray-300 cursor-pointer"
             >
               <X size={24} />
             </button>
-            <img src={enlargedImage} alt="Enlarged" className="max-h-[85vh] max-w-full rounded-2xl object-contain shadow-2xl" />
+            <img src={enlargedImage} alt="Enlarged Garment" className="max-h-[85vh] max-w-full rounded-2xl object-contain shadow-2xl" />
           </div>
         </div>
       )}
