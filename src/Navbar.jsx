@@ -73,6 +73,7 @@ export default function Navbar({ onOpenLogin }) {
   const [savingVoucher, setSavingVoucher] = useState(false);
 
   const isAdmin = currentUser?.role === 'admin' || currentUser?.email === 'admin@thriftloop.com';
+  const showBanner = Boolean(announcement?.is_active && announcement?.text && !isAnnouncementDismissed);
 
   useEffect(() => {
     const handleAuthSync = () => {
@@ -360,9 +361,11 @@ export default function Navbar({ onOpenLogin }) {
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#A8C3A0]/30 shadow-xs transition-all">
+      <header className={`sticky top-0 z-40 bg-white/95 backdrop-blur-md shadow-xs transition-all ${
+        !showBanner ? 'border-b border-[#A8C3A0]/30' : ''
+      }`}>
         
-        {/* 1. Main Navigation Row */}
+        {/* Navigation Bar Row */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3 font-mono">
           
           {/* Logo & Navigation */}
@@ -601,20 +604,20 @@ export default function Navbar({ onOpenLogin }) {
           </div>
         </div>
 
-        {/* 2. Dynamic Announcement Banner: Positioned directly UNDER the navigation bar */}
-        {announcement?.is_active && announcement?.text && !isAnnouncementDismissed && (
-          <div className="bg-[#2F6B4F] text-white text-[11px] sm:text-xs font-mono font-bold py-2.5 px-4 flex items-center justify-between tracking-wide border-t border-[#A8C3A0]/30 transition-all">
-            <div className="flex-1 flex items-center justify-center gap-2 text-center truncate">
-              <Megaphone size={14} className="shrink-0" />
-              <span className="truncate uppercase">{announcement.text}</span>
+        {/* Dynamic Announcement Banner: Left-aligned, slim height, no white borders */}
+        {showBanner && (
+          <div className="bg-[#2F6B4F] text-white text-[10px] sm:text-[11px] py-2 px-4 sm:px-6 flex justify-between items-center font-bold tracking-wider uppercase font-mono transition-all">
+            <div className="flex items-center gap-1.5 truncate pr-2">
+              <Megaphone size={13} className="shrink-0" />
+              <span className="truncate">{announcement.text}</span>
             </div>
             <button
               type="button"
               onClick={() => setIsAnnouncementDismissed(true)}
-              className="text-white/80 hover:text-white p-1 rounded-md transition-colors cursor-pointer shrink-0 ml-2"
+              className="text-white/80 hover:text-white shrink-0 cursor-pointer p-0.5"
               title="Dismiss"
             >
-              <X size={14} />
+              <X size={13} />
             </button>
           </div>
         )}
@@ -775,7 +778,7 @@ export default function Navbar({ onOpenLogin }) {
               </div>
 
               {announcementInput.trim() && (
-                <div className={`p-2.5 rounded-xl text-center text-xs font-bold uppercase tracking-wide transition-all ${
+                <div className={`p-2.5 rounded-xl text-left text-xs font-bold uppercase tracking-wide transition-all ${
                   announcementActiveToggle ? 'bg-[#2F6B4F] text-white' : 'bg-gray-100 text-gray-400'
                 }`}>
                   {announcementInput}
