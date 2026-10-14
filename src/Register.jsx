@@ -6,17 +6,21 @@ import {
   Eye, EyeOff, Loader2, AlertCircle, Sparkles, Check 
 } from 'lucide-react';
 import { GoogleLogin } from '@react-oauth/google';
+import { PHILIPPINES_ADDRESS_DATA } from './data/philippinesAddress';
 
 export default function Register() {
   const navigate = useNavigate();
+
+  // Cascading Address State
+  const [selectedRegion, setSelectedRegion] = useState('Region IV-A (CALABARZON)');
+  const [selectedProvince, setSelectedProvince] = useState('Cavite');
+  const [selectedCity, setSelectedCity] = useState('Dasmariñas City');
 
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
     phone: '',
     streetAddress: '',
-    city: '',
-    province: '',
     postalCode: '',
     password: '',
     confirmPassword: '',
@@ -26,6 +30,35 @@ export default function Register() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const availableProvinces = Object.keys(PHILIPPINES_ADDRESS_DATA[selectedRegion] || {});
+  const availableCities = PHILIPPINES_ADDRESS_DATA[selectedRegion]?.[selectedProvince] || [];
+
+  const handleRegionChange = (newRegion) => {
+    setSelectedRegion(newRegion);
+    const provinces = Object.keys(PHILIPPINES_ADDRESS_DATA[newRegion] || {});
+    const firstProvince = provinces[0] || '';
+    setSelectedProvince(firstProvince);
+
+    const cities = PHILIPPINES_ADDRESS_DATA[newRegion]?.[firstProvince] || [];
+    setSelectedCity(cities[0] || '');
+  };
+
+  const handleProvinceChange = (newProvince) => {
+    setSelectedProvince(newProvince);
+    const cities = PHILIPPINES_ADDRESS_DATA[selectedRegion]?.[newProvince] || [];
+    setSelectedCity(cities[0] || '');
+  };
+
+  const handlePhoneChange = (e) => {
+    const numericOnly = e.target.value.replace(/\D/g, '').slice(0, 11);
+    setFormData((prev) => ({ ...prev, phone: numericOnly }));
+  };
+
+  const handlePostalChange = (e) => {
+    const numericOnly = e.target.value.replace(/\D/g, '').slice(0, 4);
+    setFormData((prev) => ({ ...prev, postalCode: numericOnly }));
+  };
 
   const handleChange = (e) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -41,6 +74,18 @@ export default function Register() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    const cleanPhone = formData.phone.replace(/\D/g, '');
+    if (cleanPhone.length !== 11 || !cleanPhone.startsWith('09')) {
+      setError('Please enter a valid 11-digit Philippine mobile number starting with 09.');
+      return;
+    }
+
+    const cleanPostal = formData.postalCode.replace(/\D/g, '');
+    if (cleanPostal.length !== 4) {
+      setError('Postal code must be exactly 4 digits.');
+      return;
+    }
 
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match. Please verify both fields.');
@@ -59,13 +104,13 @@ export default function Register() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          full_name: formData.fullName.trim(),
+          full_name: formData.fullName.trim().slice(0, 60),
           email: formData.email.trim(),
-          phone: formData.phone.trim(),
-          street_address: formData.streetAddress.trim(),
-          city: formData.city.trim(),
-          province: formData.province.trim(),
-          postal_code: formData.postalCode.trim(),
+          phone: cleanPhone,
+          street_address: formData.streetAddress.trim().slice(0, 150),
+          city: selectedCity,
+          province: selectedProvince,
+          postal_code: cleanPostal,
           password: formData.password,
         }),
       });
@@ -109,7 +154,7 @@ export default function Register() {
 
   return (
     <div className="w-full bg-[#F6F1E8] text-[#23313A] font-sans py-10 sm:py-16 px-4 sm:px-6">
-      <div className="max-w-3xl mx-auto bg-white border border-[#A8C3A0]/40 rounded-3xl p-6 sm:p-12 shadow-sm animate-in fade-in duration-300">
+      <div className="max-w-3xl mx-auto bg-white border border-[#A8C3A0]/40 rounded-3xl p-6 sm:p-12 shadow-sm animate-in fade-in duration-300 font-mono">
         
         {/* Title & Subheading */}
         <div className="text-center mb-8">
@@ -172,6 +217,7 @@ export default function Register() {
                     type="text"
                     name="fullName"
                     required
+                    maxLength={60}
                     placeholder="Hans Castro"
                     value={formData.fullName}
                     onChange={handleChange}
@@ -201,7 +247,7 @@ export default function Register() {
 
                 <div>
                   <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
-                    Phone Number
+                    Mobile Phone (11 Digits)
                   </label>
                   <div className="relative flex items-center">
                     <Phone size={15} className="absolute left-3.5 text-[#A8C3A0]" />
@@ -209,10 +255,12 @@ export default function Register() {
                       type="tel"
                       name="phone"
                       required
-                      placeholder="0917 123 4567"
+                      maxLength={11}
+                      inputMode="numeric"
+                      placeholder="09171234567"
                       value={formData.phone}
-                      onChange={handleChange}
-                      className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl pl-10 pr-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] focus:bg-white text-[#23313A] transition-all shadow-xs"
+                      onChange={handlePhoneChange}
+                      className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl pl-10 pr-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] focus:bg-white text-[#23313A] transition-all shadow-xs font-bold"
                     />
                   </div>
                 </div>
@@ -220,7 +268,7 @@ export default function Register() {
             </div>
           </div>
 
-          {/* Section 2: Default Delivery Address */}
+          {/* Section 2: Default Delivery Address (Cascading Selectors) */}
           <div>
             <h3 className="font-serif font-bold text-sm text-[#23313A] mb-3 pb-1.5 border-b border-[#A8C3A0]/20 flex items-center gap-2">
               <MapPin size={15} className="text-[#2F6B4F]" />
@@ -230,65 +278,97 @@ export default function Register() {
             <div className="space-y-3.5">
               <div>
                 <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
-                  House / Unit / Street / Barangay
+                  Country
                 </label>
-                <div className="relative flex items-center">
-                  <Building size={15} className="absolute left-3.5 text-[#A8C3A0]" />
-                  <input
-                    type="text"
-                    name="streetAddress"
-                    required
-                    placeholder="Block 4 Lot 12, Vintage Street, Brgy. San Jose"
-                    value={formData.streetAddress}
-                    onChange={handleChange}
-                    className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl pl-10 pr-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] focus:bg-white text-[#23313A] transition-all shadow-xs"
-                  />
-                </div>
+                <input
+                  type="text"
+                  value="Philippines"
+                  disabled
+                  className="w-full bg-gray-100 border border-gray-200 text-gray-600 rounded-xl px-3.5 py-2 text-xs font-bold cursor-not-allowed"
+                />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+              <div>
+                <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
+                  Region
+                </label>
+                <select
+                  value={selectedRegion}
+                  onChange={(e) => handleRegionChange(e.target.value)}
+                  className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3 py-2 text-xs font-bold text-[#23313A] focus:outline-none focus:border-[#2F6B4F] cursor-pointer"
+                >
+                  {Object.keys(PHILIPPINES_ADDRESS_DATA).map((reg) => (
+                    <option key={reg} value={reg}>{reg}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
+                    Province / District
+                  </label>
+                  <select
+                    value={selectedProvince}
+                    onChange={(e) => handleProvinceChange(e.target.value)}
+                    className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3 py-2 text-xs font-bold text-[#23313A] focus:outline-none focus:border-[#2F6B4F] cursor-pointer"
+                  >
+                    {availableProvinces.map((prov) => (
+                      <option key={prov} value={prov}>{prov}</option>
+                    ))}
+                  </select>
+                </div>
+
                 <div>
                   <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
                     City / Municipality
                   </label>
-                  <input
-                    type="text"
-                    name="city"
-                    required
-                    placeholder="Dasmariñas"
-                    value={formData.city}
-                    onChange={handleChange}
-                    className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] focus:bg-white text-[#23313A] transition-all shadow-xs"
-                  />
+                  <select
+                    value={selectedCity}
+                    onChange={(e) => setSelectedCity(e.target.value)}
+                    className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3 py-2 text-xs font-bold text-[#23313A] focus:outline-none focus:border-[#2F6B4F] cursor-pointer"
+                  >
+                    {availableCities.map((city) => (
+                      <option key={city} value={city}>{city}</option>
+                    ))}
+                  </select>
                 </div>
+              </div>
 
-                <div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                <div className="sm:col-span-2">
                   <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
-                    Province / Region
+                    House / Unit No., Street, Barangay
                   </label>
-                  <input
-                    type="text"
-                    name="province"
-                    required
-                    placeholder="Cavite"
-                    value={formData.province}
-                    onChange={handleChange}
-                    className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] focus:bg-white text-[#23313A] transition-all shadow-xs"
-                  />
+                  <div className="relative flex items-center">
+                    <Building size={15} className="absolute left-3.5 text-[#A8C3A0]" />
+                    <input
+                      type="text"
+                      name="streetAddress"
+                      required
+                      maxLength={150}
+                      placeholder="Block 4 Lot 12, Vintage Street, Brgy. San Jose"
+                      value={formData.streetAddress}
+                      onChange={handleChange}
+                      className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl pl-10 pr-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] focus:bg-white text-[#23313A] transition-all shadow-xs"
+                    />
+                  </div>
                 </div>
 
                 <div>
                   <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
-                    Postal / ZIP Code
+                    Postal Code (4 Digits)
                   </label>
                   <input
                     type="text"
                     name="postalCode"
                     required
+                    maxLength={4}
+                    inputMode="numeric"
                     placeholder="4114"
                     value={formData.postalCode}
-                    onChange={handleChange}
-                    className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] focus:bg-white text-[#23313A] transition-all shadow-xs"
+                    onChange={handlePostalChange}
+                    className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#2F6B4F] focus:bg-white text-[#23313A] transition-all shadow-xs font-bold"
                   />
                 </div>
               </div>
