@@ -31,7 +31,7 @@ export default function Checkout() {
   // Cascading Address State
   const [selectedRegion, setSelectedRegion] = useState('Region IV-A (CALABARZON)');
   const [selectedProvince, setSelectedProvince] = useState('Cavite');
-  const [selectedCity, setSelectedCity] = useState('Dasmariñas');
+  const [selectedCity, setSelectedCity] = useState('Dasmariñas City');
 
   // Load authenticated user
   const [currentUser] = useState(() => {
@@ -43,13 +43,13 @@ export default function Checkout() {
   });
 
   const [formData, setFormData] = useState({
-    customer_name: currentUser.full_name || '',
+    customer_name: (currentUser.full_name || '').slice(0, 60),
     email: currentUser.email || '',
-    phone: currentUser.phone || '',
-    shipping_address: currentUser.street_address || '',
-    city: currentUser.city || 'Dasmariñas',
+    phone: String(currentUser.phone || '').replace(/\D/g, '').slice(0, 11),
+    shipping_address: (currentUser.street_address || '').slice(0, 150),
+    city: currentUser.city || 'Dasmariñas City',
     province: currentUser.province || 'Cavite',
-    postal_code: currentUser.postal_code || '4114',
+    postal_code: String(currentUser.postal_code || '4114').replace(/\D/g, '').slice(0, 4),
     courier: 'J&T Express',
     payment_method: 'paymongo',
   });
@@ -74,11 +74,11 @@ export default function Checkout() {
         if (!profile) return;
         setFormData((prev) => ({
           ...prev,
-          customer_name: profile.full_name || prev.customer_name,
+          customer_name: (profile.full_name || prev.customer_name).slice(0, 60),
           email: profile.email || prev.email,
-          phone: profile.phone || prev.phone,
-          shipping_address: profile.street_address || prev.shipping_address,
-          postal_code: profile.postal_code || prev.postal_code,
+          phone: String(profile.phone || prev.phone).replace(/\D/g, '').slice(0, 11),
+          shipping_address: (profile.street_address || prev.shipping_address).slice(0, 150),
+          postal_code: String(profile.postal_code || prev.postal_code).replace(/\D/g, '').slice(0, 4),
         }));
 
         if (profile.province) {
@@ -87,7 +87,9 @@ export default function Checkout() {
               setSelectedRegion(reg);
               setSelectedProvince(profile.province);
               const validCities = provObj[profile.province] || [];
-              const matchedCity = validCities.includes(profile.city) ? profile.city : (validCities[0] || '');
+              const matchedCity = validCities.find(
+                (c) => c.toLowerCase() === (profile.city || '').toLowerCase()
+              ) || validCities[0] || '';
               setSelectedCity(matchedCity);
               setFormData((prev) => ({
                 ...prev,
@@ -102,25 +104,25 @@ export default function Checkout() {
       .catch(() => {});
   }, [currentUser]);
 
-  // Automated Inventory Release on Cancelled Sessions
+  // Automatic Inventory Release for Cancelled PayMongo Sessions
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const isCancelled = params.get('cancelled');
     const cancelledOrderId = params.get('order_id');
 
     if (isCancelled && cancelledOrderId) {
-      setInfoMessage('Previous checkout was cancelled. Unlocking your pieces...');
+      setInfoMessage('Previous checkout was cancelled. Releasing order hold...');
       
       fetch(`${BACKEND_URL}/api/orders/${cancelledOrderId}/cancel`, {
         method: 'POST',
       })
         .then((res) => res.json())
         .then(() => {
-          setInfoMessage('Payment cancelled. Your items have been released back to your bag.');
+          setInfoMessage('Payment cancelled. Your items remain in your bag.');
           window.history.replaceState({}, document.title, window.location.pathname);
         })
         .catch((err) => {
-          console.error('Failed to auto-release stock:', err);
+          console.error('Failed to cancel order session:', err);
         });
     }
   }, []);
@@ -128,7 +130,7 @@ export default function Checkout() {
   // Admin Account Checkout Barrier
   if (currentUser?.role === 'admin' || currentUser?.email === 'admin@thriftloop.com') {
     return (
-      <div className="min-h-[75vh] bg-[#F6F1E8] flex flex-col items-center justify-center p-6 text-center">
+      <div className="min-h-[75vh] bg-[#F6F1E8] flex flex-col items-center justify-center p-6 text-center font-mono">
         <div className="w-16 h-16 rounded-3xl bg-[#E67E5F]/15 text-[#E67E5F] flex items-center justify-center mb-4 border border-[#E67E5F]/30">
           <ShieldCheck size={32} />
         </div>
@@ -192,8 +194,20 @@ export default function Checkout() {
     }));
   };
 
+  // Sanitized Change Handler for Numeric & Text Inputs
+  const handlePhoneChange = (e) => {
+    const numericOnly = e.target.value.replace(/\D/g, '').slice(0, 11);
+    setFormData((prev) => ({ ...prev, phone: numericOnly }));
+  };
+
+  const handlePostalChange = (e) => {
+    const numericOnly = e.target.value.replace(/\D/g, '').slice(0, 4);
+    setFormData((prev) => ({ ...prev, postal_code: numericOnly }));
+  };
+
   const handleChange = (e) => {
-    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   // Pricing & Calculations
@@ -246,16 +260,29 @@ export default function Checkout() {
     setError('');
     setInfoMessage('');
 
+    // Strict Philippine Mobile Number & Postal Validation
+    const cleanPhone = formData.phone.replace(/\D/g, '');
+    if (cleanPhone.length !== 11 || !cleanPhone.startsWith('09')) {
+      setError('Please enter a valid 11-digit Philippine mobile number starting with 09 (e.g. 09XXXXXXXXX).');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    const cleanPostal = formData.postal_code.replace(/\D/g, '');
+    if (cleanPostal.length !== 4) {
+      setError('Please enter a valid 4-digit Philippine postal code (e.g. 4114).');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
     if (
       !formData.customer_name?.trim() || 
       !formData.email?.trim() || 
-      !formData.phone?.trim() ||
       !formData.shipping_address?.trim() || 
       !selectedCity || 
-      !selectedProvince || 
-      !formData.postal_code?.trim()
+      !selectedProvince
     ) {
-      setError('Please fill in all recipient contact and address details.');
+      setError('Please complete all recipient details and delivery address fields.');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -277,20 +304,20 @@ export default function Checkout() {
             items: cartItems,
             cart_items: cartItems,
             customer: {
-              fullName: formData.customer_name.trim(),
+              fullName: formData.customer_name.trim().slice(0, 60),
               email: formData.email.trim(),
-              phone: formData.phone.trim(),
+              phone: cleanPhone,
             },
             deliveryAddress: {
-              streetAddress: formData.shipping_address.trim(),
+              streetAddress: formData.shipping_address.trim().slice(0, 150),
               city: selectedCity,
               province: selectedProvince,
-              postalCode: formData.postal_code.trim(),
+              postalCode: cleanPostal,
             },
-            shipping_address: formData.shipping_address.trim(),
+            shipping_address: formData.shipping_address.trim().slice(0, 150),
             city: selectedCity,
             province: selectedProvince,
-            postal_code: formData.postal_code.trim(),
+            postal_code: cleanPostal,
             courier: formData.courier,
             referenceNumber,
             voucherCode: appliedVoucher ? appliedVoucher.code : null,
@@ -312,13 +339,13 @@ export default function Checkout() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             ...formData,
-            customer_name: formData.customer_name.trim(),
+            customer_name: formData.customer_name.trim().slice(0, 60),
             email: formData.email.trim(),
-            phone: formData.phone.trim(),
-            shipping_address: formData.shipping_address.trim(),
+            phone: cleanPhone,
+            shipping_address: formData.shipping_address.trim().slice(0, 150),
             city: selectedCity,
             province: selectedProvince,
-            postal_code: formData.postal_code.trim(),
+            postal_code: cleanPostal,
             user_id: currentUser.user_id || currentUser.id || null,
             total_amount: grandTotal,
             shipping_fee: shippingFee,
@@ -358,7 +385,7 @@ export default function Checkout() {
 
   if (cartItems.length === 0) {
     return (
-      <div className="min-h-[70vh] bg-[#F6F1E8] flex flex-col items-center justify-center p-6 text-center">
+      <div className="min-h-[70vh] bg-[#F6F1E8] flex flex-col items-center justify-center p-6 text-center font-mono">
         <h2 className="font-serif text-2xl font-bold text-[#23313A] mb-2">Your bag is empty</h2>
         <p className="text-xs text-[#A8C3A0] mb-5 font-semibold">
           Select rare 1-of-1 archive garments before checking out.
@@ -377,8 +404,8 @@ export default function Checkout() {
     <div className="min-h-screen bg-[#F6F1E8] text-[#23313A] font-sans pb-16 py-4 sm:py-8 px-3 sm:px-6">
       <main className="max-w-6xl mx-auto">
         
-        {/* Navigation Breadcrumb */}
-        <div className="flex items-center justify-between mb-4 sm:mb-8 pb-3 border-b border-[#A8C3A0]/20">
+        {/* Breadcrumb Navigation */}
+        <div className="flex items-center justify-between mb-4 sm:mb-8 pb-3 border-b border-[#A8C3A0]/20 font-mono">
           <Link 
             to="/cart" 
             className="flex items-center gap-1.5 text-xs font-bold text-[#23313A]/70 hover:text-[#2F6B4F] transition-colors group cursor-pointer"
@@ -463,14 +490,14 @@ export default function Checkout() {
         </div>
 
         {infoMessage && (
-          <div className="bg-[#2F6B4F]/10 border border-[#2F6B4F]/30 text-[#2F6B4F] text-xs p-3.5 sm:p-4 rounded-2xl flex items-center gap-2 mb-4 sm:mb-6 font-bold animate-in fade-in">
+          <div className="bg-[#2F6B4F]/10 border border-[#2F6B4F]/30 text-[#2F6B4F] text-xs p-3.5 sm:p-4 rounded-2xl flex items-center gap-2 mb-4 sm:mb-6 font-bold animate-in fade-in font-mono">
             <Info size={16} className="shrink-0" />
             <span>{infoMessage}</span>
           </div>
         )}
 
         {error && (
-          <div className="bg-[#E67E5F]/10 border border-[#E67E5F]/30 text-[#E67E5F] text-xs p-3.5 sm:p-4 rounded-2xl flex items-center gap-2 mb-4 sm:mb-6 font-bold animate-in fade-in">
+          <div className="bg-[#E67E5F]/10 border border-[#E67E5F]/30 text-[#E67E5F] text-xs p-3.5 sm:p-4 rounded-2xl flex items-center gap-2 mb-4 sm:mb-6 font-bold animate-in fade-in font-mono">
             <AlertCircle size={16} className="shrink-0" />
             <span>{error}</span>
           </div>
@@ -479,7 +506,7 @@ export default function Checkout() {
         {/* Checkout Form */}
         <form noValidate onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-start font-mono">
           
-          {/* Left Column: Form Details */}
+          {/* Left Column: Input Fields */}
           <div className="lg:col-span-7 space-y-5 sm:space-y-6">
             
             {/* Recipient Information */}
@@ -497,6 +524,7 @@ export default function Checkout() {
                   <input
                     type="text"
                     name="customer_name"
+                    maxLength={60}
                     value={formData.customer_name}
                     onChange={handleChange}
                     autoComplete="name"
@@ -521,23 +549,25 @@ export default function Checkout() {
                   </div>
                   <div>
                     <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
-                      Mobile Phone
+                      Mobile Phone (11 Digits)
                     </label>
                     <input
                       type="tel"
                       name="phone"
-                      inputMode="tel"
+                      maxLength={11}
+                      inputMode="numeric"
                       autoComplete="tel"
                       value={formData.phone}
-                      onChange={handleChange}
-                      className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 sm:py-2 focus:outline-none focus:border-[#2F6B4F] focus:bg-white text-[#23313A] transition-all shadow-xs text-xs font-mono"
+                      onChange={handlePhoneChange}
+                      placeholder="09XXXXXXXXX"
+                      className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 sm:py-2 focus:outline-none focus:border-[#2F6B4F] focus:bg-white text-[#23313A] transition-all shadow-xs text-xs font-mono font-bold"
                     />
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Delivery Address (Philippine Cascading Dropdowns) */}
+            {/* Delivery Address (Standardized Philippine Selectors) */}
             <div className="bg-white border border-[#A8C3A0]/30 rounded-2xl sm:rounded-3xl p-4 sm:p-7 shadow-xs space-y-4">
               <h2 className="font-serif text-lg sm:text-xl font-bold text-[#23313A] flex items-center gap-2 pb-3 border-b border-[#A8C3A0]/20">
                 <Truck size={18} className="text-[#2F6B4F]" />
@@ -545,7 +575,7 @@ export default function Checkout() {
               </h2>
 
               <div className="space-y-3.5 text-xs">
-                {/* Country: Locked to Philippines */}
+                {/* Country (Philippines only) */}
                 <div>
                   <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
                     Country
@@ -616,6 +646,7 @@ export default function Checkout() {
                     <input
                       type="text"
                       name="shipping_address"
+                      maxLength={120}
                       value={formData.shipping_address}
                       onChange={handleChange}
                       autoComplete="street-address"
@@ -625,23 +656,25 @@ export default function Checkout() {
 
                   <div>
                     <label className="block font-bold text-[#23313A] mb-1 uppercase tracking-wider text-[10px]">
-                      Postal Code
+                      Postal Code (4 Digits)
                     </label>
                     <input
                       type="text"
                       name="postal_code"
+                      maxLength={4}
                       inputMode="numeric"
                       autoComplete="postal-code"
                       value={formData.postal_code}
-                      onChange={handleChange}
-                      className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 sm:py-2 focus:outline-none focus:border-[#2F6B4F] focus:bg-white text-[#23313A] transition-all shadow-xs text-xs font-mono"
+                      onChange={handlePostalChange}
+                      placeholder="4114"
+                      className="w-full bg-[#F6F1E8]/40 border border-[#A8C3A0]/40 rounded-xl px-3.5 py-2.5 sm:py-2 focus:outline-none focus:border-[#2F6B4F] focus:bg-white text-[#23313A] transition-all shadow-xs text-xs font-mono font-bold"
                     />
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Courier & Payment Provider */}
+            {/* Courier & Payment Method */}
             <div className="bg-white border border-[#A8C3A0]/30 rounded-2xl sm:rounded-3xl p-4 sm:p-7 shadow-xs space-y-5 sm:space-y-6">
               <div>
                 <h2 className="font-serif text-lg sm:text-xl font-bold text-[#23313A] flex items-center gap-2 pb-3 border-b border-[#A8C3A0]/20 mb-3">
@@ -822,6 +855,7 @@ export default function Checkout() {
                     <div className="flex gap-2">
                       <input
                         type="text"
+                        maxLength={20}
                         value={voucherInput}
                         onChange={(e) => {
                           setVoucherInput(e.target.value.toUpperCase());
