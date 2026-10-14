@@ -164,7 +164,7 @@ export default function Shop() {
     <div className="min-h-screen bg-[#F6F1E8] text-[#23313A] font-sans pb-16">
       <main className="max-w-7xl mx-auto px-3.5 sm:px-6 py-6 sm:py-8 lg:py-10">
         
-        {/* Header Title Bar & Controls */}
+        {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 sm:gap-4 mb-6 sm:mb-8">
           <div>
             <h1 className="font-serif text-2xl sm:text-3xl md:text-4xl font-bold text-[#23313A] tracking-tight">
@@ -172,15 +172,12 @@ export default function Shop() {
             </h1>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               <p className="text-[11px] sm:text-xs font-semibold text-[#A8C3A0]">
-                Showing {filteredProducts.length} unique 1-of-1 items
+                Showing {filteredProducts.length} items
               </p>
               {searchQuery && (
                 <span className="inline-flex items-center gap-1.5 bg-white border border-[#A8C3A0]/40 text-[#23313A] text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-xs">
                   Search: "{searchQuery}"
-                  <button 
-                    onClick={clearSearch} 
-                    className="text-[#E67E5F] hover:text-black transition-colors"
-                  >
+                  <button onClick={clearSearch} className="text-[#E67E5F] hover:text-black">
                     <X size={11} />
                   </button>
                 </span>
@@ -188,7 +185,7 @@ export default function Shop() {
             </div>
           </div>
 
-          {/* Controls: Filter Toggle + Sort By */}
+          {/* Controls */}
           <div className="flex items-center gap-2.5 sm:gap-3 w-full md:w-auto justify-between md:justify-end">
             <button
               onClick={() => setShowFilters(!showFilters)}
@@ -204,11 +201,9 @@ export default function Shop() {
               />
               <span>{showFilters ? 'Hide Filters' : 'Filters'}</span>
               {activeFilterCount > 0 && (
-                <span
-                  className={`w-4 h-4 rounded-full text-[10px] flex items-center justify-center font-bold ${
-                    showFilters ? 'bg-[#E67E5F] text-white' : 'bg-[#2F6B4F] text-white'
-                  }`}
-                >
+                <span className={`w-4 h-4 rounded-full text-[10px] flex items-center justify-center font-bold ${
+                  showFilters ? 'bg-[#E67E5F] text-white' : 'bg-[#2F6B4F] text-white'
+                }`}>
                   {activeFilterCount}
                 </span>
               )}
@@ -219,7 +214,7 @@ export default function Shop() {
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
-                className="bg-white border border-[#A8C3A0]/40 text-[#23313A] rounded-xl px-2.5 sm:px-3.5 py-2 text-xs font-bold focus:outline-none focus:border-[#2F6B4F] shadow-xs cursor-pointer hover:border-[#2F6B4F]/80 transition-colors"
+                className="bg-white border border-[#A8C3A0]/40 text-[#23313A] rounded-xl px-2.5 sm:px-3.5 py-2 text-xs font-bold focus:outline-none focus:border-[#2F6B4F] shadow-xs cursor-pointer"
               >
                 <option value="newest">Latest Drops</option>
                 <option value="price-low">Price: Low to High</option>
@@ -232,7 +227,6 @@ export default function Shop() {
         {/* Content Layout */}
         <div className={`grid grid-cols-1 gap-6 sm:gap-8 transition-all duration-300 ${showFilters ? 'lg:grid-cols-4' : 'w-full'}`}>
           
-          {/* Collapsible Filter Sidebar (Drawer on mobile/tablet, Sidebar on desktop) */}
           {showFilters && (
             <aside className="space-y-4 sm:space-y-6 bg-white border border-[#A8C3A0]/30 rounded-2xl p-4 sm:p-6 h-fit shadow-xs animate-in fade-in duration-200">
               <div className="flex items-center justify-between border-b border-[#A8C3A0]/20 pb-2.5 sm:pb-3">
@@ -243,7 +237,6 @@ export default function Shop() {
                 <button
                   onClick={() => setShowFilters(false)}
                   className="text-[#A8C3A0] hover:text-[#23313A] p-1 rounded-lg hover:bg-[#F6F1E8] transition-all cursor-pointer"
-                  title="Close filter panel"
                 >
                   <X size={15} />
                 </button>
@@ -271,7 +264,7 @@ export default function Shop() {
 
               {/* Condition */}
               <div>
-                <p className="text-[10px] sm:text-[11px] font-bold text-[#23313A] uppercase tracking-wider mb-2">Condition Grade</p>
+                <p className="text-[10px] sm:text-[11px] font-bold text-[#23313A] uppercase tracking-wider mb-2">Condition</p>
                 <div className="flex flex-wrap gap-1 sm:gap-1.5">
                   {conditions.map((g) => (
                     <button
@@ -321,16 +314,15 @@ export default function Shop() {
             </aside>
           )}
 
-          {/* Product Grid: 2 cols (mobile), 3 cols (tablet / desktop filtered), 4 cols (desktop wide) */}
+          {/* Product Grid */}
           <div className={showFilters ? 'lg:col-span-3' : 'w-full'}>
             {loading ? (
               <div className="py-20 flex justify-center items-center gap-2 text-xs text-[#A8C3A0] font-bold">
-                <Loader2 size={18} className="animate-spin text-[#2F6B4F]" /> Loading inventory pieces...
+                <Loader2 size={18} className="animate-spin text-[#2F6B4F]" /> Loading catalog...
               </div>
             ) : filteredProducts.length === 0 ? (
               <div className="bg-white border border-[#A8C3A0]/30 rounded-2xl p-8 sm:p-12 text-center text-[#23313A] shadow-xs">
-                <p className="font-bold text-sm">No items match your search.</p>
-                <p className="text-xs text-[#A8C3A0] font-semibold mt-1">Try checking for typos or resetting active filters.</p>
+                <p className="font-bold text-sm">No items found.</p>
                 <button
                   onClick={resetAllFilters}
                   className="mt-4 inline-flex items-center gap-1.5 bg-[#2F6B4F] hover:bg-[#23313A] text-white text-xs font-bold py-2.5 px-5 rounded-xl shadow-xs transition-colors cursor-pointer"
@@ -352,13 +344,15 @@ export default function Shop() {
                   return (
                     <div
                       key={item.product_id}
-                      className="bg-white border border-[#A8C3A0]/30 rounded-2xl overflow-hidden shadow-xs flex flex-col justify-between group hover:shadow-lg hover:-translate-y-1 hover:border-[#2F6B4F]/50 transition-all duration-300"
+                      className="bg-white border border-[#A8C3A0]/30 rounded-2xl overflow-hidden shadow-xs flex flex-col justify-between group hover:shadow-md hover:-translate-y-0.5 hover:border-[#2F6B4F]/50 transition-all duration-300"
                     >
                       <Link to={`/product/${item.product_id}`} className="block relative">
                         <div className="h-44 sm:h-56 md:h-64 bg-[#F6F1E8]/70 overflow-hidden flex items-center justify-center relative border-b border-[#A8C3A0]/10">
-                          <span className="absolute top-2 left-2 sm:top-3 sm:left-3 z-10 bg-[#23313A] text-[#F6F1E8] text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded shadow-xs">
-                            {item.condition_grade}
-                          </span>
+                          {item.condition_grade && (
+                            <span className="absolute top-2 left-2 sm:top-3 sm:left-3 z-10 bg-[#23313A] text-[#F6F1E8] text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded shadow-xs">
+                              {item.condition_grade}
+                            </span>
+                          )}
                           
                           {isDiscounted && (
                             <span className="absolute bottom-2 left-2 sm:bottom-3 sm:left-3 z-10 bg-[#E67E5F] text-white text-[8px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded shadow-xs flex items-center gap-0.5 uppercase tracking-wider">
@@ -366,9 +360,11 @@ export default function Shop() {
                             </span>
                           )}
 
-                          <span className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10 bg-white/95 backdrop-blur-xs border border-[#A8C3A0]/30 text-[#23313A] text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded shadow-xs">
-                            Size {item.size}
-                          </span>
+                          {item.size && (
+                            <span className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10 bg-white/95 backdrop-blur-xs border border-[#A8C3A0]/30 text-[#23313A] text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded shadow-xs">
+                              Size {item.size}
+                            </span>
+                          )}
 
                           {item.status === 'sold' && (
                             <span className="absolute inset-0 bg-[#23313A]/70 flex items-center justify-center text-white text-[11px] sm:text-xs font-bold uppercase tracking-wider z-20 backdrop-blur-[1px]">
@@ -376,17 +372,25 @@ export default function Shop() {
                             </span>
                           )}
 
-                          <img
-                            src={item.image_url}
-                            alt={item.name}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
-                          />
+                          {item.image_url ? (
+                            <img
+                              src={item.image_url}
+                              alt={item.name}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
+                            />
+                          ) : (
+                            <div className="w-full h-full bg-[#F6F1E8] flex items-center justify-center text-[#A8C3A0]">
+                              No Image
+                            </div>
+                          )}
                         </div>
 
                         <div className="p-3 sm:p-4 bg-white">
-                          <p className="text-[9px] sm:text-[10px] font-bold text-[#A8C3A0] uppercase tracking-wider truncate">
-                            {item.category_name || 'Vintage'}
-                          </p>
+                          {item.category_name && (
+                            <p className="text-[9px] sm:text-[10px] font-bold text-[#A8C3A0] uppercase tracking-wider truncate">
+                              {item.category_name}
+                            </p>
+                          )}
                           <h3 className="font-serif font-bold text-xs sm:text-sm text-[#23313A] line-clamp-1 group-hover:text-[#2F6B4F] transition-colors mt-0.5">
                             {item.name}
                           </h3>
@@ -437,4 +441,4 @@ export default function Shop() {
       </main>
     </div>
   );
-}
+} 
