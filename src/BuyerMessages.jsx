@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { 
   MessageSquare, Send, ArrowLeft, Loader2, 
-  Store, ExternalLink, RefreshCw, Image as ImageIcon, X, CheckCheck, Check, User
+  Store, ExternalLink, Image as ImageIcon, X, CheckCheck, Check 
 } from 'lucide-react';
 
 const extractImageAndText = (message) => {
@@ -11,7 +11,7 @@ const extractImageAndText = (message) => {
     return { imageUrl: message.image_url, text: message.message_text };
   }
   const text = message.message_text || '';
-  const match = text.match(/\[IMAGE\](.*?)\[\/IMAGE\]/);
+  const match = text.match(/[IMAGE](.*?)\[\/IMAGE\]/);
   if (match) {
     return {
       imageUrl: match[1],
@@ -33,10 +33,11 @@ export default function BuyerMessages() {
   const [loading, setLoading] = useState(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [sending, setSending] = useState(false);
-  const [error, setError] = useState('');
   
   const fileInputRef = useRef(null);
-  const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const isNearBottomRef = useRef(true);
+  const isFirstLoadRef = useRef(true);
   const navigate = useNavigate();
 
   const storedUser = localStorage.getItem('thriftloop_user');
@@ -51,9 +52,30 @@ export default function BuyerMessages() {
     }
   }, [currentUser, navigate]);
 
-  // Fetch threads with functional state to prevent resetting selected thread
-  const fetchConversations = async () => {
+  // Track if user is scrolling up to read earlier messages
+  const handleScroll = () => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const threshold = 120;
+    const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
+    isNearBottomRef.current = isAtBottom;
+  };
+
+  // Scroll to bottom only if user is already at the bottom or on initial thread load
+  const scrollToBottom = (force = false) => {
+    if (force || isNearBottomRef.current) {
+      const el = messagesContainerRef.current;
+      if (el) {
+        el.scrollTo({ top: el.scrollHeight, behavior: force ? 'auto' : 'smooth' });
+      }
+    }
+  };
+
+  // Silent background auto-sync for threads
+  const fetchConversations = async (isSilent = false) => {
     if (!currentUserId) return;
+    if (!isSilent && conversations.length === 0) setLoading(true);
+
     try {
       const res = await fetch(`${API_URL}/api/messages/conversations/user/${currentUserId}`);
       const data = await res.json();
@@ -68,15 +90,17 @@ export default function BuyerMessages() {
         });
       }
     } catch {
-      setError('Could not load conversations.');
+      // Non-blocking background sync
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchConversations();
-    const interval = setInterval(fetchConversations, 5000);
+    fetchConversations(false);
+    const interval = setInterval(() => {
+      fetchConversations(true);
+    }, 4000);
     return () => clearInterval(interval);
   }, [currentUserId]);
 
@@ -88,42 +112,47 @@ export default function BuyerMessages() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: currentUserId }),
       });
-    } catch {
-      // Non-blocking
-    }
+    } catch {}
   };
 
-  const fetchMessages = async (convoId) => {
+  // Silent background auto-sync for active chat messages
+  const fetchMessages = async (convoId, isSilent = false) => {
     if (!convoId) return;
+    if (!isSilent) setMessagesLoading(true);
+
     try {
       const res = await fetch(`${API_URL}/api/messages/${convoId}`);
       const data = await res.json();
       if (Array.isArray(data)) {
         setMessages(data);
         markConversationAsRead(convoId);
+
+        if (isFirstLoadRef.current) {
+          setTimeout(() => scrollToBottom(true), 50);
+          isFirstLoadRef.current = false;
+        } else {
+          scrollToBottom(false);
+        }
       }
     } catch (err) {
       console.error('Failed to load chat history:', err);
     } finally {
-      setMessagesLoading(false);
+      if (!isSilent) setMessagesLoading(false);
     }
   };
 
   useEffect(() => {
     if (!activeConvo?.conversation_id) return;
-    setMessagesLoading(true);
-    fetchMessages(activeConvo.conversation_id);
+    isFirstLoadRef.current = true;
+    isNearBottomRef.current = true;
+    fetchMessages(activeConvo.conversation_id, false);
 
     const interval = setInterval(() => {
-      fetchMessages(activeConvo.conversation_id);
+      fetchMessages(activeConvo.conversation_id, true);
     }, 3000);
 
     return () => clearInterval(interval);
   }, [activeConvo?.conversation_id]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
 
   const handleImageSelect = (e) => {
     const file = e.target.files?.[0];
@@ -189,9 +218,11 @@ export default function BuyerMessages() {
       if (!res.ok) throw new Error(newMsg.error || 'Failed to send message.');
 
       setMessages((prev) => [...prev, newMsg]);
-      fetchConversations();
-    } catch (err) {
-      setError(err.message || 'Failed to send message.');
+      isNearBottomRef.current = true;
+      setTimeout(() => scrollToBottom(true), 50);
+      fetchConversations(true);
+    } catch {
+      // Non-blocking
     } finally {
       setSending(false);
     }
@@ -199,21 +230,19 @@ export default function BuyerMessages() {
 
   if (!currentUser) return null;
 
-  // Resolve the other participant's display name and avatar
+  // Resolve respondent display name (Never calls the buyer 'Seller')
   const getThreadPartnerInfo = (convo) => {
     const isCurrentUserBuyer = String(convo.buyer_id) === String(currentUserId);
     if (isAdmin || !isCurrentUserBuyer) {
       const buyerName = convo.buyer?.full_name || convo.buyer?.email || `Buyer #${convo.buyer_id}`;
       return {
         name: buyerName,
-        subtitle: convo.products?.name ? `Item: ${convo.products.name}` : convo.buyer?.email || 'Customer',
         initial: buyerName.charAt(0).toUpperCase(),
         isAdminPartner: false
       };
     }
     return {
       name: 'ThriftLoop Support',
-      subtitle: convo.products?.name ? `Inquiry: ${convo.products.name}` : 'Curated Vintage Concierge',
       initial: 'TL',
       isAdminPartner: true
     };
@@ -222,31 +251,19 @@ export default function BuyerMessages() {
   return (
     <div className="h-[calc(100vh-65px)] w-full bg-[#F6F1E8] flex flex-col font-mono overflow-hidden">
       
-      {/* Full-Bleed Messaging Workspace */}
+      {/* Full-Bleed Messaging Grid */}
       <div className="flex-1 w-full h-full grid grid-cols-1 md:grid-cols-12 bg-white overflow-hidden shadow-xs">
         
         {/* Left Column: Unified Threads List */}
         <div className={`md:col-span-4 lg:col-span-3 border-r border-[#A8C3A0]/30 flex flex-col bg-[#F6F1E8]/30 h-full ${
           activeConvo ? 'hidden md:flex' : 'flex'
         }`}>
-          {/* Header */}
+          {/* Header without subtext and without manual refresh button */}
           <div className="p-4 border-b border-[#A8C3A0]/20 flex items-center justify-between shrink-0 bg-white">
-            <div>
-              <h2 className="font-serif font-bold text-base text-[#23313A]">Inquiries</h2>
-              <p className="text-[10px] text-[#A8C3A0] font-semibold">
-                {isAdmin ? 'Customer Direct Messages' : 'ThriftLoop Conversations'}
-              </p>
-            </div>
-            <button
-              onClick={fetchConversations}
-              className="p-1.5 rounded-lg text-[#2F6B4F] hover:bg-[#F6F1E8] transition-colors cursor-pointer"
-              title="Refresh"
-            >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            </button>
+            <h2 className="font-serif font-bold text-base text-[#23313A]">Inquiries</h2>
           </div>
 
-          {/* Threads Scrollable Feed */}
+          {/* Threads List */}
           <div className="flex-1 overflow-y-auto divide-y divide-[#A8C3A0]/15">
             {loading && conversations.length === 0 ? (
               <div className="p-8 text-center text-xs text-[#23313A]/50 flex items-center justify-center gap-2">
@@ -285,10 +302,7 @@ export default function BuyerMessages() {
                           {new Date(convo.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
-                      <p className="text-[10px] text-[#2F6B4F] font-semibold truncate mb-0.5">
-                        {partner.subtitle}
-                      </p>
-                      <p className="text-[11px] text-[#23313A]/60 truncate">
+                      <p className="text-[11px] text-[#23313A]/60 truncate font-mono">
                         {convo.last_message || 'Inquiry started'}
                       </p>
                     </div>
@@ -305,7 +319,7 @@ export default function BuyerMessages() {
         }`}>
           {activeConvo ? (
             <>
-              {/* Active Header */}
+              {/* Clean Active Chat Header: Subtext & Email removed */}
               {(() => {
                 const partner = getThreadPartnerInfo(activeConvo);
                 return (
@@ -327,9 +341,6 @@ export default function BuyerMessages() {
                         <h3 className="font-serif font-bold text-sm sm:text-base text-[#23313A] truncate">
                           {partner.name}
                         </h3>
-                        <p className="text-[11px] text-[#A8C3A0] truncate">
-                          {activeConvo.buyer?.email || 'Active Customer'}
-                        </p>
                       </div>
                     </div>
 
@@ -366,8 +377,12 @@ export default function BuyerMessages() {
                 );
               })()}
 
-              {/* Messages History Feed with Seen Indicator */}
-              <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-3">
+              {/* Messages History Feed with Smart Scroll Handling */}
+              <div 
+                ref={messagesContainerRef}
+                onScroll={handleScroll}
+                className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-3"
+              >
                 {messagesLoading ? (
                   <div className="h-full flex items-center justify-center text-xs text-[#23313A]/60 gap-2">
                     <Loader2 size={16} className="animate-spin text-[#2F6B4F]" />
@@ -382,9 +397,7 @@ export default function BuyerMessages() {
                   messages.map((m, idx) => {
                     const isMine = String(m.sender_id) === String(currentUserId);
                     const { imageUrl, text } = extractImageAndText(m);
-                    const isLastFromMe = isMine && idx === messages.map((msg) => String(msg.sender_id)).lastIndexOf(String(currentUserId));
 
-                    // Accurate Respondent Name (Never calls the buyer "Seller")
                     let senderLabel = 'Customer';
                     if (isMine) {
                       senderLabel = 'You';
@@ -448,7 +461,6 @@ export default function BuyerMessages() {
                     );
                   })
                 )}
-                <div ref={messagesEndRef} />
               </div>
 
               {/* Attached Image Preview Bar */}
@@ -464,7 +476,7 @@ export default function BuyerMessages() {
                       setSelectedImage(null);
                       setImagePreview('');
                     }}
-                    className="text-[#E67E5F] p-1 rounded-full hover:bg-white"
+                    className="text-[#E67E5F] p-1 rounded-full hover:bg-white cursor-pointer"
                   >
                     <X size={15} />
                   </button>
